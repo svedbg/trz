@@ -1,0 +1,60 @@
+#!/bin/sh
+# Пуска се при всеки комит. Включва се веднъж с:
+#     git config core.hooksPath .githooks
+#
+# Логиката е разделена нарочно. Комплект 0 чете самия скил и се пуска винаги —
+# той е единственият, който хваща разминаване между справочника със ставките и
+# модела на тестовете, а точно това е рискът при обновяване на скила. Другите
+# два комплекта проверяват Python код и се пускат само когато той е пипан;
+# промяна в markdown не може да ги счупи и пускането им тогава е шум.
+#
+# Никога не прескачай тихо: ако средата не позволява дадена проверка, hook-ът
+# го казва.
+set -e
+KOREN=$(git rev-parse --show-toplevel)
+cd "$KOREN"
+
+# --- намиране на интерпретатор -------------------------------------------
+if [ -x .venv/bin/python ]; then
+    PY=.venv/bin/python
+elif [ -x venv/bin/python ]; then
+    PY=venv/bin/python
+else
+    PY=python3
+fi
+
+# --- комплект 0: ставките в модела срещу справочника (без зависимости) ----
+echo "pre-commit: сверка на ставките срещу references/stavki.md"
+if ! "$PY" test/stavki_test.py > /tmp/trz-stavki.$$ 2>&1; then
+    cat /tmp/trz-stavki.$$
+    rm -f /tmp/trz-stavki.$$
+    echo
+    echo "Комитът е спрян: ставка в справочника се разминава с test/trz_model.py."
+    echo "Справочникът е източникът на истина — оправи модела, не обратното."
+    echo "За еднократно прескачане: git commit --no-verify"
+    exit 1
+fi
+rm -f /tmp/trz-stavki.$$
+echo "pre-commit: ставките съвпадат"
+
+# --- комплекти 1 и 2: само при промяна в Python ---------------------------
+if git diff --cached --name-only | grep -q '^test/.*\.py$'; then
+    if ! "$PY" -c 'import openpyxl' 2>/dev/null; then
+        echo
+        echo "pre-commit: пипан е Python в test/, но openpyxl липсва — комплекти 1 и 2"
+        echo "            НЕ са пуснати. Създай среда веднъж:"
+        echo "              python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt"
+        echo "Комитът е спрян, за да не мине непроверен код. Прескачане: --no-verify"
+        exit 1
+    fi
+    echo "pre-commit: пипан е Python в test/ — пускам двата комплекта, 25 семена"
+    if ! "$PY" test/run_tests.py --semena 25 > /tmp/trz-testove.$$ 2>&1; then
+        tail -40 /tmp/trz-testove.$$
+        rm -f /tmp/trz-testove.$$
+        echo
+        echo "Комитът е спрян: тестовете падат. Прескачане: git commit --no-verify"
+        exit 1
+    fi
+    rm -f /tmp/trz-testove.$$
+    echo "pre-commit: комплекти 1 и 2 минават"
+fi

@@ -5,7 +5,12 @@
     python test/run_tests.py --semena 200    # по-дълго
     python test/run_tests.py --ot 500 --semena 100
 
-Два комплекта:
+Три комплекта:
+
+0. `stavki_test.py` — сверява ставките в `trz_model.py` срещу
+   `references/stavki.md`. Единственият тест, който чете самия скил, и затова
+   единственият, който има смисъл при **всяка** промяна по него. Не изисква
+   външни библиотеки.
 
 1. `proverki_test.py` върху `vedomost_05_2026.xlsx` — статична ведомост в тесен
    layout с девет вкарани дефекта по ставките и по режимите на труд (МРЗ, клас,
@@ -32,6 +37,20 @@ sys.path.insert(0, HERE)
 import trz_model as M                                    # noqa: E402
 import generate_struktura as G                           # noqa: E402
 from struktura_test import proveri                       # noqa: E402
+
+
+def komplekt_0():
+    print("=" * 78)
+    print("КОМПЛЕКТ 0 — ставките в модела срещу справочника на скила")
+    print("=" * 78)
+    p = subprocess.run([sys.executable, os.path.join(HERE, "stavki_test.py")],
+                       capture_output=True, text=True)
+    for l in p.stdout.splitlines():
+        if l.startswith(("  РАЗМИНАВА", "  НЕНАМЕРЕНА", "  ПРОМЯНА", "ПАДНА", "OK:")) \
+                or l.startswith("              "):
+            print("  " + l.strip())
+    print(f"  -> {'OK' if p.returncode == 0 else 'ПАДНА'}")
+    return p.returncode == 0
 
 
 def komplekt_1():
@@ -102,10 +121,13 @@ if __name__ == "__main__":
     ap.add_argument("--podrobno", action="store_true", help="печата находките на всяко семе")
     a = ap.parse_args()
 
+    ok0 = komplekt_0()
+    print()
     ok1 = komplekt_1()
     ok2 = komplekt_2(a.ot, a.semena, tiho=not a.podrobno)
     print()
     print("=" * 78)
-    print(f"РЕЗУЛТАТ: комплект 1 {'OK' if ok1 else 'ПАДНА'} · "
+    print(f"РЕЗУЛТАТ: комплект 0 {'OK' if ok0 else 'ПАДНА'} · "
+          f"комплект 1 {'OK' if ok1 else 'ПАДНА'} · "
           f"комплект 2 {'OK' if ok2 else 'ПАДНА'}")
-    sys.exit(0 if (ok1 and ok2) else 1)
+    sys.exit(0 if (ok0 and ok1 and ok2) else 1)

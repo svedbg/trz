@@ -137,6 +137,51 @@ would never have shown it.
 All test data is fabricated and derived from the seed. No real payroll, no real person, no
 ЕГН.
 
+### Running them when the skill changes
+
+There is a third suite, and it is the only one that reads the skill itself:
+
+```sh
+python test/stavki_test.py    # no dependencies — reads markdown
+```
+
+It parses `references/stavki.md` and asserts that every rate in `test/trz_model.py` matches
+it. This closes a real hole: the model needs its own copy of the figures to compute
+anything, which makes it a second source of truth, and updating the reference file would
+otherwise leave the tests passing happily with last year's numbers. A restructured table
+fails the check too — if the value can no longer be located, the correspondence is no longer
+verifiable.
+
+The other two suites test Python, not markdown. Editing `SKILL.md` cannot change their
+result, so running them on every prose edit is theatre. The split is wired into the
+pre-commit hook:
+
+```sh
+git config core.hooksPath .githooks   # once
+python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt
+```
+
+Every commit runs the rate check. Commits that touch `test/*.py` also run the two suites at
+25 seeds. Nothing is skipped silently: if the environment cannot run a check, the hook says
+so and stops rather than passing quietly. `--no-verify` overrides it.
+
+CI ([`.github/workflows/testove.yml`](.github/workflows/testove.yml)) runs everything at 300
+seeds on push and pull request, plus a scheduled monthly run — not because the code changes
+by itself but because the rates do, and the reference file carries a verification date that
+goes stale.
+
+### What none of this tests
+
+The suites validate the *rules*: the arithmetic, the thresholds, the composition logic. They
+do not test the skill, because the skill is instructions to a language model and the checkers
+are independent Python. A rewrite of `SKILL.md` that makes the guidance worse will not fail a
+single assertion.
+
+Testing that needs the model in the loop: run the skill against a generated workbook and
+compare what it reports with the manifest the generator already writes. The manifest exists
+and is machine-readable precisely so this is possible — it is the obvious next step, and it
+is not built yet.
+
 ## What you have to fill in yourself
 
 Three things, and the skill will tell you when it needs them rather than guessing.
