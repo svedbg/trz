@@ -1,0 +1,58 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Once a month, on the 1st. Not because the code changes by itself but
+    # because the rates do: the reference file carries a verification date and
+    # this run is the reminder that it goes stale.
+    - cron: "0 6 1 * *"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Suite 0 - rates in the model against the skill's reference file
+        # No dependencies - it reads markdown. Runs first, because on a drift the
+        # other two suites pass on the wrong figures and their result lies.
+        run: python test/rates_test.py
+
+      - name: Dependencies
+        run: pip install -r test/requirements.txt
+
+      - name: Suite 1 - rates and working-time regimes
+        run: python test/checks_test.py
+
+      - name: Suite 2 - file construction, 300 seeds
+        run: python test/run_tests.py --seeds 300
+
+      # test/eval_skill.py is deliberately not run here. It calls Claude, so it
+      # needs authentication and costs money per run. Run it by hand when the
+      # guidance in SKILL.md changes, not on every commit.
+
+      - name: Guard against leaked personal data
+        # Payrolls are personal data under the GDPR and this repository is
+        # public. This step guards against real data arriving with an update to
+        # the tests or to the examples in the documentation.
+        #
+        # It matches by shape, not by the names of specific companies or people:
+        # a list of real names committed here would itself be the leak the step
+        # exists to prevent.
+        run: |
+          # a ten-digit number (national ID) or a nine-digit one (company ID),
+          # outside the clearly-synthetic ones
+          if git grep -nE '\b[0-9]{10}\b|\b[1-9][0-9]{8}\b' -- '*.md' '*.py' \
+              | grep -vE '000000000|1\.95583|[0-9]{4}\.[0-9]{2}' ; then
+            echo "Found a number shaped like a national or company ID. Check the line above."
+            exit 1
+          fi
+          echo "clean"

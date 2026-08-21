@@ -103,7 +103,7 @@ or invoke it directly with `/trz-ekspert`.
 ```sh
 pip install -r test/requirements.txt
 python test/run_tests.py              # both suites
-python test/run_tests.py --semena 300 # longer randomised run
+python test/run_tests.py --seeds 300 # longer randomised run
 ```
 
 **Suite 1 — rates and working-time regimes.** A static payroll in a narrow layout with nine
@@ -142,7 +142,7 @@ All test data is fabricated and derived from the seed. No real payroll, no real 
 There is a third suite, and it is the only one that reads the skill itself:
 
 ```sh
-python test/stavki_test.py    # no dependencies — reads markdown
+python test/rates_test.py    # no dependencies — reads markdown
 ```
 
 It parses `references/stavki.md` and asserts that every rate in `test/trz_model.py` matches
@@ -165,7 +165,7 @@ Every commit runs the rate check. Commits that touch `test/*.py` also run the tw
 25 seeds. Nothing is skipped silently: if the environment cannot run a check, the hook says
 so and stops rather than passing quietly. `--no-verify` overrides it.
 
-CI ([`.github/workflows/testove.yml`](.github/workflows/testove.yml)) runs everything at 300
+CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs everything at 300
 seeds on push and pull request, plus a scheduled monthly run — not because the code changes
 by itself but because the rates do, and the reference file carries a verification date that
 goes stale.
@@ -177,10 +177,30 @@ do not test the skill, because the skill is instructions to a language model and
 are independent Python. A rewrite of `SKILL.md` that makes the guidance worse will not fail a
 single assertion.
 
-Testing that needs the model in the loop: run the skill against a generated workbook and
-compare what it reports with the manifest the generator already writes. The manifest exists
-and is machine-readable precisely so this is possible — it is the obvious next step, and it
-is not built yet.
+That gap is what `test/eval_skill.py` addresses. It runs Claude with the skill against a
+generated workbook and maps the findings it reports back onto the manifest:
+
+```sh
+python test/eval_skill.py --dry       # show what would be sent, pay nothing
+python test/eval_skill.py --seeds 3   # three seeds
+```
+
+One measured run on Opus: 18 turns, about 12 minutes and USD 2.4 for a single seed. So it is
+not in `run_tests.py` and not in CI. Run it when the guidance in `SKILL.md` changes, which is
+the only thing that can move its result.
+
+Three decisions in it are worth knowing. The model gets a directory in `/tmp` holding the
+workbook and a contracts CSV — what an auditor legitimately has — while the manifest stays
+in the repo, the repo is never passed with `--add-dir`, and the openpyxl environment is a
+separate venv outside it: `test/` contains a full implementation of every check and an answer
+key, and a run that reads those measures reading, not expertise. The scenario catalogue is
+not given to the model either, or the task becomes label matching. And the result is three
+numbers rather than one — found on the right row (objective), correctly identified (keyword
+matching, which is judgement and is reported as such), and unattributed findings, which are
+printed for review rather than counted as false positives, because the workbook is random and
+some of them may be true observations that simply were not injected on purpose.
+
+Details and the keyword sets: [`test/scenarii.md`](test/scenarii.md).
 
 ## What you have to fill in yourself
 

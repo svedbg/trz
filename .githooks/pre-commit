@@ -1,20 +1,19 @@
 #!/bin/sh
-# Пуска се при всеки комит. Включва се веднъж с:
+# Runs on every commit. Enable once with:
 #     git config core.hooksPath .githooks
 #
-# Логиката е разделена нарочно. Комплект 0 чете самия скил и се пуска винаги —
-# той е единственият, който хваща разминаване между справочника със ставките и
-# модела на тестовете, а точно това е рискът при обновяване на скила. Другите
-# два комплекта проверяват Python код и се пускат само когато той е пипан;
-# промяна в markdown не може да ги счупи и пускането им тогава е шум.
+# The split is deliberate. Suite 0 reads the skill itself and always runs: it is
+# the only one that catches a drift between the rate reference file and the test
+# model, which is exactly the risk when the skill is updated. The other two
+# suites check Python code and run only when Python was touched; a change in
+# markdown cannot break them and running them then is noise.
 #
-# Никога не прескачай тихо: ако средата не позволява дадена проверка, hook-ът
-# го казва.
+# Never skip silently: if the environment cannot run a check, the hook says so.
 set -e
-KOREN=$(git rev-parse --show-toplevel)
-cd "$KOREN"
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
 
-# --- намиране на интерпретатор -------------------------------------------
+# --- find an interpreter ---------------------------------------------------
 if [ -x .venv/bin/python ]; then
     PY=.venv/bin/python
 elif [ -x venv/bin/python ]; then
@@ -23,38 +22,38 @@ else
     PY=python3
 fi
 
-# --- комплект 0: ставките в модела срещу справочника (без зависимости) ----
-echo "pre-commit: сверка на ставките срещу references/stavki.md"
-if ! "$PY" test/stavki_test.py > /tmp/trz-stavki.$$ 2>&1; then
-    cat /tmp/trz-stavki.$$
-    rm -f /tmp/trz-stavki.$$
+# --- suite 0: rates in the model against the reference (no dependencies) ---
+echo "pre-commit: cross-checking rates against references/stavki.md"
+if ! "$PY" test/rates_test.py > /tmp/trz-rates.$$ 2>&1; then
+    cat /tmp/trz-rates.$$
+    rm -f /tmp/trz-rates.$$
     echo
-    echo "Комитът е спрян: ставка в справочника се разминава с test/trz_model.py."
-    echo "Справочникът е източникът на истина — оправи модела, не обратното."
-    echo "За еднократно прескачане: git commit --no-verify"
+    echo "Commit stopped: a rate in the reference file has drifted from"
+    echo "test/trz_model.py. The reference is the source of truth - fix the model."
+    echo "To skip once: git commit --no-verify"
     exit 1
 fi
-rm -f /tmp/trz-stavki.$$
-echo "pre-commit: ставките съвпадат"
+rm -f /tmp/trz-rates.$$
+echo "pre-commit: rates match"
 
-# --- комплекти 1 и 2: само при промяна в Python ---------------------------
+# --- suites 1 and 2: only when Python changed ------------------------------
 if git diff --cached --name-only | grep -q '^test/.*\.py$'; then
     if ! "$PY" -c 'import openpyxl' 2>/dev/null; then
         echo
-        echo "pre-commit: пипан е Python в test/, но openpyxl липсва — комплекти 1 и 2"
-        echo "            НЕ са пуснати. Създай среда веднъж:"
+        echo "pre-commit: Python under test/ was touched but openpyxl is missing -"
+        echo "            suites 1 and 2 did NOT run. Create the environment once:"
         echo "              python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt"
-        echo "Комитът е спрян, за да не мине непроверен код. Прескачане: --no-verify"
+        echo "Commit stopped so that unchecked code does not land. Skip: --no-verify"
         exit 1
     fi
-    echo "pre-commit: пипан е Python в test/ — пускам двата комплекта, 25 семена"
-    if ! "$PY" test/run_tests.py --semena 25 > /tmp/trz-testove.$$ 2>&1; then
-        tail -40 /tmp/trz-testove.$$
-        rm -f /tmp/trz-testove.$$
+    echo "pre-commit: Python under test/ was touched - running both suites, 25 seeds"
+    if ! "$PY" test/run_tests.py --seeds 25 > /tmp/trz-suites.$$ 2>&1; then
+        tail -40 /tmp/trz-suites.$$
+        rm -f /tmp/trz-suites.$$
         echo
-        echo "Комитът е спрян: тестовете падат. Прескачане: git commit --no-verify"
+        echo "Commit stopped: the suites fail. To skip: git commit --no-verify"
         exit 1
     fi
-    rm -f /tmp/trz-testove.$$
-    echo "pre-commit: комплекти 1 и 2 минават"
+    rm -f /tmp/trz-suites.$$
+    echo "pre-commit: suites 1 and 2 pass"
 fi

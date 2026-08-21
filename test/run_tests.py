@@ -1,29 +1,35 @@
 # -*- coding: utf-8 -*-
-"""Пуска целия тестов комплект.
+"""Runs the whole test suite.
 
-    python test/run_tests.py                 # 50 семена
-    python test/run_tests.py --semena 200    # по-дълго
-    python test/run_tests.py --ot 500 --semena 100
+    python test/run_tests.py                 # 50 seeds
+    python test/run_tests.py --seeds 200     # longer
+    python test/run_tests.py --from 500 --seeds 100
 
-Три комплекта:
+Three suites:
 
-0. `stavki_test.py` — сверява ставките в `trz_model.py` срещу
-   `references/stavki.md`. Единственият тест, който чете самия скил, и затова
-   единственият, който има смисъл при **всяка** промяна по него. Не изисква
-   външни библиотеки.
+0. `rates_test.py` - cross-checks the rates in `trz_model.py` against
+   `references/stavki.md`. The only test that reads the skill itself, and
+   therefore the only one worth running on **every** change to it. No
+   dependencies.
 
-1. `proverki_test.py` върху `vedomost_05_2026.xlsx` — статична ведомост в тесен
-   layout с девет вкарани дефекта по ставките и по режимите на труд (МРЗ, клас,
-   извънреден, нощен, празник, болнични, таван, аритметика, запор). Отговорите са
-   в `expected_findings.md`.
+1. `checks_test.py` over `vedomost_05_2026.xlsx` - a static payroll in a narrow
+   layout with nine injected defects in the rates and the working-time regimes
+   (minimum wage, length-of-service supplement, overtime, night work, public
+   holiday, sick days, the cap, arithmetic, an attachment). The answer key is in
+   `expected_findings.md`.
 
-2. `struktura_test.py` върху генерирани ведомости в широк layout — всяко семе
-   дава друга фирма, други хора, други заплати, друг месец, друг процент ТЗПБ и
-   друг набор дефекти. Проверява конструкцията на файла и състава на базите.
-   Сценариите са описани в `scenarii.md`.
+2. `structural_test.py` over generated payrolls in a wide layout - every seed
+   gives a different company, different people, different salaries, a different
+   month, a different accident rate and a different set of defects. It checks the
+   construction of the file and the composition of the bases. The scenarios are
+   described in `scenarii.md`.
 
-Отчита се и покритието: колко пъти всеки сценарий е бил вкарван при пуснатите
-семена. Сценарий с нула вкарвания значи, че не е тестван — не че минава.
+Not included: `eval_skill.py`. That one calls Claude, so it needs authentication
+and costs money per run. It is run by hand when the guidance in SKILL.md changes.
+
+Coverage is reported too: how many times each scenario was injected across the
+seeds that ran. A scenario with zero injections was not tested - which is not the
+same as passing.
 """
 import argparse
 import collections
@@ -35,99 +41,99 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import trz_model as M                                    # noqa: E402
-import generate_struktura as G                           # noqa: E402
-from struktura_test import proveri                       # noqa: E402
+import generate_wide as G                                 # noqa: E402
+from structural_test import check                         # noqa: E402
 
 
-def komplekt_0():
+def suite_rates():
     print("=" * 78)
-    print("КОМПЛЕКТ 0 — ставките в модела срещу справочника на скила")
+    print("SUITE 0 - the rates in the model against the skill's reference file")
     print("=" * 78)
-    p = subprocess.run([sys.executable, os.path.join(HERE, "stavki_test.py")],
+    p = subprocess.run([sys.executable, os.path.join(HERE, "rates_test.py")],
                        capture_output=True, text=True)
-    for l in p.stdout.splitlines():
-        if l.startswith(("  РАЗМИНАВА", "  НЕНАМЕРЕНА", "  ПРОМЯНА", "ПАДНА", "OK:")) \
-                or l.startswith("              "):
-            print("  " + l.strip())
-    print(f"  -> {'OK' if p.returncode == 0 else 'ПАДНА'}")
+    for line in p.stdout.splitlines():
+        if line.startswith(("  MISMATCH", "  NOT FOUND", "  CHANGED", "FAILED", "OK:")) \
+                or line.startswith("              "):
+            print("  " + line.strip())
+    print(f"  -> {'OK' if p.returncode == 0 else 'FAILED'}")
     return p.returncode == 0
 
 
-def komplekt_1():
+def suite_static():
+    print()
     print("=" * 78)
-    print("КОМПЛЕКТ 1 — статична ведомост, ставки и режими на труд")
+    print("SUITE 1 - static payroll, rates and working-time regimes")
     print("=" * 78)
-    p = subprocess.run([sys.executable, os.path.join(HERE, "proverki_test.py")],
+    p = subprocess.run([sys.executable, os.path.join(HERE, "checks_test.py")],
                        capture_output=True, text=True)
     if p.returncode != 0:
         print(p.stdout[-2000:], p.stderr[-2000:])
         return False
-    posledni = [l for l in p.stdout.splitlines() if l.strip()][-3:]
-    for l in posledni:
-        print("  " + l)
-    # очакваме девет вкарани дефекта, открити, и нула находки по контролния ред
-    ok = "Лица с нарушения" in p.stdout
-    print(f"  -> {'OK' if ok else 'ПАДНА'}")
+    for line in [l for l in p.stdout.splitlines() if l.strip()][-3:]:
+        print("  " + line)
+    ok = "People with violations" in p.stdout
+    print(f"  -> {'OK' if ok else 'FAILED'}")
     return ok
 
 
-def komplekt_2(ot, kolko, tiho=True):
+def suite_structural(start, count, quiet=True):
     print()
     print("=" * 78)
-    print(f"КОМПЛЕКТ 2 — генерирани ведомости, семена {ot}..{ot + kolko - 1}")
+    print(f"SUITE 2 - generated payrolls, seeds {start}..{start + count - 1}")
     print("=" * 78)
-    pokritie = collections.Counter()
-    mesetsi = collections.Counter()
-    padnali = []
-    obshto_vkarani = obshto_nameren = obshto_nahodki = 0
-    for seed in range(ot, ot + kolko):
-        xlsx, mpath, man = G.generirai(seed)
-        for _, _, ident in man["ochakvani"]:
-            pokritie[ident] += 1
-        mesetsi[man["mesec"]] += 1
-        rez = proveri(xlsx, mpath, tiho=tiho)
-        obshto_vkarani += rez["vkarani"]
-        obshto_nameren += rez["nameren"]
-        obshto_nahodki += rez["nahodki"]
-        if rez["propusnati"] or rez["izlishni"]:
-            padnali.append((seed, rez))
+    coverage = collections.Counter()
+    months = collections.Counter()
+    failures = []
+    total_injected = total_found = total_findings = 0
+    for seed in range(start, start + count):
+        xlsx, manifest_path, man = G.generate(seed)
+        for _, _, ident in man["expected"]:
+            coverage[ident] += 1
+        months[man["month"]] += 1
+        result = check(xlsx, manifest_path, quiet=quiet)
+        total_injected += result["injected"]
+        total_found += result["found"]
+        total_findings += result["findings"]
+        if result["missed"] or result["extra"]:
+            failures.append((seed, result))
 
-    print(f"  семена: {kolko} · вкарани дефекти: {obshto_vkarani} · "
-          f"намерени: {obshto_nameren} · всички находки: {obshto_nahodki}")
-    print(f"  месеци: {dict(sorted(mesetsi.items()))}")
-    print("\n  покритие по сценарии:")
-    for ident in M.SCENARII:
-        n = pokritie.get(ident, 0)
-        znak = "  " if n else "!!"
-        print(f"  {znak} {ident:28} {n:4d}  {M.SCENARII[ident][1]}")
-    netestvani = [i for i in M.SCENARII if not pokritie.get(i)]
-    if netestvani:
-        print(f"\n  ВНИМАНИЕ: {len(netestvani)} сценария не са вкарвани при тези семена "
-              f"— увеличи --semena")
-    if padnali:
-        print(f"\n  ПАДНАЛИ СЕМЕНА ({len(padnali)}):")
-        for seed, rez in padnali:
-            print(f"    seed {seed}: пропуснати {rez['propusnati']} "
-                  f"| излишни {rez['izlishni']}")
+    print(f"  seeds: {count} · injected defects: {total_injected} · "
+          f"found: {total_found} · all findings: {total_findings}")
+    print(f"  months: {dict(sorted(months.items()))}")
+    print("\n  coverage per scenario:")
+    for ident in M.SCENARIOS:
+        n = coverage.get(ident, 0)
+        mark = "  " if n else "!!"
+        print(f"  {mark} {ident:30} {n:4d}  {M.SCENARIOS[ident][1]}")
+    untested = [i for i in M.SCENARIOS if not coverage.get(i)]
+    if untested:
+        print(f"\n  WARNING: {len(untested)} scenarios were never injected at these "
+              f"seeds - raise --seeds")
+    if failures:
+        print(f"\n  FAILING SEEDS ({len(failures)}):")
+        for seed, result in failures:
+            print(f"    seed {seed}: missed {result['missed']} "
+                  f"| extra {result['extra']}")
     else:
-        print(f"\n  -> OK: нула пропуснати, нула фалшиви положителни на {kolko} семена")
-    return not padnali and not netestvani
+        print(f"\n  -> OK: zero missed, zero false positives across {count} seeds")
+    return not failures and not untested
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--semena", type=int, default=50)
-    ap.add_argument("--ot", type=int, default=1)
-    ap.add_argument("--podrobno", action="store_true", help="печата находките на всяко семе")
+    ap.add_argument("--seeds", type=int, default=50)
+    ap.add_argument("--from", dest="start", type=int, default=1)
+    ap.add_argument("--verbose", action="store_true",
+                    help="print the findings of every seed")
     a = ap.parse_args()
 
-    ok0 = komplekt_0()
+    ok0 = suite_rates()
     print()
-    ok1 = komplekt_1()
-    ok2 = komplekt_2(a.ot, a.semena, tiho=not a.podrobno)
+    ok1 = suite_static()
+    ok2 = suite_structural(a.start, a.seeds, quiet=not a.verbose)
     print()
     print("=" * 78)
-    print(f"РЕЗУЛТАТ: комплект 0 {'OK' if ok0 else 'ПАДНА'} · "
-          f"комплект 1 {'OK' if ok1 else 'ПАДНА'} · "
-          f"комплект 2 {'OK' if ok2 else 'ПАДНА'}")
+    print(f"RESULT: suite 0 {'OK' if ok0 else 'FAILED'} · "
+          f"suite 1 {'OK' if ok1 else 'FAILED'} · "
+          f"suite 2 {'OK' if ok2 else 'FAILED'}")
     sys.exit(0 if (ok0 and ok1 and ok2) else 1)

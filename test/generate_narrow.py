@@ -1,6 +1,20 @@
+# -*- coding: utf-8 -*-
+"""Builds the static test payroll for suite 1: `vedomost_05_2026.xlsx`.
+
+Ten people, May 2026, nine deliberately injected defects and one clean control
+row. The answer key is in `expected_findings.md`.
+
+The period is chosen on purpose: May 2026 falls in the 01.01-31.07.2026 regime
+and its norm is 18 working days / 144 hours - 21 weekdays minus 1, 6 and 25 May,
+because 24 May is a Sunday (чл. 154, ал. 2 КТ).
+
+Everything here is invented. Column headers and names are Bulgarian because they
+are data; the code is English.
+"""
 import os
+
 import openpyxl
-from openpyxl.styles import Font, Alignment
+from openpyxl.styles import Alignment, Font
 
 wb = openpyxl.Workbook()
 ws = wb.active
@@ -12,25 +26,26 @@ ws["A3"] = "Икономическа дейност: 52.10 Складиране 
 for r in (1, 2, 3):
     ws.cell(row=r, column=1).font = Font(bold=(r == 1), size=12 if r == 1 else 10)
 
-cols = ["№", "Име", "Длъжност", "Дата постъпване", "Стаж (г.)",
-        "Раб. време (ч/ден)", "Отраб. дни", "Отраб. часове",
-        "Извънр. часове (раб. дни)", "Часове на празник", "Нощни часове",
-        "Дни болничен от работодател",
-        "Основна заплата", "Клас %", "Клас сума",
-        "Доп. извънреден", "Доп. празник", "Доп. нощен",
-        "Болнични от работодател", "БРУТО", "Осиг. доход",
-        "Лични осигуровки", "Данъчна основа", "ДДФЛ", "Удръжки", "НЕТО"]
+COLUMNS = ["№", "Име", "Длъжност", "Дата постъпване", "Стаж (г.)",
+           "Раб. време (ч/ден)", "Отраб. дни", "Отраб. часове",
+           "Извънр. часове (раб. дни)", "Часове на празник", "Нощни часове",
+           "Дни болничен от работодател",
+           "Основна заплата", "Клас %", "Клас сума",
+           "Доп. извънреден", "Доп. празник", "Доп. нощен",
+           "Болнични от работодател", "БРУТО", "Осиг. доход",
+           "Лични осигуровки", "Данъчна основа", "ДДФЛ", "Удръжки", "НЕТО"]
 
 HDR = 5
-for i, c in enumerate(cols, start=1):
-    cell = ws.cell(row=HDR, column=i, value=c)
+for i, column in enumerate(COLUMNS, start=1):
+    cell = ws.cell(row=HDR, column=i, value=column)
     cell.font = Font(bold=True, size=9)
     cell.alignment = Alignment(wrap_text=True, vertical="top")
 
-rows = [
-    # №, име, длъжност, постъпване, стаж, ч/ден, дни, часове, извънр, празник, нощни, болн.дни,
-    # основна, клас%, классума, доп.извънр, доп.празник, доп.нощен, болнични, бруто, осигдоход,
-    # лични, дан.основа, ддфл, удръжки, нето
+# №, name, position, hired, years, hours/day, days, hours, overtime, holiday hrs,
+# night hrs, sick days, base pay, seniority %, seniority sum, overtime premium,
+# holiday premium, night premium, sick pay, gross, insurable, employee
+# contributions, taxable, tax, deductions, net
+ROWS = [
     (1, "Иван Петров", "Чистач", "2023-03-01", 3, 8, 18, 144, 0, 0, 0, 0,
      610.00, 1.8, 10.98, 0, 0, 0, 0, 620.98, 620.98, 85.57, 535.41, 53.54, 0, 481.87),
     (2, "Мария Георгиева", "Специалист логистика", "2014-04-15", 12, 8, 18, 144, 0, 0, 0, 0,
@@ -53,24 +68,24 @@ rows = [
      900.00, 3.6, 32.40, 0, 0, 0, 0, 932.40, 932.40, 128.48, 803.92, 80.39, 500.00, 223.53),
 ]
 
-for r, row in enumerate(rows, start=HDR + 1):
-    for c, v in enumerate(row, start=1):
-        ws.cell(row=r, column=c, value=v)
+for r, row in enumerate(ROWS, start=HDR + 1):
+    for c, value in enumerate(row, start=1):
+        ws.cell(row=r, column=c, value=value)
 
-tot = HDR + len(rows) + 1
-ws.cell(row=tot, column=2, value="ОБЩО").font = Font(bold=True)
+TOTAL = HDR + len(ROWS) + 1
+ws.cell(row=TOTAL, column=2, value="ОБЩО").font = Font(bold=True)
 for c in (13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26):
-    s = sum(row[c - 1] for row in rows)
-    cell = ws.cell(row=tot, column=c, value=round(s, 2))
+    total = sum(row[c - 1] for row in ROWS)
+    cell = ws.cell(row=TOTAL, column=c, value=round(total, 2))
     cell.font = Font(bold=True)
 
-ws.cell(row=tot + 2, column=1,
+ws.cell(row=TOTAL + 2, column=1,
         value="Валута: EUR. Изготвил: ТРЗ отдел. Дата: 05.06.2026 г.")
 
-for i, w in enumerate([4, 20, 22, 13, 7, 8, 8, 9, 11, 10, 9, 12,
-                       11, 7, 9, 11, 11, 10, 12, 10, 11, 11, 11, 9, 9, 10], start=1):
-    ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+for i, width in enumerate([4, 20, 22, 13, 7, 8, 8, 9, 11, 10, 9, 12,
+                           11, 7, 9, 11, 11, 10, 12, 10, 11, 11, 11, 9, 9, 10], start=1):
+    ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vedomost_05_2026.xlsx")
 wb.save(out)
-print("Записано:", out, "|", len(rows), "реда")
+print("written:", out, "|", len(ROWS), "rows")
