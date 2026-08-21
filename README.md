@@ -101,11 +101,19 @@ That table is Приложение № 1 / № 1А to the ЗБДОО, several hu
 and qualification group, and it changes annually. Copy the row for your КИД when you need
 it. There is a blank table waiting for it.
 
-Also unverified against the State Gazette, and marked as such: the employer/employee split
-of the pension contribution, the ДЗПО-УПФ and health-insurance rates, and the 10% ЗДДФЛ
-rate. All are cross-checked between independent professional sources and internally
-consistent — employee contributions total exactly 13.78% under both age regimes — but
-they are not quotes from the law.
+One other item is unverified, and it is unverified for an interesting reason: **the
+employer/employee split of the pension contribution** (11.02/8.78 and 8.22/6.58). This is
+not a disagreement between sources — it is a gap in the statute. КСО чл. 6, ал. 1 was
+raised to 19.8% and 14.8% effective 01.01.2018, but чл. 6, ал. 3, т. 8 and 9 — the
+provisions that split precisely that contribution — still carry 9.9/7.9 and 7.1/5.7, the
+pre-increase figures. Two independent official consolidated editions, from the МТСП and
+the НОИ, give the same text.
+
+The figures used in practice come out exactly if the two percentage points are split 0.56
+employer / 0.44 employee, and that reconstruction fits both age cohorts to the decimal.
+The reference file documents this in full. Practical impact is nil: the totals are
+verified, every payroll system uses these figures, and employee contributions sum to
+exactly 13.78% — which is the control the skill checks against.
 
 ## Personal data
 
