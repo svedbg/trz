@@ -24,6 +24,29 @@ reads other people's salary data should not be able to skip that.
 legal advice, and it can be wrong. Do not wire it into anything that pays people
 or files declarations without a human reading the report.
 
+## Code scanning
+
+CodeQL runs on every push, over both the Python and the workflow files. Alerts
+are not visible to people without access to this repository's security tab, so
+any standing dismissal is recorded here instead of only in the GitHub UI.
+
+| Rule | Where | Why it is dismissed |
+| --- | --- | --- |
+| `py/clear-text-logging-sensitive-data` | `test/structural_test.py:474` and `:476` | Test-only. The taint source is `c["monthly_salary"]` at line 207, which comes from the manifest `generate_wide.py` writes from a seed. `check()` cannot run without that manifest, so every salary printed there is invented. |
+
+Two notes on that dismissal, because it is the kind that ages badly.
+
+It was not silenced by renaming the field. Calling a salary something else to stop
+a scanner recognising it is how a real finding gets hidden a year later.
+
+And CodeQL is right about the pattern in general: a payroll audit quotes salary
+figures, so any report the skill produces contains them. That is inherent to the
+job, and it is why the skill is told to reproduce the minimum needed to justify a
+finding and to keep file contents off external services — see below.
+
+An alert of this rule that appears anywhere other than the test harness is a real
+finding. Do not extend the dismissal to it.
+
 ## Personal data
 
 Payroll files are personal data under the GDPR, and sick-leave records are health
