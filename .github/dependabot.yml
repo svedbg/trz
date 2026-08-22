@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # The workflow pins actions by tag. Dependabot moves the tags when a new major
+  # lands, so a stale action does not sit here for a year.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(actions)"
+
+  # test/requirements.txt is bounded (openpyxl>=3.1,<4, PyYAML>=6,<7) so a major
+  # release cannot break the build silently. These updates are how the bound gets
+  # raised deliberately, with CI proving the suites still pass on 3.10 to 3.13.
+  - package-ecosystem: pip
+    directory: /test
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(deps)"
