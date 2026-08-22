@@ -24,7 +24,7 @@ import sys
 import yaml
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-SKILL_DIR = os.path.join(ROOT, "skills", "trz-ekspert")
+SKILL_DIR = os.path.join(ROOT, "skills", "trz-expert")
 SKILL_MD = os.path.join(SKILL_DIR, "SKILL.md")
 PLUGIN = os.path.join(ROOT, ".claude-plugin", "plugin.json")
 MARKETPLACE = os.path.join(ROOT, ".claude-plugin", "marketplace.json")

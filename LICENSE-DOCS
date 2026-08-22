@@ -9,8 +9,8 @@ WHAT THIS COVERS
 This licence applies to the skill itself — the prose, the checklists and the
 reference material:
 
-    skills/trz-ekspert/SKILL.md
-    skills/trz-ekspert/references/*.md
+    skills/trz-expert/SKILL.md
+    skills/trz-expert/references/*.md
 
 Everything else in this repository, including all Python under test/, the git
 hook and the CI workflow, is covered by the MIT licence in the LICENSE file at

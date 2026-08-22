@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![licence: MIT + CC BY 4.0](https://img.shields.io/badge/licence-MIT%20%2B%20CC--BY--4.0-blue)](#licence)
-[![rates verified](https://img.shields.io/badge/rates%20verified-2026--08--21-green)](skills/trz-ekspert/references/stavki.md)
+[![rates verified](https://img.shields.io/badge/rates%20verified-2026--08--21-green)](skills/trz-expert/references/stavki.md)
 
 A [Claude Code](https://claude.com/claude-code) skill that turns Claude into a senior
 ТРЗ (payroll) specialist for Bulgaria. Give it a ведомост, a фиш, a трудов договор or a
@@ -12,7 +12,7 @@ work schedule, and it checks the numbers against the Кодекс на труд�
 **Read this first:** the rates shipped here are current as of **21 August 2026**. МРЗ,
 осигурителни прагове and контribution rates change every year — and in 2025 and 2026 they
 changed *mid-year*, because both budgets were adopted late. Check
-[`skills/trz-ekspert/references/stavki.md`](skills/trz-ekspert/references/stavki.md)
+[`skills/trz-expert/references/stavki.md`](skills/trz-expert/references/stavki.md)
 before trusting any figure.
 
 ## Why this exists
@@ -43,7 +43,7 @@ contract, one severance calculation.
 ## What it checks
 
 Eleven groups, 78 checks, in
-[`references/proverki.md`](skills/trz-ekspert/references/proverki.md):
+[`references/proverki.md`](skills/trz-expert/references/proverki.md):
 
 | | |
 | --- | --- |
@@ -90,7 +90,7 @@ In Claude Code, two commands:
 
 ```
 /plugin marketplace add svedbg/trz
-/plugin install trz-ekspert@trz-bg
+/plugin install trz-expert@trz-bg
 ```
 
 `/plugin marketplace update trz-bg` later brings updated rates. This is the path to use if
@@ -101,7 +101,7 @@ only when it runs.
 
 ```sh
 git clone https://github.com/svedbg/trz.git
-ln -s "$PWD/trz/skills/trz-ekspert" ~/.claude/skills/trz-ekspert
+ln -s "$PWD/trz/skills/trz-expert" ~/.claude/skills/trz-expert
 ```
 
 Pick one or the other, not both — otherwise two copies of the same skill compete for the
@@ -114,7 +114,7 @@ Then in Claude Code:
 > analyse the payroll at ./vedomost_06_2026.xlsx
 ```
 
-or invoke it directly with `/trz-ekspert`.
+or invoke it directly with `/trz-expert`.
 
 The skill pre-approves no tools. Reading your files and running an analysis script both go
 through the normal permission prompt — deliberately, for something that reads salary data.
@@ -273,7 +273,7 @@ Two licences, because the repository holds two kinds of thing:
 
 | What | Licence |
 | --- | --- |
-| the skill — `skills/trz-ekspert/SKILL.md` and `references/*.md` | [CC BY 4.0](LICENSE-DOCS) |
+| the skill — `skills/trz-expert/SKILL.md` and `references/*.md` | [CC BY 4.0](LICENSE-DOCS) |
 | everything else — all Python under `test/`, the git hook, the CI workflow | [MIT](LICENSE) |
 
 Use it, change it, ship it commercially. Keep the attribution, and if you change the

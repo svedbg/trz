@@ -7,10 +7,10 @@
   },
   "plugins": [
     {
-      "name": "trz-ekspert",
+      "name": "trz-expert",
       "source": ".",
       "description": "Bulgarian payroll (ТРЗ) audit: checks a ведомост, фиш, трудов договор or schedule against КТ, КСО, ЗДДФЛ and НСОРЗ. No rate from memory — every figure comes from a dated, status-marked reference file.",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "author": {
         "name": "Svetoslav Rankov",
         "url": "https://github.com/svedbg"
