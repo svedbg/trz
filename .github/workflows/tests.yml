@@ -11,33 +11,41 @@ on:
     # this run is the reminder that it goes stale.
     - cron: "0 6 1 * *"
 
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+# A second push supersedes the first; do not pay for both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  tests:
+  # Runs once. Everything here is about the repository as a published artifact:
+  # can the skill be installed, do the manifests agree, do the rates in the test
+  # model still match the reference file, and did any personal data slip in.
+  validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: test/requirements.txt
 
-      - name: Suite 0 - rates in the model against the skill's reference file
+      - name: Rates in the test model against the skill's reference file
         # No dependencies - it reads markdown. Runs first, because on a drift the
-        # other two suites pass on the wrong figures and their result lies.
+        # payroll suites pass on the wrong figures and their result lies.
         run: python test/rates_test.py
 
-      - name: Dependencies
+      - name: Install dependencies
         run: pip install -r test/requirements.txt
 
-      - name: Suite 1 - rates and working-time regimes
-        run: python test/checks_test.py
-
-      - name: Suite 2 - file construction, 300 seeds
-        run: python test/run_tests.py --seeds 300
-
-      # test/eval_skill.py is deliberately not run here. It calls Claude, so it
-      # needs authentication and costs money per run. Run it by hand when the
-      # guidance in SKILL.md changes, not on every commit.
+      - name: Skill packaging - frontmatter, references, manifests, licences
+        run: python test/skill_test.py
 
       - name: Guard against leaked personal data
         # Payrolls are personal data under the GDPR and this repository is
@@ -56,3 +64,35 @@ jobs:
             exit 1
           fi
           echo "clean"
+
+  # Runs per Python version. The payroll suites are pure stdlib plus openpyxl, so
+  # they should hold across the versions people actually have installed; if one
+  # of them breaks, this is where it shows.
+  suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: test/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r test/requirements.txt
+
+      - name: Suite 1 - rates and working-time regimes
+        run: python test/checks_test.py
+
+      - name: Suite 2 - file construction and base composition, 300 seeds
+        run: python test/run_tests.py --seeds 300
+
+      # test/eval_skill.py is deliberately not run here. It calls Claude, so it
+      # needs authentication and costs real money per run - a measured seed is
+      # about USD 2.4. Run it by hand when the guidance in SKILL.md changes.

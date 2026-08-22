@@ -1,6 +1,15 @@
 ---
 name: trz-ekspert
 description: Старши експертиза по ТРЗ (труд и работна заплата) за България. Анализира ведомости, фишове за заплати, трудови договори, графици и присъствени форми спрямо Кодекса на труда, КСО, ЗДДФЛ и Наредбата за структурата и организацията на работната заплата. Използвай при работа с ведомост, рекапитулация, фиш за заплата, трудов договор, допълнително споразумение, график при СИРВ, осигуровки, МОД, МРЗ, извънреден труд, нощен труд, клас прослужено време, обезщетение при уволнение, удръжки и запори върху заплата, или когато потребителят иска проверка дали заплащането в дадена фирма е законосъобразно.
+license: CC-BY-4.0
+compatibility: Prose and reference material only; no bundled scripts. Needs a Bulgarian
+  payroll context and a working Python with openpyxl for spreadsheet work. The rates in
+  references/stavki.md were verified on 21.08.2026 and must be re-verified for any later
+  period; the skill refuses to guess one.
+metadata:
+  jurisdiction: BG
+  rates_verified: '2026-08-21'
+  reference_language: bg
 ---
 
 # Експерт по ТРЗ — България

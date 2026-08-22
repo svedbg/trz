@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question about using the skill
+    url: https://github.com/svedbg/trz/discussions
+    about: How to install it, how to point it at your files, what it does and does not check
+  - name: Something involving real personal data
+    url: https://github.com/svedbg/trz/security/advisories/new
+    about: Report privately. Never paste a real payroll into a public issue.

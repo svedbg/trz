@@ -1,0 +1,64 @@
+name: Rate change or correction
+description: A figure in stavki.md is out of date, wrong, or its status should change
+title: "rates: "
+labels: ["rates"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Тази форма е за ставки: МРЗ, МОД, максимален осигурителен доход, проценти
+        на вноските, прагове, ТЗПБ. Български отговори са напълно приемливи.
+
+        This is the most useful issue you can open here. Rates change every year —
+        and in 2025 and 2026 they changed mid-year — so the reference file goes
+        stale on its own.
+  - type: input
+    id: figure
+    attributes:
+      label: Which figure
+      description: The row in stavki.md, or the value that is missing
+      placeholder: "максимален осигурителен доход, 01.08.2026 – 31.12.2026"
+    validations:
+      required: true
+  - type: input
+    id: current
+    attributes:
+      label: What the file says now
+      placeholder: "2300.00 EUR, статус ДВ"
+  - type: input
+    id: correct
+    attributes:
+      label: What it should say
+      placeholder: "2450.00 EUR from 01.01.2027"
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source
+      description: |
+        Primary source if you have one — the act, the State Gazette issue and
+        date. A link to a state authority's page is the next best thing. Say
+        plainly if it is a professional accounting source, so the status can be
+        set to `вторичен` rather than `ДВ`.
+      placeholder: |
+        ЗБДОО за 2027 г., чл. 9 — обн. ДВ бр. XX от XX.XX.2026
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Status this source justifies
+      options:
+        - "ДВ — verified against the statutory text, Gazette issue cited"
+        - "официален — a state authority's site, not cross-checked"
+        - "вторичен — professional accounting source"
+        - "за потвърждение — working hypothesis, cannot support a violation finding"
+        - "not sure, please judge"
+    validations:
+      required: true
+  - type: input
+    id: period
+    attributes:
+      label: Period it applies from
+      placeholder: "01.01.2027"

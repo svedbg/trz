@@ -1,0 +1,52 @@
+name: Wrong or missing finding
+description: The skill reported something incorrect, or missed something it should have caught
+title: "finding: "
+labels: ["finding"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Не прилагай истинска ведомост.** Please do not attach a real payroll —
+        it is personal data. Generate an equivalent case instead:
+
+        ```sh
+        python test/generate_wide.py --seed 12345
+        ```
+
+        or describe the row with invented figures that reproduce the shape of the
+        problem.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which way round
+      options:
+        - "False positive — it reported a problem that is not one"
+        - "Missed — it should have found something and did not"
+        - "Right finding, wrong reasoning or wrong statutory basis"
+        - "Right finding, wrong severity (нарушение vs риск vs за проверка)"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it reported, or should have
+      description: Paste the finding, or describe what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: The case
+      description: |
+        A seed (`--seed N`) is ideal. Otherwise: the figures of the row, the
+        month, and which of them you believe are correct.
+    validations:
+      required: true
+  - type: textarea
+    id: basis
+    attributes:
+      label: Why you think so
+      description: |
+        The provision, if you have it. "I am not certain, but this looks off" is
+        also a legitimate answer — say so and it will be treated as a question
+        rather than a claim.

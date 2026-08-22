@@ -1,5 +1,9 @@
 # trz — Bulgarian payroll audit skill for Claude Code
 
+[![tests](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
+[![licence: MIT + CC BY 4.0](https://img.shields.io/badge/licence-MIT%20%2B%20CC--BY--4.0-blue)](#licence)
+[![rates verified](https://img.shields.io/badge/rates%20verified-2026--08--21-green)](skills/trz-ekspert/references/stavki.md)
+
 A [Claude Code](https://claude.com/claude-code) skill that turns Claude into a senior
 ТРЗ (payroll) specialist for Bulgaria. Give it a ведомост, a фиш, a трудов договор or a
 work schedule, and it checks the numbers against the Кодекс на труда, КСО, ЗДДФЛ and the
@@ -82,13 +86,27 @@ and ask which one the company applies.
 
 ## Install
 
+In Claude Code, two commands:
+
+```
+/plugin marketplace add svedbg/trz
+/plugin install trz-ekspert@trz-bg
+```
+
+`/plugin marketplace update trz-bg` later brings updated rates. This is the path to use if
+you just want the skill: it costs about 270 tokens of context per session and loads the rest
+only when it runs.
+
+**If you want to work on it**, clone and symlink instead, so your edits are live:
+
 ```sh
 git clone https://github.com/svedbg/trz.git
 ln -s "$PWD/trz/skills/trz-ekspert" ~/.claude/skills/trz-ekspert
 ```
 
-A symlink rather than a copy, so `git pull` brings you updated rates. For a project-scoped
-install, put it under `.claude/skills/` in the repository instead.
+Pick one or the other, not both — otherwise two copies of the same skill compete for the
+same name. For a project-scoped install, put the skill under `.claude/skills/` in your own
+repository and commit it, so everyone working there gets it.
 
 Then in Claude Code:
 
@@ -98,12 +116,16 @@ Then in Claude Code:
 
 or invoke it directly with `/trz-ekspert`.
 
+The skill pre-approves no tools. Reading your files and running an analysis script both go
+through the normal permission prompt — deliberately, for something that reads salary data.
+
 ## Test it
 
 ```sh
 pip install -r test/requirements.txt
-python test/run_tests.py              # both suites
-python test/run_tests.py --seeds 300 # longer randomised run
+python test/run_tests.py              # all three suites
+python test/run_tests.py --seeds 300  # longer randomised run
+python test/skill_test.py             # packaging: frontmatter, references, manifests
 ```
 
 **Suite 1 — rates and working-time regimes.** A static payroll in a narrow layout with nine
@@ -244,6 +266,27 @@ skill is instructed not to send file contents to external services, to reproduce
 minimum needed to justify a finding, and not to write derivative files outside the working
 directory you point it at. That is instruction, not enforcement — you remain the
 controller.
+
+## Licence
+
+Two licences, because the repository holds two kinds of thing:
+
+| What | Licence |
+| --- | --- |
+| the skill — `skills/trz-ekspert/SKILL.md` and `references/*.md` | [CC BY 4.0](LICENSE-DOCS) |
+| everything else — all Python under `test/`, the git hook, the CI workflow | [MIT](LICENSE) |
+
+Use it, change it, ship it commercially. Keep the attribution, and if you change the
+reference material say that you did — someone downstream needs to know whose verification
+date they are trusting.
+
+## Contributing
+
+The most useful thing you can send is a rate correction with its source: rates change every
+year and the reference file goes stale on its own.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the process, including how statuses work and why
+the reference file — not the test model — is the source of truth. Security and personal-data
+matters are in [`SECURITY.md`](SECURITY.md).
 
 ## Not legal advice
 

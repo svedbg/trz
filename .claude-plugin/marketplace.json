@@ -1,0 +1,30 @@
+{
+  "name": "trz-bg",
+  "description": "Bulgarian payroll (ТРЗ) compliance tooling for Claude Code. One plugin: an audit skill for ведомости, фишове, трудови договори and schedules, with a dated reference file for every rate.",
+  "owner": {
+    "name": "Svetoslav Rankov",
+    "url": "https://github.com/svedbg"
+  },
+  "plugins": [
+    {
+      "name": "trz-ekspert",
+      "source": ".",
+      "description": "Bulgarian payroll (ТРЗ) audit: checks a ведомост, фиш, трудов договор or schedule against КТ, КСО, ЗДДФЛ and НСОРЗ. No rate from memory — every figure comes from a dated, status-marked reference file.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Svetoslav Rankov",
+        "url": "https://github.com/svedbg"
+      },
+      "license": "MIT AND CC-BY-4.0",
+      "homepage": "https://github.com/svedbg/trz",
+      "category": "compliance",
+      "keywords": [
+        "payroll",
+        "bulgaria",
+        "трз",
+        "compliance",
+        "audit"
+      ]
+    }
+  ]
+}

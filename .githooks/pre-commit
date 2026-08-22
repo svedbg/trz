@@ -36,6 +36,29 @@ fi
 rm -f /tmp/trz-rates.$$
 echo "pre-commit: rates match"
 
+# --- packaging: only when the skill or a manifest changed ------------------
+if git diff --cached --name-only | grep -qE '^(skills/|\.claude-plugin/|LICENSE)'; then
+    if ! "$PY" -c 'import yaml' 2>/dev/null; then
+        echo
+        echo "pre-commit: the skill or a manifest changed but PyYAML is missing -"
+        echo "            the packaging check did NOT run. Create the environment once:"
+        echo "              python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt"
+        echo "Commit stopped. Skip: --no-verify"
+        exit 1
+    fi
+    echo "pre-commit: skill or manifest changed - validating packaging"
+    if ! "$PY" test/skill_test.py > /tmp/trz-skill.$$ 2>&1; then
+        cat /tmp/trz-skill.$$
+        rm -f /tmp/trz-skill.$$
+        echo
+        echo "Commit stopped: the skill would not install cleanly, or the manifests"
+        echo "disagree. Skip: git commit --no-verify"
+        exit 1
+    fi
+    rm -f /tmp/trz-skill.$$
+    echo "pre-commit: packaging valid"
+fi
+
 # --- suites 1 and 2: only when Python changed ------------------------------
 if git diff --cached --name-only | grep -q '^test/.*\.py$'; then
     if ! "$PY" -c 'import openpyxl' 2>/dev/null; then
