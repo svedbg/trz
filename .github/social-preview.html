@@ -1,0 +1,129 @@
+<!--
+  Social preview card for the repository — the image GitHub shows when the link is
+  shared. Regenerate after changing any figure on it:
+
+    google-chrome --headless=new --disable-gpu --hide-scrollbars \
+      --force-device-scale-factor=2 --window-size=1280,640 \
+      --screenshot=.github/social-preview.png .github/social-preview.html
+
+  GitHub recommends 1280x640 and caps the file at 1 MB. Rendering at scale factor
+  2 gives 2560x1280, which stays well under the cap and looks sharper on retina
+  screens. Upload it under Settings -> General -> Social preview; there is no API
+  for that field, so it is the one step that has to be clicked.
+
+  The figures are claims, so keep them true: 78 is the count of checks in
+  references/proverki.md, 18 the scenarios in trz_model.SCENARIOS, and 25 887 the
+  defects injected and found by `python test/run_tests.py --seeds 3000`.
+-->
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: 1280px 640px; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 640px; }
+  body {
+    background: #0b0f14;
+    background-image:
+      radial-gradient(1100px 560px at 88% -12%, rgba(214,158,46,.14), transparent 62%),
+      radial-gradient(760px 520px at -8% 108%, rgba(56,120,140,.13), transparent 60%);
+    color: #e8edf3;
+    font-family: "Lato", "DejaVu Sans", sans-serif;
+    padding: 66px 74px 58px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  /* тънка рамка вътре, за да не се слива с фона на Slack/Twitter */
+  body::after {
+    content: "";
+    position: absolute; inset: 22px;
+    border: 1px solid rgba(232,237,243,.09);
+    border-radius: 10px;
+    pointer-events: none;
+  }
+  .repo {
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 25px; letter-spacing: .5px; color: #8fa0b3;
+  }
+  .repo b { color: #d69e2e; font-weight: 400; }
+
+  h1 {
+    font-size: 118px; font-weight: 900; line-height: .94;
+    letter-spacing: -3px; margin-top: 30px;
+  }
+  h1 span { color: #d69e2e; }
+  .sub {
+    font-size: 35px; font-weight: 300; color: #b9c6d4;
+    margin-top: 20px; letter-spacing: -.3px;
+  }
+
+  .rule {
+    margin-top: 34px; padding-left: 22px;
+    border-left: 3px solid #d69e2e;
+    font-size: 27px; line-height: 1.42; color: #dbe4ee; font-weight: 300;
+  }
+  .rule b { font-weight: 700; color: #fff; }
+
+  .cmd {
+    margin-top: 42px; margin-bottom: 18px;
+    display: inline-block;
+    background: rgba(232,237,243,.055);
+    border: 1px solid rgba(232,237,243,.12);
+    border-radius: 8px;
+    padding: 17px 26px;
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 25px; color: #e8edf3; letter-spacing: -.2px;
+  }
+  .cmd i { color: #d69e2e; font-style: normal; }
+
+  footer { display: flex; align-items: flex-end; justify-content: space-between; }
+  .facts { display: flex; gap: 58px; }
+  .fact .n {
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 30px; font-weight: 700; color: #fff; letter-spacing: -.5px;
+  }
+  .fact .l {
+    font-size: 17px; color: #8798aa; margin-top: 6px;
+    text-transform: uppercase; letter-spacing: 1.2px; white-space: nowrap;
+  }
+  .lic {
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 18px; color: #6f8093; text-align: right; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+  <div>
+    <div class="repo">github.com/svedbg/<b>trz</b></div>
+    <h1>ТРЗ <span>експерт</span></h1>
+    <div class="sub">Bulgarian payroll audit skill for Claude Code</div>
+    <div class="rule">
+      Никаква ставка по памет.<br>
+      <b>Всяко число идва от справочник с дата и статус.</b>
+    </div>
+    <div class="cmd">/plugin marketplace add <i>svedbg/trz</i></div>
+  </div>
+
+  <footer>
+    <div class="facts">
+      <div class="fact">
+        <div class="n">78</div>
+        <div class="l">проверки</div>
+      </div>
+      <div class="fact">
+        <div class="n">18</div>
+        <div class="l">сценария</div>
+      </div>
+      <div class="fact">
+        <div class="n">25 887</div>
+        <div class="l">дефекта · 0 пропуснати</div>
+      </div>
+    </div>
+    <div class="lic">MIT + CC BY 4.0<br>ставки: 21.08.2026</div>
+  </footer>
+</body>
+</html>
