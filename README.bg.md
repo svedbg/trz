@@ -43,7 +43,7 @@
 
 ## Какво проверява
 
-Десет групи, около седемдесет проверки, в
+Единадесет групи, 78 проверки, в
 [`references/proverki.md`](skills/trz-ekspert/references/proverki.md):
 
 | | |
