@@ -110,6 +110,25 @@ If you need a realistic case, generate one:
 python test/generate_wide.py --seed 12345
 ```
 
+## How a change lands
+
+`main` is protected by a ruleset, so nobody pushes to it directly — not outside
+contributors and not the maintainer. Every change goes through a pull request,
+and the pull request cannot merge until CI is green: the packaging check, the
+personal-data guard, and both payroll suites on Python 3.10 through 3.13.
+
+Approvals are not required, so a solo maintainer is not deadlocked, but the
+status checks are. Linear history is enforced, so rebase rather than merge when
+your branch falls behind:
+
+```sh
+git fetch origin && git rebase origin/main
+```
+
+Force-pushing to `main` and deleting it are blocked outright, as is rewriting a
+`v*` release tag. Those are the rules that exist so that a bad afternoon cannot
+lose history.
+
 ## Releasing
 
 Bump `version` in **both** `.claude-plugin/plugin.json` and
