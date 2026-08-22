@@ -1,49 +1,49 @@
-# Очаквани находки в тестовата ведомост
+# Answer key for the static payroll
 
-`vedomost_05_2026.xlsx` е изцяло измислена. Съдържа 10 лица за май 2026 г. —
-девет с умишлено вкарани дефекти и едно напълно коректно, което служи за
-контрола срещу фалшиви положителни.
+`vedomost_05_2026.xlsx` is entirely invented. It holds 10 people for May 2026 —
+nine with deliberately injected defects and one wholly correct row, which serves
+as the control against false positives.
 
-Периодът е избран нарочно: май 2026 г. попада в режима 01.01–31.07.2026, а
-нормата е 18 работни дни / 144 часа (21 делнични минус 1 май, 6 май и 25 май,
-защото 24 май е неделя — чл. 154, ал. 2 КТ).
+The period is chosen on purpose: May 2026 falls in the 01.01–31.07.2026 regime,
+and its norm is 18 working days / 144 hours (21 weekdays minus 1, 6 and 25 May,
+because 24 May is a Sunday — чл. 154, ал. 2 КТ).
 
-## Вкарани дефекти
+## Injected defects
 
-| Ред | Лице | Дефект | Проверка | Основание |
+| Row | Person | Defect | Check | Basis |
 | --- | --- | --- | --- | --- |
-| 6 | Иван Петров | Основна заплата 610.00 при МРЗ 620.20 | B1 | ПМС № 243, ДВ бр. 98/2025 |
-| 7 | Мария Георгиева | Клас 0% при 12 години стаж (дължим 7.2%) | C1 | ПМС № 147; чл. 12 НСОРЗ |
-| 8 | Георги Иванов | 10 часа извънреден труд, платени без увеличението | D4 | чл. 262, ал. 1, т. 1 КТ |
-| 9 | Елена Димитрова | Осигурителен доход 3815.00 без прилагане на тавана | B4 | чл. 9 ЗБДОО 2026 |
-| 10 | Петър Стоянов | 60 нощни часа без допълнително възнаграждение | D6 | чл. 8 НСОРЗ |
-| 11 | Анна Тодорова | 3 дни болничен за сметка на работодателя вместо 2 | F9 | чл. 40, ал. 5 КСО |
-| 12 | Димитър Николов | НЕТО не се връзва с бруто минус удръжките | I1 | аритметика |
-| 14 | Николай Христов | 8 часа на официален празник, платени единично | D7 | чл. 264 КТ |
-| 15 | Виктор Маринов | Удръжка по запор 500.00 при нето 723.53 | G2 | чл. 446 ГПК |
+| 6 | Иван Петров | Base pay 610.00 against a minimum wage of 620.20 | B1 | ПМС № 243, ДВ бр. 98/2025 |
+| 7 | Мария Георгиева | 0% supplement for 12 years of service (7.2% due) | C1 | ПМС № 147; чл. 12 НСОРЗ |
+| 8 | Георги Иванов | 10 overtime hours paid without the premium | D4 | чл. 262, ал. 1, т. 1 КТ |
+| 9 | Елена Димитрова | Insurable income 3815.00, the cap never applied | B4 | чл. 9 ЗБДОО 2026 |
+| 10 | Петър Стоянов | 60 night hours with no supplement | D6 | чл. 8 НСОРЗ |
+| 11 | Анна Тодорова | 3 sick days at the employer's expense instead of 2 | F9 | чл. 40, ал. 5 КСО |
+| 12 | Димитър Николов | Net does not reconcile with gross minus the deductions | I1 | arithmetic |
+| 14 | Николай Христов | 8 hours on a public holiday paid at single rate | D7 | чл. 264 КТ |
+| 15 | Виктор Маринов | An attachment of 500.00 against a net of 723.53 | G2 | чл. 446 ГПК |
 
-## Контролен ред
+## The control row
 
-| Ред | Лице | Особеност |
+| Row | Person | What is special |
 | --- | --- | --- |
-| 13 | Стефка Ангелова | Непълно работно време 4 часа, заплата 310.10 = половин МРЗ. Всичко коректно. Не трябва да генерира находка. |
+| 13 | Стефка Ангелова | Part time, 4 hours, salary 310.10 = half the minimum wage. Everything correct. Must produce no finding. |
 
-## Как трябва да изглежда правилният резултат
+## What a correct result looks like
 
-- **Девет от девет** вкарани дефекта, открити.
-- **Нула** находки по ред 13.
-- Ред 15 излиза като **`за проверка`, не като `нарушение`.** Праговете по
-  чл. 446 ГПК не са в `references/stavki.md`, а броят издържани лица липсва
-  във ведомостта. Скилът е длъжен да откаже категоричен извод и да каже
-  какво точно му липсва. Ако го обяви за нарушение, това е дефект в скила,
-  дори когато заключението случайно се окаже вярно.
+- **Nine out of nine** injected defects found.
+- **Zero** findings on row 13.
+- Row 15 comes out as **`за проверка`, not `нарушение`.** The чл. 446 ГПК
+  thresholds are not in `references/stavki.md`, and the number of dependants is
+  missing from the payroll. The skill is obliged to refuse a firm conclusion and
+  to say exactly what it lacks. Declaring it a violation is a defect in the skill,
+  even when the conclusion happens to be right.
 
-## Известни ограничения на теста
+## Known limitations of this suite
 
-- Ред 11 съдържа и десети дефект, който не е планиран: обявеният процент
-  клас е 3.6%, а начислената сума е 0.00. Появи се като страничен ефект от
-  конструирането на реда. Скилът го хваща като отделна находка по C2.
-- Проверката за лимитите на извънредния труд (D3) е неприложима, защото е
-  подаден един месец. За нея трябва натрупаният обем за годината.
-- Проверката за съответствие между договор и ведомост (A6) е неприложима —
-  тестовият комплект не съдържа трудови договори.
+- Row 11 carries a tenth, unplanned defect: the stated supplement is 3.6% while
+  the amount accrued is 0.00. It appeared as a side effect of constructing the
+  row. The skill catches it as a separate C2 finding.
+- The check on overtime limits (D3) is inapplicable, because a single month was
+  supplied. It needs the accumulated volume for the year.
+- The contract-versus-payroll check (A6) is inapplicable — this suite ships no
+  employment contracts.

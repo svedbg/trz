@@ -144,7 +144,7 @@ real audits: the sick-pay compensation sitting in the social-security base and o
 tax base at the same time, an amount typed into a day column, a control column that reads
 zero while money is missing, a total typed by hand, the cost of labour computed from net
 after deductions, the cap from the wrong half of the year, a benefit in one base but not the
-other. Catalogue: [`test/scenarii.md`](test/scenarii.md).
+other. Catalogue: [`test/scenarios.md`](test/scenarios.md).
 
 A run passes only when **every** injected defect is found and **no** finding is raised
 beyond them. False positives fail the suite exactly like misses: a skill that sees
@@ -222,7 +222,7 @@ matching, which is judgement and is reported as such), and unattributed findings
 printed for review rather than counted as false positives, because the workbook is random and
 some of them may be true observations that simply were not injected on purpose.
 
-Details and the keyword sets: [`test/scenarii.md`](test/scenarii.md).
+Details and the keyword sets: [`test/scenarios.md`](test/scenarios.md).
 
 ## What you have to fill in yourself
 

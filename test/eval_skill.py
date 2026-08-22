@@ -95,7 +95,7 @@ KEYWORDS = {
 # implementation of every check live there.
 FORBIDDEN = re.compile(r"_manifest\.json|structural_test|checks_test|trz_model|"
                        r"generate_wide|generate_narrow|eval_skill|rates_test|"
-                       r"expected_findings|scenarii\.md")
+                       r"expected_findings|scenarios\.md")
 
 
 def ensure_venv():

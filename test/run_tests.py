@@ -22,7 +22,7 @@ Three suites:
    gives a different company, different people, different salaries, a different
    month, a different accident rate and a different set of defects. It checks the
    construction of the file and the composition of the bases. The scenarios are
-   described in `scenarii.md`.
+   described in `scenarios.md`.
 
 Not included: `eval_skill.py`. That one calls Claude, so it needs authentication
 and costs money per run. It is run by hand when the guidance in SKILL.md changes.

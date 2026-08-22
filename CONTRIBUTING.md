@@ -63,7 +63,7 @@ To add one:
    row and the set of expected finding ids.
 2. Register it in `SCENARIOS` in `test/trz_model.py` and in `ROW_MUTATIONS`.
 3. Implement the detection in `test/structural_test.py`.
-4. Document it in [`test/scenarii.md`](test/scenarii.md).
+4. Document it in [`test/scenarios.md`](test/scenarios.md).
 5. If the skill should also find it, add keyword patterns to `KEYWORDS` in
    `test/eval_skill.py`.
 6. Run `python test/run_tests.py --seeds 300`. A run passes only when every
