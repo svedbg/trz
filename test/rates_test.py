@@ -28,7 +28,7 @@ sys.path.insert(0, HERE)
 import trz_model as M                                          # noqa: E402
 
 RATES_FILE = os.path.normpath(os.path.join(
-    HERE, "..", "skills", "trz-ekspert", "references", "stavki.md"))
+    HERE, "..", "skills", "trz-expert", "references", "stavki.md"))
 
 with open(RATES_FILE, encoding="utf8") as f:
     TEXT = f.read()

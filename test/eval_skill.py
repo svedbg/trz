@@ -122,7 +122,7 @@ def prepare(seed):
 
     # The prompt is Bulgarian on purpose: that is what a real user would write,
     # and the skill is Bulgarian.
-    prompt = f"""Направи ТРЗ проверка на ведомостта ./vedomost.xlsx. Ползвай скила trz-ekspert.
+    prompt = f"""Направи ТРЗ проверка на ведомостта ./vedomost.xlsx. Ползвай скила trz-expert.
 
 Какво имаш от дружеството:
 - ./dogovori.csv — договорените основни месечни заплати и процентът клас по трудов договор

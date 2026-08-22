@@ -2,7 +2,7 @@
 
 [![тестове](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![лиценз: MIT + CC BY 4.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7-MIT%20%2B%20CC--BY--4.0-blue)](#лиценз)
-[![ставки сверени](https://img.shields.io/badge/%D1%81%D1%82%D0%B0%D0%B2%D0%BA%D0%B8%20%D1%81%D0%B2%D0%B5%D1%80%D0%B5%D0%BD%D0%B8-2026--08--21-green)](skills/trz-ekspert/references/stavki.md)
+[![ставки сверени](https://img.shields.io/badge/%D1%81%D1%82%D0%B0%D0%B2%D0%BA%D0%B8%20%D1%81%D0%B2%D0%B5%D1%80%D0%B5%D0%BD%D0%B8-2026--08--21-green)](skills/trz-expert/references/stavki.md)
 
 Скил за [Claude Code](https://claude.com/claude-code), който превръща Claude в старши ТРЗ
 експерт за България. Подаваш ведомост, фиш, трудов договор или график — той сверява
@@ -13,7 +13,7 @@
 осигурителните прагове и процентите на вноските се менят всяка година, а през 2025 и 2026
 се смениха *в средата на годината*, защото и двата бюджета бяха приети със закъснение.
 Провери
-[`skills/trz-ekspert/references/stavki.md`](skills/trz-ekspert/references/stavki.md),
+[`skills/trz-expert/references/stavki.md`](skills/trz-expert/references/stavki.md),
 преди да се довериш на която и да е стойност.
 
 ## Защо съществува
@@ -44,7 +44,7 @@
 ## Какво проверява
 
 Единадесет групи, 78 проверки, в
-[`references/proverki.md`](skills/trz-ekspert/references/proverki.md):
+[`references/proverki.md`](skills/trz-expert/references/proverki.md):
 
 | | |
 | --- | --- |
@@ -91,7 +91,7 @@
 
 ```
 /plugin marketplace add svedbg/trz
-/plugin install trz-ekspert@trz-bg
+/plugin install trz-expert@trz-bg
 ```
 
 По-късно `/plugin marketplace update trz-bg` носи обновените ставки. Това е пътят, ако
@@ -102,7 +102,7 @@
 
 ```sh
 git clone https://github.com/svedbg/trz.git
-ln -s "$PWD/trz/skills/trz-ekspert" ~/.claude/skills/trz-ekspert
+ln -s "$PWD/trz/skills/trz-expert" ~/.claude/skills/trz-expert
 ```
 
 Избери едното или другото, не двете — иначе две копия на един и същи скил се блъскат за
@@ -115,7 +115,7 @@ ln -s "$PWD/trz/skills/trz-ekspert" ~/.claude/skills/trz-ekspert
 > анализирай ведомостта ./vedomost_06_2026.xlsx
 ```
 
-или директно с `/trz-ekspert`.
+или директно с `/trz-expert`.
 
 Скилът не преодобрява никакви инструменти. И четенето на файловете ти, и пускането на
 скрипт минават през обичайното запитване за разрешение — нарочно, за нещо, което чете
@@ -273,7 +273,7 @@ python test/eval_skill.py --seeds 3   # три семена
 
 | Какво | Лиценз |
 | --- | --- |
-| скилът — `skills/trz-ekspert/SKILL.md` и `references/*.md` | [CC BY 4.0](LICENSE-DOCS) |
+| скилът — `skills/trz-expert/SKILL.md` и `references/*.md` | [CC BY 4.0](LICENSE-DOCS) |
 | всичко останало — Python-ът в `test/`, git hook-ът, CI-ят | [MIT](LICENSE) |
 
 Ползвай го, променяй го, продавай с него. Запази авторството, а промениш ли справочниците —

@@ -11,7 +11,7 @@ confidently applies last year's figure is worse than no report: it reads as
 authoritative and it is wrong.
 
 Every figure in
-[`skills/trz-ekspert/references/stavki.md`](skills/trz-ekspert/references/stavki.md)
+[`skills/trz-expert/references/stavki.md`](skills/trz-expert/references/stavki.md)
 carries a status:
 
 | Status | Means |
@@ -39,12 +39,12 @@ it looked — say so in the changelog. That is as valuable as adding one.
 ## Adding a check
 
 Checks live in
-[`references/proverki.md`](skills/trz-ekspert/references/proverki.md), grouped
+[`references/proverki.md`](skills/trz-expert/references/proverki.md), grouped
 A–K. A check needs three things:
 
 * a statement of what passes and what does not;
 * a statutory basis in
-  [`references/normativna-baza.md`](skills/trz-ekspert/references/normativna-baza.md) —
+  [`references/normativna-baza.md`](skills/trz-expert/references/normativna-baza.md) —
   **except** group K, which rests on arithmetic and must say so rather than
   invent an article;
 * a formula, if the check computes anything, in the formulas section.
