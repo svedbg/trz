@@ -206,25 +206,39 @@ def check(xlsx, manifest, quiet=False):
             c = contracts[r]
             daily = c["monthly_salary"] / norm
             uplift = 1 + pct / 100.0
-            if abs(base - r2(daily * wd)) > M.TOL:
+            base_due = r2(daily * wd)
+            leave_due = r2(daily * uplift * pl) if pl else 0.0
+            if abs(base - base_due) > M.TOL:
                 F.add("A6_base_vs_contract", r,
                       "the base for days worked does not match the contracted salary",
-                      base, r2(daily * wd))
+                      base, base_due)
             if pl:
-                due = r2(daily * uplift * pl)
-                if abs(leave - due) > M.TOL:
+                if abs(leave - leave_due) > M.TOL:
                     without = r2(daily * pl)
                     why = " - without the seniority uplift" \
                         if abs(leave - without) <= M.TOL else ""
                     F.add("E3_leave_without_seniority", r,
-                          f"paid leave for {int(pl)} days{why}", leave, due)
+                          f"paid leave for {int(pl)} days{why}", leave, leave_due)
             if sd:
                 employer_days = min(sd, M.SICK_DAYS_EMPLOYER)
-                due = r2(daily * uplift * employer_days * M.SICK_RATE)
+                # Measured against what the contract says the month should have
+                # accrued, not against the row's own figures: a defect injected into
+                # the supplement or the leave would otherwise move the base the sick
+                # pay is compared with, and one defect would be reported twice.
+                work_pay_due = r2(base_due + r2(base_due * pct / 100.0)
+                                  + bonus + leave_due)
+                due = r2(M.sick_daily_base(c["monthly_salary"], pct, norm,
+                                           work_pay_due, wd + pl)
+                         * employer_days * M.SICK_RATE)
                 if abs(sick_pay - due) > M.TOL:
+                    agreed_only = r2(daily * uplift * employer_days * M.SICK_RATE)
+                    why = " - from the agreed daily rate alone, when the month's " \
+                          "average daily gross is higher (чл. 40, ал. 5 КСО owes the " \
+                          "larger of the two)" \
+                        if abs(sick_pay - agreed_only) <= M.TOL else ""
                     F.add("F9_sick_pay_amount", r,
                           f"sick pay under чл. 40, ал. 5 КСО for {int(employer_days)} "
-                          f"days", sick_pay, due)
+                          f"days{why}", sick_pay, due)
             if sd + md:
                 due = r2(min_insurable_self * M.HEALTH_ON_INCAPACITY / 100.0
                          * (sd + md) / norm)

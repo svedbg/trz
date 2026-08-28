@@ -151,6 +151,30 @@ EMPLOYEE_COLUMNS = (("ДОО пенсии", "pension"), ("ДОО ОЗМ", "sickn
 
 # ---------------------------------------------------------- the clean payroll
 
+def sick_daily_base(monthly_salary, seniority_pct, norm_days,
+                    accruals_for_work, paid_days):
+    """The daily figure the чл. 40, ал. 5 КСО payment is computed on.
+
+    The statute names two measures and owes the larger: 70% of the average daily
+    **gross** remuneration for the month in which the incapacity arose, "но не по-малко
+    от" 70% of the average daily **agreed** remuneration. The agreed figure is a floor,
+    not the answer. Computing only it - which is what a payroll keeping one daily rate
+    per person does - shorts everyone whose month carried a bonus, by exactly the bonus
+    spread over the days it was earned in.
+
+    Which elements make up "брутно възнаграждение за месеца" is not settled, and the
+    choice here is the model's, not the statute's: the remuneration accrued for labour
+    this month - base, seniority supplement, bonus, paid leave - over the days it
+    covers. Excluded are the sick pay itself, which would be circular, and the чл. 224
+    КТ compensation, which is not remuneration for labour. A payroll that reads it
+    differently is not thereby wrong; a payroll that never computes the gross measure
+    at all is.
+    """
+    agreed = monthly_salary * (1 + seniority_pct / 100.0) / norm_days
+    gross = accruals_for_work / paid_days if paid_days else 0.0
+    return max(gross, agreed)
+
+
 def clean_row(inp, regime, tzpb, policy, norm_days):
     """Compute one correct row from its inputs.
 
@@ -169,10 +193,15 @@ def clean_row(inp, regime, tzpb, policy, norm_days):
     base = r2(daily * wd)
     seniority = r2(base * pct / 100.0)
     leave = r2(daily * uplift * pl)
-    sick_days_employer = min(sd, SICK_DAYS_EMPLOYER)
-    sick_pay = r2(daily * uplift * sick_days_employer * SICK_RATE)
     bonus = r2(inp["bonus"])
     comp_224 = r2(inp["compensation_224"])
+
+    # The remuneration accrued for labour this month, and the days it covers. Needed
+    # before the sick pay, which is measured against it - see sick_daily_base.
+    work_base = r2(base + seniority + bonus + leave)
+    sick_days_employer = min(sd, SICK_DAYS_EMPLOYER)
+    sick_pay = r2(sick_daily_base(ms, pct, norm_days, work_base, wd + pl)
+                  * sick_days_employer * SICK_RATE)
 
     gross = r2(base + seniority + bonus + leave + comp_224 + sick_pay)
 
@@ -183,7 +212,6 @@ def clean_row(inp, regime, tzpb, policy, norm_days):
     premium = r2(inp["premium"]) if inp["premium"] else 0.0
     excess = r2(max(0.0, premium - SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
 
-    work_base = r2(base + seniority + bonus + leave)
     if work_base <= 0:
         # A person with no accruals for work this month (a full month of
         # maternity leave): there is nothing for the benefits to attach to,
@@ -256,6 +284,7 @@ SCENARIOS = {
     "K7_cost_from_net":           ("K7", "cost of labour computed from net after deductions"),
     "F9_sick_pay_in_insurable":   ("F9", "sick pay for the first days inside the insurable income"),
     "F9_sick_pay_out_of_taxable": ("F9", "sick pay for the first days removed from the taxable base"),
+    "F9_sick_pay_amount":         ("F9", "sick pay from the agreed daily rate when the month's gross is higher"),
     "F9_missing_health_on_sick":  ("F9", "no health contribution for days of incapacity"),
     "F10_in_kind_asymmetry":      ("F10", "income in kind in one base but not the other"),
     "F10_excess_asymmetry":       ("F10", "threshold excess in one base but not the other"),

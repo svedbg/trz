@@ -379,6 +379,32 @@ def m_sick_pay_out_of_taxable(row, inp, regime, tzpb, policy, rnd):
         {"F9_sick_pay_out_of_taxable"}
 
 
+def m_sick_pay_from_agreed(row, inp, regime, tzpb, policy, rnd):
+    """Sick pay taken from the agreed daily rate when the month's gross is higher.
+
+    чл. 40, ал. 5 КСО owes 70% of the month's average daily gross and treats the agreed
+    rate only as a floor. A payroll that keeps one daily rate per person computes the
+    floor and stops, which shorts everyone whose month carried a bonus. The defect is
+    invisible without the contract and the month's other accruals side by side, which
+    is why it survives in real files.
+    """
+    if not inp["days_sick"] or not row["Болнични (работодател)"]:
+        return None
+    if not inp["bonus"]:
+        return None                     # without a bonus the two measures coincide
+    employer_days = min(inp["days_sick"], M.SICK_DAYS_EMPLOYER)
+    agreed = inp["monthly_salary"] * (1 + inp["seniority_pct"] / 100.0) / row["_norm"]
+    short = r2(agreed * employer_days * M.SICK_RATE)
+    if abs(short - row["Болнични (работодател)"]) < 0.10:
+        return None                     # too small to tell from rounding
+    row = dict(row)
+    row["Болнични (работодател)"] = short
+    row["БРУТО"] = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
+                      + row["Платен отпуск"] + row["Обезщетение чл. 224"] + short)
+    return _recompute_downstream(row, inp, regime, tzpb, policy), \
+        {"F9_sick_pay_amount"}
+
+
 def m_missing_health_on_sick(row, inp, regime, tzpb, policy, rnd):
     """The health contribution for days of incapacity is missing."""
     if not row["ЗО при болничен/майчинство"]:
@@ -529,6 +555,7 @@ ROW_MUTATIONS = [
     ("K7_cost_from_net", m_cost_from_net),
     ("F9_sick_pay_in_insurable", m_sick_pay_in_insurable),
     ("F9_sick_pay_out_of_taxable", m_sick_pay_out_of_taxable),
+    ("F9_sick_pay_amount", m_sick_pay_from_agreed),
     ("F9_missing_health_on_sick", m_missing_health_on_sick),
     ("F10_in_kind_asymmetry", m_in_kind_asymmetry),
     ("F10_excess_asymmetry", m_excess_asymmetry),
