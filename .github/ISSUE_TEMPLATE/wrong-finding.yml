@@ -6,8 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Не прилагай истинска ведомост.** Please do not attach a real payroll —
-        it is personal data. Generate an equivalent case instead:
+        **Do not attach a real payroll** — it is personal data. Не прилагай
+        истинска ведомост. Generate an equivalent case instead:
 
         ```sh
         python test/generate_wide.py --seed 12345
