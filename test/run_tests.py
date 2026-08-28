@@ -111,7 +111,12 @@ def suite_structural(start, count, quiet=True):
     untested = [i for i in M.SCENARIOS if not coverage.get(i)]
     if untested:
         print(f"\n  WARNING: {len(untested)} scenarios were never injected at these "
-              f"seeds - raise --seeds")
+              f"seeds, so they were not tested: {', '.join(untested)}")
+        print("  Two things cause this and they are not the same. At a low seed count "
+              "the generator may find no suitable row - raise --seeds. But a scenario "
+              "that stays at zero on a long run means its mutation can no longer break "
+              "anything: the model now produces what the mutation was going to write. "
+              "Check what changed in trz_model.py before raising the seeds further.")
     if failures:
         print(f"\n  FAILING SEEDS ({len(failures)}):")
         for seed, result in failures:

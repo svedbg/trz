@@ -66,6 +66,7 @@ The groups match `references/proverki.md`.
 | `K7_cost_from_net` | K7 | Cost of labour computed from net after deductions | Cost ≠ gross + employer contributions + benefits; short by exactly what was withheld |
 | `F9_sick_pay_in_insurable` | F9 | The чл. 40, ал. 5 КСО payment is inside the insurable income | Solving the composition: the element sits in a base on which no contributions are due |
 | `F9_sick_pay_out_of_taxable` | F9 | The same payment is removed from the taxable base | Solving the composition of the taxable base |
+| `F9_sick_pay_amount` | F9 | Sick pay computed from the agreed daily rate when the month's average daily gross is higher | The two measures of чл. 40, ал. 5 КСО are computed separately and the larger is owed; the base is rebuilt from the contract so a defect elsewhere on the row is not counted twice |
 | `F9_missing_health_on_sick` | F9 | No health contribution under чл. 40, ал. 1, т. 5 ЗЗО for days of incapacity | 4.8% × the self-employed minimum × days / norm |
 | `F10_in_kind_asymmetry` | F10 | The benefit in kind is in one base but not the other | The composition of the two bases is solved separately and compared |
 | `F10_excess_asymmetry` | F10 | The same, for the excess over the social-expense threshold | Same |
@@ -116,6 +117,17 @@ python test/eval_skill.py --seed 42 --model sonnet
 
 **It costs money.** A measured run on Opus: 18 turns, about 12 minutes and USD 2.4
 for one seed. Hence it is not in `run_tests.py` and not in CI.
+
+**It paid for itself on the first graded run.** Seed 7 scored 7 of 7, and among the
+findings it reported that were *not* injected was this one: the sick pay for the first
+days was computed from the agreed daily rate while the month's average daily gross was
+higher, because the row carried a bonus. That was not a defect in the payroll — it was
+a defect in `trz_model.py`, which had implemented the "не по-малко от" floor of
+чл. 40, ал. 5 КСО as if it were the whole rule. The suites could not see it: the
+generator and the checker computed the sick pay with the same formula, so they agreed
+with each other and agreed wrongly. A round trip cannot find a mistake in its own
+premise, and that is the one thing an independent reader can. The rule is now in
+`sick_daily_base()` and `F9_sick_pay_amount` guards it.
 
 Three decisions in its construction are worth knowing.
 
