@@ -6,12 +6,15 @@ body:
   - type: markdown
     attributes:
       value: |
-        Тази форма е за ставки: МРЗ, МОД, максимален осигурителен доход, проценти
-        на вноските, прагове, ТЗПБ. Български отговори са напълно приемливи.
+        This form is for rates: the minimum wage, the minimum insurance
+        thresholds (МОД), the cap on insurable income, contribution percentages,
+        and the occupational-accident rate (ТЗПБ).
 
-        This is the most useful issue you can open here. Rates change every year —
+        It is the most useful issue you can open here. Rates change every year —
         and in 2025 and 2026 they changed mid-year — so the reference file goes
         stale on its own.
+
+        Може да пишеш на български. Answers in Bulgarian are perfectly welcome.
   - type: input
     id: figure
     attributes:
@@ -24,7 +27,7 @@ body:
     id: current
     attributes:
       label: What the file says now
-      placeholder: "2300.00 EUR, статус ДВ"
+      placeholder: "2300.00 EUR, status ДВ"
   - type: input
     id: correct
     attributes:

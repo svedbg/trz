@@ -4,36 +4,39 @@
 [![licence: MIT + CC BY 4.0](https://img.shields.io/badge/licence-MIT%20%2B%20CC--BY--4.0-blue)](#licence)
 [![rates verified](https://img.shields.io/badge/rates%20verified-2026--08--21-green)](skills/trz-expert/references/stavki.md)
 
-A [Claude Code](https://claude.com/claude-code) skill that turns Claude into a senior
-ТРЗ (payroll) specialist for Bulgaria. Give it a ведомост, a фиш, a трудов договор or a
-work schedule, and it checks the numbers against the Кодекс на труда, КСО, ЗДДФЛ and the
-Наредба за структурата и организацията на работната заплата.
+A [Claude Code](https://claude.com/claude-code) skill that turns Claude into a senior payroll
+specialist for Bulgaria — ТРЗ, as the payroll-and-wages function is called there. Give it a
+payroll register (ведомост), a payslip (фиш), an employment contract or a work schedule, and
+it checks the numbers against the Labour Code (КТ), the Social Security Code (КСО), the
+Personal Income Taxes Act (ЗДДФЛ) and the Ordinance on the Structure and Organisation of Wages
+(НСОРЗ).
 
-**Read this first:** the rates shipped here are current as of **21 August 2026**. МРЗ,
-осигурителни прагове and контribution rates change every year — and in 2025 and 2026 they
-changed *mid-year*, because both budgets were adopted late. Check
-[`skills/trz-expert/references/stavki.md`](skills/trz-expert/references/stavki.md)
-before trusting any figure.
+**Read this first:** the rates shipped here are current as of **21 August 2026**. The minimum
+wage, the social-security thresholds and the contribution rates change every year — and in
+2025 and 2026 they changed *mid-year*, because both budgets were adopted late. Check
+[`skills/trz-expert/references/stavki.md`](skills/trz-expert/references/stavki.md) before
+trusting any figure.
 
 ## Why this exists
 
-Payroll software already computes salaries. What it does not do is tell you whether the
-result is lawful — whether the клас is right for someone's actual service, whether the
-осигурителен доход got capped, whether the болничен was charged for two days or three.
-Those are the checks a ТРЗ specialist does by hand, and they are exactly the kind of
-mechanical, rule-heavy work an LLM can do reliably *if* it is stopped from inventing
+Payroll software already computes salaries. What it does not do is tell you whether the result
+is lawful — whether the length-of-service supplement matches someone's actual service, whether
+the insurable income got capped, whether sick leave was charged to the employer for two days
+or three. Those are the checks a payroll specialist does by hand, and they are exactly the
+kind of mechanical, rule-heavy work an LLM can do reliably *if* it is stopped from inventing
 numbers.
 
 ## The two rules that make it trustworthy
 
-Most of the design is defensive. An LLM that confidently applies last year's МРЗ produces
-a report that reads as authoritative and is wrong — worse than no report at all. So:
+Most of the design is defensive. An LLM that confidently applies last year's minimum wage
+produces a report that reads as authoritative and is wrong — worse than no report at all. So:
 
-**1. No rate from memory, ever.** Every figure comes from `references/stavki.md`, where
-each row carries a status (`ДВ` = verified against the State Gazette, `вторичен` =
-professional source, `за проверка` = working hypothesis) and the issue number it came
-from. If a rate is missing or unverified, the skill downgrades the finding from
-`нарушение` to `за проверка` and states exactly what it is missing. It never guesses.
+**1. No rate from memory, ever.** Every figure comes from `references/stavki.md`, where each
+row carries a status (`ДВ` = verified against the State Gazette, `официален` = a state
+authority's site, `вторичен` = professional source, `за потвърждение` = working hypothesis)
+and the issue number it came from. If a rate is missing or unverified, the skill downgrades
+the finding from `нарушение` (violation) to `за проверка` (needs checking) and states exactly
+what it is missing. It never guesses.
 
 **2. Arithmetic runs as code, not in the model's head.** The skill writes a Python script
 that applies the checklist row by row and returns a table. The result is reproducible and
@@ -48,20 +51,21 @@ Eleven groups, 78 checks, in
 | | |
 | --- | --- |
 | **A** | Employment contract — required elements, probation, fixed terms, contract ↔ payroll agreement |
-| **B** | Minimum thresholds — МРЗ, hourly МРЗ, МОД by economic activity, максимален осигурителен доход |
-| **C** | Pay structure — клас прослужено време, its base, benefits disguised as bonuses |
-| **D** | Working time — overtime detection and limits, its premium, night work, official holidays, СИРВ, rest periods |
+| **B** | Minimum thresholds — the minimum wage and its hourly rate, the minimum insurance thresholds (МОД) by economic activity, the cap on insurable income |
+| **C** | Pay structure — the length-of-service supplement (клас прослужено време), its base, benefits disguised as bonuses |
+| **D** | Working time — overtime detection and limits, its premium, night work, public holidays, aggregated calculation of working time (СИРВ), rest periods |
 | **E** | Leave — entitlement, pro-rating, pay basis, time-barring |
 | **F** | Contributions and tax — insurance base, employer/employee split, tax base, reliefs, sick pay |
-| **G** | Deductions — legal basis, protected minimum under чл. 446 ГПК, order of attachment |
-| **H** | Termination — severance under чл. 220, 221, 222, 224, and the base each is computed on |
+| **G** | Deductions — legal basis, protected minimum under чл. 446 ГПК (Code of Civil Procedure), order of attachment |
+| **H** | Termination — severance under чл. 220, 221, 222 and 224 КТ, and the base each is computed on |
 | **I** | Consistency — vertical and horizontal reconciliation, payroll ↔ payslip ↔ schedule ↔ declarations |
 | **J** | Formalities — payment deadlines, payslip issuance, personnel file |
 | **K** | File construction — sums that skip a column, hardcoded values that stopped following, control columns that cannot fail, hand-typed totals, amounts entered in day columns, unrounded accruals, cost computed from net |
 
-Every finding carries a severity (`нарушение` / `риск` / `за проверка` / `дефект` /
-`бележка`), the specific article it rests on, the arithmetic, and a remedial action. A
-finding without a statutory reference does not go in the report.
+Every finding carries a severity — `нарушение` (violation), `риск` (risk), `за проверка`
+(needs checking), `дефект` (defect) or `бележка` (note) — the specific article it rests on,
+the arithmetic, and a remedial action. A finding without a statutory reference does not go in
+the report.
 
 Group K is the exception, and deliberately so: those findings rest on arithmetic, not on a
 statute, and the skill is told to say that rather than invent an article. They matter
@@ -129,22 +133,22 @@ python test/skill_test.py             # packaging: frontmatter, references, mani
 ```
 
 **Suite 1 — rates and working-time regimes.** A static payroll in a narrow layout with nine
-deliberate defects and one clean control row: below-minimum wage, missing длъжност class,
-unpaid overtime premium, an uncapped social-security base, night hours with no supplement,
-three employer-paid sick days instead of two, a net that does not reconcile, a public
-holiday paid at single rate, and an attachment. Expected: nine of nine found, zero findings
-on the control row, and the attachment reported as `за проверка` rather than `нарушение` —
-because the чл. 446 ГПК thresholds are deliberately absent from the rate file. Answer key:
-[`test/expected_findings.md`](test/expected_findings.md).
+deliberate defects and one clean control row: below-minimum wage, a missing length-of-service
+supplement, unpaid overtime premium, an uncapped social-security base, night hours with no
+supplement, three employer-paid sick days instead of two, a net that does not reconcile, a
+public holiday paid at single rate, and an attachment. Expected: nine of nine found, zero
+findings on the control row, and the attachment reported as `за проверка` rather than
+`нарушение` — because the чл. 446 ГПК thresholds are deliberately absent from the rate file.
+Answer key: [`test/expected_findings.md`](test/expected_findings.md).
 
 **Suite 2 — file construction and base composition.** Payrolls in a wide layout, generated
 from a seed. Every seed changes the company, the people, the salaries, the month, the rate
-regime, the ТЗПБ percentage and which defects are injected — eighteen scenarios drawn from
-real audits: the sick-pay compensation sitting in the social-security base and outside the
-tax base at the same time, an amount typed into a day column, a control column that reads
-zero while money is missing, a total typed by hand, the cost of labour computed from net
-after deductions, the cap from the wrong half of the year, a benefit in one base but not the
-other. Catalogue: [`test/scenarios.md`](test/scenarios.md).
+regime, the occupational-accident insurance rate (ТЗПБ) and which defects are injected —
+eighteen scenarios drawn from real audits: the sick-pay compensation sitting in the
+social-security base and outside the tax base at the same time, an amount typed into a day
+column, a control column that reads zero while money is missing, a total typed by hand, the
+cost of labour computed from net after deductions, the cap from the wrong half of the year, a
+benefit in one base but not the other. Catalogue: [`test/scenarios.md`](test/scenarios.md).
 
 A run passes only when **every** injected defect is found and **no** finding is raised
 beyond them. False positives fail the suite exactly like misses: a skill that sees
@@ -157,7 +161,7 @@ a two-cent tolerance produces a phantom violation every few hundred rows. A stat
 would never have shown it.
 
 All test data is fabricated and derived from the seed. No real payroll, no real person, no
-ЕГН.
+national identity number (ЕГН).
 
 ### Running them when the skill changes
 
@@ -228,17 +232,18 @@ Details and the keyword sets: [`test/scenarios.md`](test/scenarios.md).
 
 Three things, and the skill will tell you when it needs them rather than guessing.
 
-**МОД by economic activity.** Приложение № 1 / № 1А to the ЗБДОО, several hundred rows keyed
-by КИД code and qualification group, changing annually. Copy the row for your КИД when you
+**Minimum insurance thresholds (МОД) by economic activity.** Annex 1 / 1A to the State Social
+Security Budget Act (ЗБДОО), several hundred rows keyed by economic-activity code (КИД, the
+Bulgarian NACE) and qualification group, changing annually. Copy the row for your КИД when you
 need it. There is a blank table waiting for it.
 
-**The ТЗПБ percentage for your КИД** (приложения № 2 / № 2А). The range 0.4–1.1% is
-verified; which end you sit on is not. The skill derives the percentage the payroll actually
-applied and asks you to confirm it, because at a few hundred thousand of insurable income
-every tenth of a point is real money — this is routinely the largest unverified number in an
-audit.
+**The occupational-accident insurance rate (ТЗПБ) for your КИД** (Annexes 2 / 2A). The range
+0.4–1.1% is verified; which end you sit on is not. The skill derives the percentage the
+payroll actually applied and asks you to confirm it, because at a few hundred thousand of
+insurable income every tenth of a point is real money — this is routinely the largest
+unverified number in an audit.
 
-**The social-expense threshold in euro for 2026.** Until 2025 it was 60 лв per person per
+**The social-expense threshold in euro for 2026.** Until 2025 it was 60 BGN per person per
 month for voluntary insurance premiums paid at the employer's expense. The exact conversion
 is 30.6773 EUR; whether the legislator adopted that or rounded it is not verified here. The
 amount matters because the excess over the threshold enters the bases, so it moves both
@@ -246,12 +251,12 @@ contributions and tax for every person with such a benefit. The skill computes a
 variants and marks the finding `за проверка` rather than picking one.
 
 One other item is unverified, and it is unverified for an interesting reason: **the
-employer/employee split of the pension contribution** (11.02/8.78 and 8.22/6.58). This is
-not a disagreement between sources — it is a gap in the statute. КСО чл. 6, ал. 1 was
-raised to 19.8% and 14.8% effective 01.01.2018, but чл. 6, ал. 3, т. 8 and 9 — the
-provisions that split precisely that contribution — still carry 9.9/7.9 and 7.1/5.7, the
-pre-increase figures. Two independent official consolidated editions, from the МТСП and
-the НОИ, give the same text.
+employer/employee split of the pension contribution** (11.02/8.78 and 8.22/6.58). This is not
+a disagreement between sources — it is a gap in the statute. Чл. 6, ал. 1 КСО was raised to
+19.8% and 14.8% effective 01.01.2018, but чл. 6, ал. 3, т. 8 and 9 — the provisions that split
+precisely that contribution — still carry 9.9/7.9 and 7.1/5.7, the pre-increase figures. Two
+independent official consolidated editions, from the Ministry of Labour and Social Policy
+(МТСП) and the National Social Security Institute (НОИ), give the same text.
 
 The figures used in practice come out exactly if the two percentage points are split 0.56
 employer / 0.44 employee, and that reconstruction fits both age cohorts to the decimal.
@@ -290,11 +295,11 @@ matters are in [`SECURITY.md`](SECURITY.md).
 
 ## Not legal advice
 
-This is an expert payroll opinion, not legal advice. It does not replace a lawyer and it
-does not protect you from findings by the Labour Inspectorate or the НАП. Statutory
-references should be checked against the redaction in force for the period you are
-auditing.
+This is an expert payroll opinion, not legal advice. It does not replace a lawyer and it does
+not protect you from findings by the Labour Inspectorate (ГИТ) or the National Revenue Agency
+(НАП). Statutory references should be checked against the redaction in force for the period
+you are auditing.
 
 ## Bulgarian
 
-Същото на български: [README.bg.md](README.bg.md).
+The same document in Bulgarian: [README.bg.md](README.bg.md) — същото на български.
