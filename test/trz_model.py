@@ -83,7 +83,10 @@ def regime_for(year, month):
 HOLIDAYS_2026_FIXED = [
     (1, 1), (3, 3), (5, 1), (5, 6), (5, 24), (9, 6), (9, 22), (12, 24), (12, 25), (12, 26),
 ]
-HOLIDAYS_2026_EASTER = [(4, 10), (4, 12), (4, 13)]   # Good Friday, Easter, Easter Monday
+# Good Friday, Holy Saturday, Easter Sunday and Monday. These four never move: the
+# substitution rule of чл. 154, ал. 2 КТ applies to the fixed holidays only, so the two
+# that fall on a weekend by definition do not yield a day off in lieu.
+HOLIDAYS_2026_EASTER = [(4, 10), (4, 11), (4, 12), (4, 13)]
 
 
 def _days_off_2026():
