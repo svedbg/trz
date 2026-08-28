@@ -56,11 +56,20 @@ jobs:
         # a list of real names committed here would itself be the leak the step
         # exists to prevent.
         run: |
-          # a ten-digit number (national ID) or a nine-digit one (company ID),
-          # outside the clearly-synthetic ones
-          if git grep -nE '\b[0-9]{10}\b|\b[1-9][0-9]{8}\b' -- '*.md' '*.py' \
-              | grep -vE '000000000|1\.95583|[0-9]{4}\.[0-9]{2}' ; then
-            echo "Found a number shaped like a national or company ID. Check the line above."
+          # A ten-digit number (national ID) or a nine-digit one (company ID).
+          #
+          # The exclusions are applied to the matched NUMBER, not to the line it sits
+          # on. Filtering whole lines would drop `Иван Петров, ЕГН 8001011234,
+          # осигурителен доход 2111.64 EUR` because of the money figure at the end -
+          # and an ID next to a money figure is precisely the shape a leak takes here.
+          hits=$(git grep -hoE '\b[0-9]{10}\b|\b[1-9][0-9]{8}\b' -- '*.md' '*.py' \
+                 | grep -vxE '000000000' | sort -u || true)
+          if [ -n "$hits" ]; then
+            echo "Found numbers shaped like a national or company ID:"
+            echo "$hits"
+            echo
+            echo "Locations:"
+            for n in $hits; do git grep -nF "$n" -- '*.md' '*.py'; done
             exit 1
           fi
           echo "clean"
