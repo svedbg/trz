@@ -13,6 +13,7 @@ Column names and statutory citations stay Bulgarian, because both are quoted
 from the domain. The code is English.
 """
 import os
+import re
 
 import openpyxl
 
@@ -85,7 +86,11 @@ for r in rows:
     hourly = base_pay / (days_worked * hours_per_day) if days_worked else None
 
     # --- B1 minimum wage ---
-    due_min = round(MIN_WAGE * part_time, 2)
+    # „Основна заплата“ holds what was accrued for the days actually worked, not the
+    # contracted monthly salary, so the threshold is pro-rated the same way. Comparing
+    # an accrued amount against a whole month's minimum reports a phantom violation for
+    # anyone on the minimum who worked part of the month.
+    due_min = round(MIN_WAGE * part_time * days_worked / WORK_DAYS, 2)
     if base_pay + 1e-9 < due_min - TOL:
         report("нарушение", r, name, "B1 base pay below the minimum wage",
                "чл.244 т.1 КТ; ПМС №243 от 13.11.2025, ДВ бр.98/2025",
@@ -226,3 +231,64 @@ print(f"People with no findings: "
 if MIN_INSURABLE_ACTIVITY is None:
     print("B3 minimum insurable income by economic activity: NOT APPLICABLE - "
           "Приложение №1 to the ЗБДОО is not in references/stavki.md")
+
+# --- the answer key, asserted --------------------------------------------------
+# expected_findings.md in prose is not a test: printing findings and exiting 0 passes
+# just as happily when every one of them disappears. This is the same key, machine
+# readable, and the run fails on a difference in either direction - a missed defect and
+# a false positive are equally disqualifying.
+#
+# Nine defects were injected; two more follow from them and are documented as such in
+# expected_findings.md. Row 13 is the control row and must stay clean.
+EXPECTED = {
+    6:  {"B1"},          # base pay below the minimum wage
+    7:  {"C1"},          # no length-of-service supplement for 12 years
+    8:  {"D4"},          # overtime without the premium
+    9:  {"B4", "F2"},    # cap never applied - and so the contributions are wrong too
+    10: {"D6"},          # night hours without the supplement
+    11: {"C2", "F9"},    # 3 employer-paid sick days - and 3.6% stated, 0.00 accrued
+    12: {"I1"},          # net does not reconcile
+    14: {"D7"},          # public holiday at single rate
+    15: {"G2"},          # attachment against an unknown protected minimum
+}
+CONTROL_ROW = 13
+EXPECTED_SEVERITY = {"G2": "за проверка"}       # everything else: нарушение
+
+# Every check string starts with its id by convention. Assert the convention rather
+# than trusting it: a renamed check would otherwise silently drop out of the key.
+def code_of(finding):
+    code = finding["check"].split()[0]
+    if not re.fullmatch(r"[A-K]\d+", code):
+        raise SystemExit(f"check string does not begin with a check id: "
+                         f"{finding['check']!r}")
+    return code
+
+
+found = {}
+for f in findings:
+    found.setdefault(f["row"], set()).add(code_of(f))
+
+problems = []
+for row in sorted(set(EXPECTED) | set(found) | {CONTROL_ROW}):
+    due = EXPECTED.get(row, set())
+    got = found.get(row, set())
+    for code in sorted(due - got):
+        problems.append(f"row {row}: MISSED {code}")
+    for code in sorted(got - due):
+        problems.append(f"row {row}: FALSE POSITIVE {code}")
+
+for f in findings:
+    want = EXPECTED_SEVERITY.get(code_of(f), "нарушение")
+    if f["severity"] != want:
+        problems.append(f"row {f['row']}: {code_of(f)} reported as "
+                        f"„{f['severity']}“, expected „{want}“")
+
+print("=" * 100)
+if problems:
+    for p in problems:
+        print(f"  FAIL  {p}")
+    print(f"FAILED: {len(problems)} difference(s) from test/expected_findings.md")
+    raise SystemExit(1)
+print(f"OK: {len(findings)} findings, exactly the answer key in expected_findings.md "
+      f"(9 injected + 2 consequential), row {CONTROL_ROW} clean, "
+      f"the attachment reported as „за проверка“")
