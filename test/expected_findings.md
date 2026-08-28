@@ -28,9 +28,22 @@ because 24 May is a Sunday — чл. 154, ал. 2 КТ).
 | --- | --- | --- |
 | 13 | Стефка Ангелова | Part time, 4 hours, salary 310.10 = half the minimum wage. Everything correct. Must produce no finding. |
 
+## Consequential findings
+
+Two further findings follow from the injected ones rather than being injected
+themselves. Both are expected, and `checks_test.py` asserts them alongside the
+nine — a run that stops producing them has changed behaviour and fails.
+
+| Row | Check | Why it follows |
+| --- | --- | --- |
+| 9 | B4 → **F2** | The insurable income was never capped, so the contributions computed from it are wrong too. One defect, two findings. |
+| 11 | **C2** | The stated supplement is 3.6% while the amount accrued is 0.00. It appeared as a side effect of constructing the row. |
+
+So the correct total is **11 findings: 9 injected + 2 consequential.**
+
 ## What a correct result looks like
 
-- **Nine out of nine** injected defects found.
+- **Nine out of nine** injected defects found, plus the two consequential ones.
 - **Zero** findings on row 13.
 - Row 15 comes out as **`за проверка`, not `нарушение`.** The чл. 446 ГПК
   thresholds are not in `references/stavki.md`, and the number of dependants is
@@ -40,9 +53,6 @@ because 24 May is a Sunday — чл. 154, ал. 2 КТ).
 
 ## Known limitations of this suite
 
-- Row 11 carries a tenth, unplanned defect: the stated supplement is 3.6% while
-  the amount accrued is 0.00. It appeared as a side effect of constructing the
-  row. The skill catches it as a separate C2 finding.
 - The check on overtime limits (D3) is inapplicable, because a single month was
   supplied. It needs the accumulated volume for the year.
 - The contract-versus-payroll check (A6) is inapplicable — this suite ships no

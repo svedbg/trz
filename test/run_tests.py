@@ -66,14 +66,17 @@ def suite_static():
     print("=" * 78)
     p = subprocess.run([sys.executable, os.path.join(HERE, "checks_test.py")],
                        capture_output=True, text=True)
+    # The exit code is the result: checks_test.py asserts its own answer key and exits
+    # non-zero on a missed finding or a false positive. Deciding this by grepping the
+    # output for a line that prints unconditionally would pass a run that found nothing.
     if p.returncode != 0:
         print(p.stdout[-2000:], p.stderr[-2000:])
+        print("  -> FAILED")
         return False
     for line in [l for l in p.stdout.splitlines() if l.strip()][-3:]:
         print("  " + line)
-    ok = "People with violations" in p.stdout
-    print(f"  -> {'OK' if ok else 'FAILED'}")
-    return ok
+    print("  -> OK")
+    return True
 
 
 def suite_structural(start, count, quiet=True):
