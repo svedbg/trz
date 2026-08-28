@@ -195,12 +195,33 @@ Three separate questions, because they fail separately:
 half-year" presupposes a published cap for this year to be wrong against; with no rates
 there is nothing to be wrong about, and the finding the skill owes is that it cannot tell.
 
-**The grading is itself tested, for free.** `--selftest` builds four synthetic reports — a
+**The grading is itself tested, for free.** `--selftest` builds six synthetic reports — a
 skill that refused, one that guessed a rate, one that went silent, one that did both
-wrong — and asserts the three checks separate them. It runs in CI. The reason is that the
-run it guards costs real money and a quarter of an hour, and a grader that passes
-everything is much the likeliest way for a check like this to be quietly useless; without
-the self-test that would be discovered only after paying for it.
+wrong, and the two phrasings a live run actually produced — and asserts the three checks
+separate them. It runs in CI. The reason is that the run it guards costs real money and a
+quarter of an hour, and a grader that passes everything is much the likeliest way for a
+check like this to be quietly useless; without the self-test that would be discovered
+only after paying for it.
+
+**First live run: 3/3, and the grader needed fixing anyway.** Seed 3, July 2027, USD 2.44.
+Six of six rate-free defects found, nothing asserted as `нарушение` on a rate, and the
+gap named twice over:
+
+> Ведомостта е за юли 2027 г., но прилага максимален осигурителен доход 2300.00 EUR —
+> точно стойността за 01.08–31.12.2026 г.; справочникът не съдържа праг за 2027 г.
+
+> Здравната вноска … е изчислена върху МОД за самоосигуряващи се 620.20 EUR — също
+> стойността за 01.08–31.12.2026 г., пренесена в ведомост за юли 2027 г.
+
+Those two sentences are the whole point of the mode, and the third check matched
+*neither* of them. It passed on a lesser finding about the social-expense threshold,
+because the pattern did not know the phrase „не съдържа“. A check that would have failed
+the best possible answer is not a check, so the third one now also accepts a finding that
+holds the payroll's year up against another year's figure — naming what was put in the
+gap is a better answer than naming the gap. Re-grading the saved report then exposed the
+opposite fault: „нито една клетка не съдържа формула“ scored as a statement about rates,
+because the companion pattern carried a bare „осигурителен доход“, which appears in half
+the findings in any payroll report. Both are fixed and both are now self-test cases.
 
 ## What is deliberately not tested
 
