@@ -77,40 +77,71 @@ def regime_for(year, month):
     return "H1" if (year, month) <= (2026, 7) else "H2"
 
 
+# The years references/stavki.md carries thresholds for. A payroll dated outside them is
+# the case the skill's first rule exists for: no rate from memory, so a conclusion that
+# rests on one it does not have must be downgraded rather than guessed. Nothing in the
+# Python suites can test that - refusal is a behaviour of the skill, not of the rules -
+# so it is `eval_skill.py --refusal` that uses it.
+RATES_KNOWN_YEARS = frozenset({2025, 2026})
+
+
 # --------------------------------------------------------------- working days
-# Bulgarian public holidays 2026. Rule of чл. 154, ал. 2 КТ: when a holiday falls
-# on a Saturday or Sunday, the next working day is a day off.
-HOLIDAYS_2026_FIXED = [
+# The fixed public holidays of чл. 154, ал. 1 КТ. Rule of чл. 154, ал. 2: when one of
+# these falls on a Saturday or Sunday, the following working day is a day off.
+HOLIDAYS_FIXED = [
     (1, 1), (3, 3), (5, 1), (5, 6), (5, 24), (9, 6), (9, 22), (12, 24), (12, 25), (12, 26),
 ]
-# Good Friday, Holy Saturday, Easter Sunday and Monday. These four never move: the
-# substitution rule of чл. 154, ал. 2 КТ applies to the fixed holidays only, so the two
-# that fall on a weekend by definition do not yield a day off in lieu.
-HOLIDAYS_2026_EASTER = [(4, 10), (4, 11), (4, 12), (4, 13)]
 
 
-def _days_off_2026():
-    days = set()
-    for m, d in HOLIDAYS_2026_FIXED:
-        dt = datetime.date(2026, m, d)
-        if dt.weekday() >= 5:                 # falls on a weekend
-            while dt.weekday() >= 5 or dt in days:
-                dt += datetime.timedelta(days=1)
-        days.add(dt)
-    for m, d in HOLIDAYS_2026_EASTER:
-        days.add(datetime.date(2026, m, d))
-    return days
+def orthodox_easter(year):
+    """Easter Sunday in the Bulgarian Orthodox calendar, as a Gregorian date.
+
+    Meeus's Julian algorithm gives the date in the Julian calendar; the offset to the
+    Gregorian one is a fixed 13 days for 1900-2099. Verified against 2024-05-05,
+    2025-04-20 and 2026-04-12.
+    """
+    a, b, c = year % 4, year % 7, year % 19
+    d = (19 * c + 15) % 30
+    e = (2 * a + 4 * b - d + 34) % 7
+    n = d + e + 114                       # n // 31 is the month: 3 = March, 4 = April
+    return datetime.date(year, n // 31, (n % 31) + 1) + datetime.timedelta(days=13)
 
 
-DAYS_OFF_2026 = _days_off_2026()
+_DAYS_OFF = {}
+
+
+def days_off(year):
+    """The days actually taken off in `year`, holidays and substitutions together."""
+    if year not in _DAYS_OFF:
+        days = set()
+        # Good Friday through Easter Monday. These four never move: the substitution
+        # rule applies to the fixed holidays, so the two that fall on a weekend by
+        # definition yield no day off in lieu. They are placed first so that a fixed
+        # holiday shifting onto one of them keeps shifting - as happens in 2027, where
+        # 1 May is Holy Saturday and 3 May is Easter Monday.
+        easter = orthodox_easter(year)
+        for offset in (-2, -1, 0, 1):
+            days.add(easter + datetime.timedelta(days=offset))
+        for m, d in HOLIDAYS_FIXED:
+            dt = datetime.date(year, m, d)
+            if dt.weekday() >= 5:                 # falls on a weekend
+                while dt.weekday() >= 5 or dt in days:
+                    dt += datetime.timedelta(days=1)
+            days.add(dt)
+        _DAYS_OFF[year] = days
+    return _DAYS_OFF[year]
+
+
+DAYS_OFF_2026 = days_off(2026)
 
 
 def working_days(year, month):
     """Working days in the month: weekdays minus public holidays."""
+    off = days_off(year)
     d = datetime.date(year, month, 1)
     n = 0
     while d.month == month:
-        if d.weekday() < 5 and d not in DAYS_OFF_2026:
+        if d.weekday() < 5 and d not in off:
             n += 1
         d += datetime.timedelta(days=1)
     return n

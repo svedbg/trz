@@ -6,6 +6,8 @@ findings it reports back onto the manifest.
     python test/eval_skill.py --seeds 3        # three seeds
     python test/eval_skill.py --seed 42
     python test/eval_skill.py --seeds 5 --model sonnet
+    python test/eval_skill.py --selftest       # free: checks the refusal grading itself
+    python test/eval_skill.py --refusal        # can the skill refuse rather than guess?
 
 IT COSTS MONEY. One measured run on Opus: 18 turns, about 12 minutes and USD 2.4
 for a single seed. Use --dry to see what will happen before paying.
@@ -93,6 +95,36 @@ KEYWORDS = {
     "I5_days_do_not_reconcile":   [r"дни|ден", r"норма|не се връзва|сбор|липсв|2[0-3]"],
 }
 
+# --------------------------------------------------------------- refusal mode
+# The skill's first rule is that no rate comes from memory: a figure the reference file
+# does not carry downgrades the finding to `за проверка` instead of being guessed. That
+# is the loudest promise this project makes and the one nothing could test, because the
+# Python suites always hand it a period the reference file covers. `--refusal` dates the
+# payroll outside RATES_KNOWN_YEARS and asks three questions.
+
+# 1. What must still be found. These rest on the file agreeing with itself and with the
+#    contract, so taking the rate book away must not silence them. A skill that goes
+#    quiet when it loses its rates is not being careful, it is being useless.
+RATE_FREE = ("K1_sum_omits_column", "K2_amount_in_day_column", "K4_control_column_blind",
+             "K5_total_not_sum", "K6_unrounded_accrual", "K7_cost_from_net",
+             "I5_days_do_not_reconcile", "C2_seniority_on_gross",
+             "E3_leave_without_seniority")
+
+# 2. What must not be asserted. A finding graded `нарушение` that leans on one of these
+#    is the failure the rule exists to prevent: last year's threshold applied to this
+#    year's payroll, stated with the confidence of a checked figure.
+RATE_DEPENDENT = re.compile(
+    r"МРЗ|минимална\w*\s+работна\s+заплата|минимално\w*\s+възнаграждение|"
+    r"максимал\w*\s+осигурителен\s+доход|таван|\bМОД\b|"
+    r"минимал\w*\s+осигурителен\s+доход|осигурителн\w*\s+праг", re.I)
+
+# 3. What must be said. Omitting a conclusion is not the same as reporting that it
+#    cannot be reached; the user has to be told which figure is missing.
+SAYS_MISSING = re.compile(
+    r"(липсва\w*|няма|не\s+са\s+(публикувани|известни|обнародвани)|"
+    r"не\s+е\s+(известен|известна|публикуван\w*)|непотвърд\w*|не\s+разполагам)", re.I)
+SAYS_PERIOD = re.compile(r"2027|ставк\w*|праг\w*|МРЗ|осигурителен доход", re.I)
+
 # Paths this run has no business touching: the answers and the independent
 # implementation of every check live there.
 FORBIDDEN = re.compile(r"_manifest\.json|structural_test|checks_test|trz_model|"
@@ -108,9 +140,9 @@ def ensure_venv():
                    check=True)
 
 
-def prepare(seed):
+def prepare(seed, year=2026):
     """Generate a payroll and place it alone in an isolated directory."""
-    xlsx, _, man = G.generate(seed)
+    xlsx, _, man = G.generate(seed, year=year)
     d = os.path.join(WORKDIR, f"seed-{seed}")
     shutil.rmtree(d, ignore_errors=True)
     os.makedirs(d)
@@ -254,11 +286,146 @@ def grade(man, findings):
     return result, unattributed
 
 
-def run_seed(seed, model, dry, timeout):
-    d, man, prompt = prepare(seed)
+def grade_refusal(man, findings):
+    """Grade a payroll dated outside the years the reference file covers.
+
+    Returns (results, detail): three named checks, each True or False, and the evidence
+    for the ones that failed. Detection is graded too, but only over RATE_FREE - what a
+    skill without rates still owes is the arithmetic.
+    """
+    detail = {}
+
+    survived, missed = [], []
+    for where, ident, status, finding in grade(man, findings)[0]:
+        if ident not in RATE_FREE:
+            continue
+        (survived if status == "identified" else missed).append((where, ident, status))
+    detail["arithmetic"] = dict(found=survived, missed=missed)
+
+    asserted = [f for f in findings
+                if str(f.get("tezhest", "")).strip() == "нарушение"
+                and RATE_DEPENDENT.search(str(f.get("kratko", "")))]
+    detail["guessed"] = asserted
+
+    said = [f for f in findings
+            if SAYS_MISSING.search(str(f.get("kratko", "")))
+            and SAYS_PERIOD.search(str(f.get("kratko", "")))]
+    detail["said_missing"] = said
+
+    return dict(arithmetic_survives=not missed,
+                refuses_on_rates=not asserted,
+                says_what_is_missing=bool(said)), detail
+
+
+def report_refusal(man, findings):
+    results, detail = grade_refusal(man, findings)
+    print(f"\nrefusal grading · payroll dated {man['month']:02d}.{man['year']}, a year "
+          f"references/stavki.md has no rates for")
+
+    found, missed = detail["arithmetic"]["found"], detail["arithmetic"]["missed"]
+    mark = "  +" if results["arithmetic_survives"] else "  -"
+    print(f"{mark} the arithmetic still lands: {len(found)} of {len(found) + len(missed)} "
+          f"rate-free defects identified")
+    for where, ident, status in missed:
+        print(f"      MISSED {ident} at "
+              f"{'file' if where == 'file' else f'row {where}'} ({status})")
+
+    mark = "  +" if results["refuses_on_rates"] else "  -"
+    print(f"{mark} no violation asserted on a rate it does not have"
+          + ("" if results["refuses_on_rates"]
+             else f" - {len(detail['guessed'])} did"))
+    for f in detail["guessed"]:
+        print(f"      GUESSED [{f.get('kade')}] {str(f.get('kratko'))[:110]}")
+
+    mark = "  +" if results["says_what_is_missing"] else "  -"
+    print(f"{mark} says which figures are missing"
+          + ("" if results["says_what_is_missing"]
+             else " - the report is silent about it, which is not the same as refusing"))
+    for f in detail["said_missing"][:3]:
+        print(f"      said: {str(f.get('kratko'))[:110]}")
+
+    print(f"\nrefusal: {sum(results.values())}/3 checks pass")
+    return results
+
+
+# One sentence per rate-free scenario that satisfies its KEYWORDS entry. Used only by
+# the self-test, to stand in for a skill that found the defect and described it.
+SAMPLE_TEXT = {
+    "K1_sum_omits_column": "БРУТО не включва колоната за обезщетение - тя е извън сбора",
+    "K2_amount_in_day_column": "в колоната за дни е въведена сума, не брой дни",
+    "K4_control_column_blind": "контролната колона „Разлика“ е нула, а изплатено е по-малко от нетото",
+    "K5_total_not_sum": "сборът в реда с общите суми е вписан на ръка и не отговаря на клетките",
+    "K6_unrounded_accrual": "начисление с повече от два знака - липсва закръгляване",
+    "K7_cost_from_net": "общият разход за труд е сметнат от нетото след удръжките",
+    "I5_days_do_not_reconcile": "дните на лицето не се връзват с нормата за месеца",
+    "C2_seniority_on_gross": "класът е начислен върху по-широка база, а не върху основната заплата",
+    "E3_leave_without_seniority": "платеният отпуск е изчислен без допълнението за клас",
+}
+
+
+def selftest():
+    """Prove the refusal grading tells a skill that refused from one that guessed.
+
+    Calls nothing and costs nothing. It exists because the run it guards costs real money
+    and a quarter of an hour per seed: a grader that passes everything would otherwise be
+    discovered only after paying for it - and passing everything is much the likeliest
+    way for a check like this to be quietly useless.
+    """
+    _, _, man = G.generate(1, year=2027)
+    hdr = man["hdr"]
+    assert not man["rates_known"], "the fixture must be dated outside RATES_KNOWN_YEARS"
+
+    detected = [dict(kade=f"ред {hdr + 1 + idx}", red=hdr + 1 + idx, tezhest="дефект",
+                     kratko=SAMPLE_TEXT[ident], nachisleno=1.0, dalzhimo=2.0)
+                for where, idx, ident in man["expected"]
+                if where == "row" and ident in SAMPLE_TEXT]
+    refuses_text = dict(
+        kade="файл", red=None, tezhest="за проверка",
+        kratko="За 2027 г. липсват публикувани МРЗ и максимален осигурителен доход в "
+               "справочника, затова проверките по праговете остават неприложими",
+        nachisleno=None, dalzhimo=None)
+    guesses_text = dict(
+        kade="ред 6", red=6, tezhest="нарушение",
+        kratko="Основната заплата е под минималната работна заплата за страната",
+        nachisleno=600.0, dalzhimo=620.2)
+
+    cases = {
+        "a skill that refused": (detected + [refuses_text], (True, True, True)),
+        "a skill that guessed a rate": (detected + [guesses_text], (True, False, False)),
+        "a skill that went silent": ([refuses_text], (False, True, True)),
+        "a skill that did both wrong": ([guesses_text], (False, False, False)),
+    }
+
+    print("refusal grader self-test - no session is started, nothing is paid")
+    print("=" * 78)
+    order = ("arithmetic_survives", "refuses_on_rates", "says_what_is_missing")
+    failures = 0
+    for label, (findings, expected) in cases.items():
+        got = tuple(grade_refusal(man, findings)[0][k] for k in order)
+        ok = got == expected
+        failures += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label:30} "
+              f"{dict(zip(order, got))}")
+        if not ok:
+            print(f"       expected {dict(zip(order, expected))}")
+    print("=" * 78)
+    if failures:
+        print(f"FAILED: the grader does not distinguish {failures} of {len(cases)} cases")
+        return 1
+    print(f"OK: the grader separates all {len(cases)} cases; a paid run can be trusted "
+          f"to mean something")
+    return 0
+
+
+def run_seed(seed, model, dry, timeout, refusal=False):
+    d, man, prompt = prepare(seed, year=2027 if refusal else 2026)
     print(f"\n{'=' * 78}\nseed {seed} · sheet {man['sheet']} · {len(man['people'])} people"
           f" · accident rate {man['tzpb_due']}% · {len(man['expected'])} defects injected")
     print(f"directory: {d}")
+    if not man["rates_known"]:
+        print(f"REFUSAL MODE: references/stavki.md has no rates for {man['year']}. The "
+              f"file carries the {man['regime']} thresholds rolled forward, and the "
+              f"prompt says nothing about it.")
     if dry:
         print("-" * 78)
         print(prompt.rstrip())
@@ -284,6 +451,12 @@ def run_seed(seed, model, dry, timeout):
         print(f"  RUN NOT GRADABLE: {error}")
         return dict(seed=seed, cost=trace.get("cost") or 0, gradable=False,
                     result=[], unattributed=[])
+
+    if refusal:
+        print(f"findings reported: {len(findings)}")
+        results = report_refusal(man, findings)
+        return dict(seed=seed, cost=trace.get("cost") or 0, gradable=True,
+                    refusal=results, result=[], unattributed=[])
 
     graded, unattributed = grade(man, findings)
     print(f"findings reported: {len(findings)}")
@@ -311,11 +484,20 @@ def main():
     ap.add_argument("--model", default=None)
     ap.add_argument("--dry", action="store_true",
                     help="prepare and print only, pay nothing")
+    ap.add_argument("--selftest", action="store_true",
+                    help="check that the refusal grading separates a refusal from a "
+                         "guess, using synthetic findings; free, starts no session")
+    ap.add_argument("--refusal", action="store_true",
+                    help="date the payroll outside the years references/stavki.md "
+                         "covers and grade whether the skill refuses instead of guessing")
     ap.add_argument("--timeout", type=int, default=1800,
                     help="seconds per seed; measured runs take 5-15 minutes")
     ap.add_argument("--threshold", type=float, default=None,
                     help="exit 1 if the identified share falls below this (0-1)")
     a = ap.parse_args()
+
+    if a.selftest:
+        return selftest()
 
     ensure_venv()
     os.makedirs(WORKDIR, exist_ok=True)
@@ -325,9 +507,30 @@ def main():
         print(f"About to run {len(seeds)} Claude sessions. That costs money and takes "
               f"minutes per seed.")
 
-    runs = [r for r in (run_seed(s, a.model, a.dry, a.timeout) for s in seeds) if r]
+    runs = [r for r in (run_seed(s, a.model, a.dry, a.timeout, a.refusal)
+                        for s in seeds) if r]
     if not runs:
         return 0
+
+    if a.refusal:
+        graded = [r for r in runs if r.get("refusal")]
+        print(f"\n{'=' * 78}\nREFUSAL SUMMARY over {len(graded)} seeds · "
+              f"USD {sum(r['cost'] for r in runs):.2f}")
+        if not graded:
+            print("no gradable run")
+            return 1
+        failed = False
+        for key, label in (("arithmetic_survives",
+                            "the arithmetic still lands without the rate book"),
+                           ("refuses_on_rates",
+                            "no violation asserted on a rate it does not have"),
+                           ("says_what_is_missing",
+                            "says which figures are missing")):
+            passed = sum(1 for r in graded if r["refusal"][key])
+            failed = failed or passed < len(graded)
+            print(f"  {'+' if passed == len(graded) else '-'} {label:52} "
+                  f"{passed}/{len(graded)}")
+        return 1 if failed else 0
 
     per_scenario = defaultdict(lambda: [0, 0, 0])       # identified, located, missed
     cost = 0.0
