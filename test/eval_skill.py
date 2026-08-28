@@ -119,11 +119,41 @@ RATE_DEPENDENT = re.compile(
     r"минимал\w*\s+осигурителен\s+доход|осигурителн\w*\s+праг", re.I)
 
 # 3. What must be said. Omitting a conclusion is not the same as reporting that it
-#    cannot be reached; the user has to be told which figure is missing.
+#    cannot be reached; the user has to be told.
+#
+#    Two phrasings count, and the second is the sharper one. A skill can name the gap -
+#    "the reference file has no threshold for this year" - or it can name what was put
+#    in the gap's place: "this is the 2026 figure, sitting in a 2027 payroll". The
+#    second is a better answer, because it says what actually happened.
+#
+#    Both are here because of what the first live run showed. It passed this check, but
+#    on a secondary sentence about the social-expense threshold, while the two findings
+#    that were precisely the behaviour under test - the cap and the self-employed
+#    minimum, both identified as the 01.08-31.12.2026 values carried into a July 2027
+#    payroll - matched nothing. One said "справочникът не съдържа праг за 2027 г.",
+#    a phrase the pattern did not know. A check that would have failed the best possible
+#    answer is not a check.
 SAYS_MISSING = re.compile(
-    r"(липсва\w*|няма|не\s+са\s+(публикувани|известни|обнародвани)|"
-    r"не\s+е\s+(известен|известна|публикуван\w*)|непотвърд\w*|не\s+разполагам)", re.I)
-SAYS_PERIOD = re.compile(r"2027|ставк\w*|праг\w*|МРЗ|осигурителен доход", re.I)
+    r"липсва\w*|няма|не\s+съдържа\w*|не\s+разполага\w*|непотвърд\w*|"
+    r"не\s+са\s+(публикувани|известни|обнародвани|налични)|"
+    r"не\s+е\s+(известен|известна|публикуван\w*|наличен|налична)|"
+    r"без\s+публикуван\w*", re.I)
+#    The companion pattern names what is missing, and stays narrow on purpose. It once
+#    carried a bare "осигурителен доход", which appears in half the findings in any
+#    payroll report - and duly matched "нито една клетка не съдържа формула", an
+#    observation about formulas counted as a statement about rates.
+SAYS_PERIOD = re.compile(r"2027|ставк\w*|праг\w*|\bМРЗ\b|\bМОД\b|"
+                         r"минимална работна заплата", re.I)
+
+
+def names_a_stale_rate(text, year):
+    """Does the finding hold this payroll's year up against another year's figure?
+
+    Cheaper and steadier than matching the wording: a sentence that mentions both 2027
+    and 2026 has noticed the mismatch, however it chose to phrase it.
+    """
+    years = set(re.findall(r"\b(20\d\d)\b", str(text)))
+    return str(year) in years and len(years) > 1
 
 # Paths this run has no business touching: the answers and the independent
 # implementation of every check live there.
@@ -308,8 +338,9 @@ def grade_refusal(man, findings):
     detail["guessed"] = asserted
 
     said = [f for f in findings
-            if SAYS_MISSING.search(str(f.get("kratko", "")))
-            and SAYS_PERIOD.search(str(f.get("kratko", "")))]
+            if (SAYS_MISSING.search(str(f.get("kratko", "")))
+                and SAYS_PERIOD.search(str(f.get("kratko", ""))))
+            or names_a_stale_rate(f.get("kratko", ""), man["year"])]
     detail["said_missing"] = said
 
     return dict(arithmetic_survives=not missed,
@@ -389,11 +420,26 @@ def selftest():
         kratko="Основната заплата е под минималната работна заплата за страната",
         nachisleno=600.0, dalzhimo=620.2)
 
+    # The last two are the phrasings the first live run actually produced, and which an
+    # earlier version of this grader scored as silence. They are cases now.
+    names_absence = dict(
+        kade="файл", red=None, tezhest="за проверка",
+        kratko="Справочникът не съдържа праг за 2027 г., затова проверката по тавана "
+               "не може да бъде извършена",
+        nachisleno=None, dalzhimo=None)
+    names_stale = dict(
+        kade="файл", red=None, tezhest="за проверка",
+        kratko="Ведомостта е за юли 2027 г., но прилага максимален осигурителен доход "
+               "2300.00 EUR — точно стойността за 01.08–31.12.2026 г.",
+        nachisleno=None, dalzhimo=None)
+
     cases = {
         "a skill that refused": (detected + [refuses_text], (True, True, True)),
         "a skill that guessed a rate": (detected + [guesses_text], (True, False, False)),
         "a skill that went silent": ([refuses_text], (False, True, True)),
         "a skill that did both wrong": ([guesses_text], (False, False, False)),
+        "one that names the absence": (detected + [names_absence], (True, True, True)),
+        "one that names the stale rate": (detected + [names_stale], (True, True, True)),
     }
 
     print("refusal grader self-test - no session is started, nothing is paid")
