@@ -577,12 +577,16 @@ SPOILS_SAMPLE = ("F9_sick_pay_in_insurable", "F10_in_kind_asymmetry",
 # =====================================================================
 
 
-def generate(seed, month=None):
+def generate(seed, month=None, year=2026):
     rnd = random.Random(seed)
     month = month or rnd.choice([6, 7, 8, 9, 10, 11])
-    year = 2026
     norm = M.working_days(year, month)
-    regime_id = M.regime_for(year, month)
+    # A year the reference file has no thresholds for is built the way a real payroll is
+    # built every January: by copying last year's file forward, so it carries the last
+    # published regime. Whether those thresholds still apply is exactly what the skill
+    # cannot know, and the whole point of the fixture is that it must not guess.
+    rates_known = year in M.RATES_KNOWN_YEARS
+    regime_id = M.regime_for(year, month) if rates_known else "H2"
     regime = M.REGIMES[regime_id]
     tzpb = rnd.choice([0.4, 0.5, 0.7, 1.1])
     policy = dict(in_kind_in_bases=rnd.random() < 0.5,
@@ -600,7 +604,10 @@ def generate(seed, month=None):
             file_defects.append("F5_tzpb_below_due")
 
     cap_effective = regime["max_insurable"]
-    if rnd.random() < 0.35:
+    # Applying "the cap from the other half-year" presupposes a published cap for this
+    # year to be wrong about. With no rates there is nothing to be wrong against, and
+    # the finding the skill owes is that it cannot tell - not a violation.
+    if rates_known and rnd.random() < 0.35:
         cap_effective = M.REGIMES["H2" if regime_id == "H1" else "H1"]["max_insurable"]
         file_defects.append("B4_cap_from_wrong_period")
     regime_effective = dict(regime, max_insurable=cap_effective)
@@ -739,6 +746,7 @@ def generate(seed, month=None):
     manifest = dict(
         seed=seed, file=os.path.basename(path), sheet=ws.title,
         year=year, month=month, norm_days=norm, regime=regime_id,
+        rates_known=rates_known,
         max_insurable=regime["max_insurable"],
         min_insurable_self=regime["min_insurable_self"],
         tzpb_due=tzpb, policy=policy, hdr=HDR, total_row=total_row,
@@ -756,13 +764,18 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--month", type=int, default=None, choices=[6, 7, 8, 9, 10, 11])
+    ap.add_argument("--year", type=int, default=2026,
+                    help="a year outside RATES_KNOWN_YEARS builds the refusal fixture")
     a = ap.parse_args()
-    path, manifest_path, man = generate(a.seed, a.month)
+    path, manifest_path, man = generate(a.seed, a.month, a.year)
     print(f"written:  {path}")
     print(f"manifest: {manifest_path}")
     print(f"{man['month']:02d}.{man['year']} · regime {man['regime']} · "
           f"{man['norm_days']} working days · {len(man['people'])} people · "
           f"accident rate {man['tzpb_due']}%")
+    if not man["rates_known"]:
+        print(f"rates: NONE published for {man['year']} in references/stavki.md - the "
+              f"file carries the {man['regime']} thresholds rolled forward")
     print(f"policy: {man['policy']}")
     print(f"injected defects ({len(man['expected'])}):")
     for where, idx, ident in man["expected"]:

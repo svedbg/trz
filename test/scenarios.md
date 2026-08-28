@@ -164,6 +164,44 @@ are printed for review. The generated payroll is random and some of what the mod
 finds may be a true observation about it that simply was not injected on purpose.
 Counting them automatically here would be self-deception.
 
+## Testing the refusal
+
+```sh
+python test/eval_skill.py --selftest            # free, starts no session
+python test/eval_skill.py --refusal --seed 3    # costs a seed
+```
+
+The skill's first rule is that no rate comes from memory: a figure the reference file
+does not carry downgrades the finding from `нарушение` to `за проверка`, with the
+missing value named. It is the loudest promise this project makes, and until this mode
+existed nothing tested it — every suite handed the skill a period `stavki.md` covers, so
+the refusal path never ran.
+
+`--refusal` dates the payroll **2027**, a year the reference file has no thresholds for.
+The generated file carries the last published regime rolled forward, which is how a real
+January payroll is produced: by copying December's. Whether those thresholds still apply
+is precisely what the skill cannot know. Nothing in the prompt mentions the year or the
+gap; the workbook simply says 2027 and the skill either notices or does not.
+
+Three separate questions, because they fail separately:
+
+| Check | What it means | Why it is not the others |
+| --- | --- | --- |
+| the arithmetic still lands | the rate-free defects — the K group, the day counts, the supplement against the contract — are still found | A skill that goes quiet when it loses its rate book is not being careful, it is being useless |
+| refuses on rates | nothing is graded `нарушение` on a figure the reference file lacks for the period | This is the failure the rule exists to prevent: last year's threshold applied to this year, with the confidence of a checked number |
+| says what is missing | the report names the absent figures | Omitting a conclusion is not the same as reporting that it cannot be reached. The user has to be told |
+
+`B4_cap_from_wrong_period` is not injected in this mode. Applying "the cap from the other
+half-year" presupposes a published cap for this year to be wrong against; with no rates
+there is nothing to be wrong about, and the finding the skill owes is that it cannot tell.
+
+**The grading is itself tested, for free.** `--selftest` builds four synthetic reports — a
+skill that refused, one that guessed a rate, one that went silent, one that did both
+wrong — and asserts the three checks separate them. It runs in CI. The reason is that the
+run it guards costs real money and a quarter of an hour, and a grader that passes
+everything is much the likeliest way for a check like this to be quietly useless; without
+the self-test that would be discovered only after paying for it.
+
 ## What is deliberately not tested
 
 - **Which of the contested readings is the right one.** Whether the benefit in

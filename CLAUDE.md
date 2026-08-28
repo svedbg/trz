@@ -31,6 +31,7 @@ plainly that it rests on arithmetic. Do not invent an article to fill the field.
 python test/rates_test.py     # rates vs. the reference file. No dependencies. Run on any skill edit.
 python test/skill_test.py     # packaging: frontmatter, references, manifests, licences, dates
 python test/checks_test.py    # suite 1: static payroll, asserts its own answer key
+python test/eval_skill.py --selftest      # free: checks the refusal grading itself
 python test/run_tests.py      # all three, 50 seeds
 python test/run_tests.py --seeds 300      # what CI runs
 ```

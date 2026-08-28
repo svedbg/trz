@@ -47,6 +47,14 @@ jobs:
       - name: Skill packaging - frontmatter, references, manifests, licences
         run: python test/skill_test.py
 
+      - name: Refusal grader self-test
+        # Free: it builds synthetic findings and checks that the grading in
+        # eval_skill.py --refusal separates a skill that refused from one that
+        # guessed a rate. The run it guards costs money and a quarter of an hour, so
+        # a grader that quietly passed everything would be discovered late and
+        # expensively.
+        run: python test/eval_skill.py --selftest
+
       - name: Guard against leaked personal data
         # Payrolls are personal data under the GDPR and this repository is
         # public. This step guards against real data arriving with an update to
