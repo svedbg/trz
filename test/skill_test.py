@@ -155,21 +155,6 @@ if plugin:
     if "category" in plugin:
         fail("plugin.json carries `category`, which belongs in marketplace.json and "
              "is ignored here")
-    if plugin.get("metadata", {}).get("rates_verified"):
-        stated = plugin["metadata"]["rates_verified"]
-        rates = read(os.path.join(SKILL_DIR, "references", "stavki.md"))
-        m = re.search(r"Последна сверка: \*\*(\d{2})\.(\d{2})\.(\d{4})\*\*", rates)
-        if not m:
-            fail("cannot find the verification date in references/stavki.md, so the "
-                 "date advertised in plugin.json cannot be checked")
-        else:
-            in_file = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
-            if in_file != stated:
-                fail(f"plugin.json advertises rates verified {stated} while "
-                     f"references/stavki.md says {in_file} - the manifest promises a "
-                     f"freshness the reference file does not have")
-            else:
-                note(f"rates verification date agrees in both places: {in_file}")
 
 if plugin and marketplace:
     entries = marketplace.get("plugins") or []
@@ -197,6 +182,63 @@ if plugin and marketplace:
         fail("marketplace.json has no description - users see it when browsing")
     if not (marketplace.get("owner") or {}).get("name"):
         fail("marketplace.json has no owner.name")
+
+# ------------------------------------- the rates-verification date, everywhere
+# `references/stavki.md` is the source of truth for the date, and six other places
+# advertise a copy of it: two manifest/frontmatter fields, the compatibility line, and
+# a badge and a sentence in each README. A copy that is not updated with the reference
+# file promises a freshness the rates do not have - and the badge is the first thing a
+# visitor reads. Checking one pair caught none of the other five.
+MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July",
+             "August", "September", "October", "November", "December"]
+MONTHS_BG = ["януари", "февруари", "март", "април", "май", "юни", "юли",
+             "август", "септември", "октомври", "ноември", "декември"]
+
+rates_text = read(os.path.join(SKILL_DIR, "references", "stavki.md"))
+verified = re.search(r"Последна сверка: \*\*(\d{2})\.(\d{2})\.(\d{4})\*\*", rates_text)
+if not verified:
+    fail("cannot find „Последна сверка: **dd.mm.yyyy**“ in references/stavki.md - it is "
+         "the source of truth for the verification date, so none of the places that "
+         "advertise it can be checked")
+else:
+    day, month, year = verified.group(1), verified.group(2), verified.group(3)
+    iso, dotted = f"{year}-{month}-{day}", f"{day}.{month}.{year}"
+    stale = []
+
+    for label, stated in (
+            ("plugin.json metadata.rates_verified",
+             (plugin or {}).get("metadata", {}).get("rates_verified")),
+            ("SKILL.md frontmatter metadata.rates_verified",
+             (frontmatter.get("metadata") or {}).get("rates_verified"))):
+        if stated is None:
+            note(f"{label} is not set - nothing to keep in step")
+        elif str(stated) != iso:
+            stale.append(f"{label} says {stated}, references/stavki.md says {iso}")
+
+    # The prose copies. Each is matched in the exact shape it is written in, so that a
+    # half-edit - badge updated, sentence forgotten - is still caught.
+    for label, path, pattern in (
+            ("SKILL.md compatibility", SKILL_MD, re.escape(dotted)),
+            ("README.md badge", os.path.join(ROOT, "README.md"),
+             rf"rates%20verified-{year}--{month}--{day}-"),
+            ("README.md body", os.path.join(ROOT, "README.md"),
+             rf"\b{int(day)} {MONTHS_EN[int(month) - 1]} {year}\b"),
+            ("README.bg.md badge", os.path.join(ROOT, "README.bg.md"),
+             rf"-{year}--{month}--{day}-"),
+            ("README.bg.md body", os.path.join(ROOT, "README.bg.md"),
+             rf"\b{int(day)} {MONTHS_BG[int(month) - 1]} {year}")):
+        if not os.path.exists(path):
+            fail(f"{path} is missing, so {label} cannot be checked")
+        elif not re.search(pattern, read(path)):
+            stale.append(f"{label} does not carry {dotted}")
+
+    if stale:
+        for s in stale:
+            fail(f"rates-verification date out of step: {s}")
+        fail("the date is advertised in seven places and they must move together; "
+             "references/stavki.md is the one that leads")
+    else:
+        note(f"rates verification date {dotted} agrees in all seven places")
 
 # ------------------------------------------------------------------ licences
 for path, label in ((os.path.join(ROOT, "LICENSE"), "LICENSE"),
