@@ -17,19 +17,31 @@ import re
 
 import openpyxl
 
-# --- rates (stavki.md, period 01.01-31.07.2026) ---
-MIN_WAGE = 620.20        # ПМС 243, ДВ бр.98/18.11.2025                    [ДВ]
-MIN_WAGE_HOUR = 3.74     # same                                            [ДВ]
-MAX_INSURABLE = 2111.64  # чл.9 ЗБДОО 2026, ДВ бр.68/28.07.2026            [ДВ]
+import trz_model as M
+
+# --- rates -------------------------------------------------------------------
+# Read from trz_model.py, which rates_test.py cross-checks against stavki.md line by
+# line. This file used to keep its own transcription of the same figures. Nothing
+# guarded it: rates_test reads only the model, and the fixture is static with a static
+# answer key, so a rate that moved in the reference file left these stale and suite 1
+# green. That is the failure PR #16 documented - generator and checker moving together -
+# in a second place.
+#
+# The regime is 01.01-31.07.2026, because the fixture is May 2026. Percentages are
+# converted to fractions here; the model states them the way stavki.md does.
+_H1 = M.REGIMES["H1"]
+MIN_WAGE = _H1["min_wage"]
+MIN_WAGE_HOUR = _H1["min_wage_hour"]
+MAX_INSURABLE = _H1["max_insurable"]
 MIN_INSURABLE_ACTIVITY = None   # Приложение №1 - MISSING from the reference
-SENIORITY_MIN = 0.006    # ПМС 147, ДВ бр.56/10.07.2007                    [ДВ]
-NIGHT_HOUR = round(0.0015 * MIN_WAGE, 4)   # чл.8 НСОРЗ = 0.9303
-OVERTIME_WORKDAY = 0.50  # чл.262 ал.1 т.1 КТ                              [ДВ]
-HOLIDAY_MULTIPLIER = 2.0  # чл.264 КТ - double rate                        [ДВ]
-SICK_DAYS_EMPLOYER = 2   # чл.40 ал.5 КСО                                  [ДВ]
-SICK_RATE = 0.70         # чл.40 ал.5 КСО                                  [ДВ]
-EMPLOYEE_TOTAL = 0.1378  # [secondary source]
-TAX_RATE = 0.10          # [secondary source]
+SENIORITY_MIN = M.SENIORITY_RATE / 100.0
+NIGHT_HOUR = round(M.NIGHT_FACTOR * MIN_WAGE, 4)          # чл. 8 НСОРЗ = 0.9303
+OVERTIME_WORKDAY = M.OVERTIME_WORKDAY
+HOLIDAY_MULTIPLIER = M.HOLIDAY_MULTIPLIER
+SICK_DAYS_EMPLOYER = M.SICK_DAYS_EMPLOYER
+SICK_RATE = M.SICK_RATE
+EMPLOYEE_TOTAL = M.EMPLOYEE_TOTAL / 100.0
+TAX_RATE = M.TAX_RATE
 
 WORK_DAYS, NORM_HOURS, FULL_DAY = 18, 144, 8
 TOL = 0.02

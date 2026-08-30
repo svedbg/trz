@@ -36,9 +36,9 @@ def r2(x):
 
 REGIMES = {
     "H1": dict(period="01.01-31.07.2026", max_insurable=2111.64,
-               min_insurable_self=550.66, min_wage=620.20),
+               min_insurable_self=550.66, min_wage=620.20, min_wage_hour=3.74),
     "H2": dict(period="01.08-31.12.2026", max_insurable=2300.00,
-               min_insurable_self=620.20, min_wage=620.20),
+               min_insurable_self=620.20, min_wage=620.20, min_wage_hour=3.74),
 }
 
 EMPLOYEE = {                  # чл. 6, ал. 1 и ал. 3 КСО; ЗЗО - third labour category
@@ -61,6 +61,16 @@ SICK_DAYS_EMPLOYER = 2                    # чл. 40, ал. 5 КСО, from 01.01
 SICK_RATE = 0.70                          # чл. 40, ал. 5 КСО
 HEALTH_ON_INCAPACITY = 4.80               # чл. 40, ал. 1, т. 5 ЗЗО - employer's cost
 RELIEF_LIMIT = 0.10                       # чл. 42, ал. 3 във вр. с чл. 19 ЗДДФЛ
+
+# Premiums for specific working-time regimes. The model does not compute with these -
+# suite 1 does - but they live here because this file is the one Python copy of the
+# rates and rates_test.py guards it. Keeping a second transcription in checks_test.py
+# put four figures outside that guarantee.
+NIGHT_FACTOR = 0.0015                     # чл. 8 НСОРЗ - per night hour, of the МРЗ
+OVERTIME_WORKDAY = 0.50                   # чл. 262, ал. 1, т. 1 КТ
+HOLIDAY_MULTIPLIER = 2.0                  # чл. 264 КТ - „удвоения размер“. The statute
+                                          # writes the doubling in words and gives no
+                                          # numeral, so rates_test guards the phrase.
 
 # 60 лв in euro, at the fixed rate. Derived rather than copied, so that
 # rates_test.py can check it against the reference file.
