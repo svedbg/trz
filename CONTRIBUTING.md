@@ -131,8 +131,16 @@ lose history.
 
 ## Releasing
 
-Bump `version` in **both** `.claude-plugin/plugin.json` and
+Bump `version` in **both** `skills/trz-expert/.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` — users are pinned by it, and `skill_test.py`
 fails if the two drift. If the rates changed, update `metadata.rates_verified` in
 `plugin.json` to match the verification date in `stavki.md`; the same test checks
 that too.
+
+The plugin manifest lives inside the skill directory because that directory *is*
+the plugin: `marketplace.json` points `source` at `./skills/trz-expert`, and an
+install copies that directory whole — no ignore file is honoured, so a `source`
+of `.` would hand every user `test/`, the fixtures and any local `.venv`. That is
+also why `LICENSE-DOCS` is duplicated into the skill directory: an installed user
+never sees the repository root, and CC BY 4.0 asks for its terms to travel with
+the text. `skill_test.py` fails if the copy drifts from the root one.

@@ -26,7 +26,9 @@ import yaml
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 SKILL_DIR = os.path.join(ROOT, "skills", "trz-expert")
 SKILL_MD = os.path.join(SKILL_DIR, "SKILL.md")
-PLUGIN = os.path.join(ROOT, ".claude-plugin", "plugin.json")
+# The plugin root is the skill directory itself, so that installing the plugin
+# copies the skill and nothing else - not `test/`, not a local `.venv`.
+PLUGIN = os.path.join(SKILL_DIR, ".claude-plugin", "plugin.json")
 MARKETPLACE = os.path.join(ROOT, ".claude-plugin", "marketplace.json")
 
 # Fields that survive outside Claude Code. Anything else narrows distribution.
@@ -135,8 +137,8 @@ if lines > 500:
 plugin = marketplace = None
 for path, label in ((PLUGIN, "plugin.json"), (MARKETPLACE, "marketplace.json")):
     if not os.path.exists(path):
-        fail(f".claude-plugin/{label} is missing - without it the skill cannot be "
-             f"installed with /plugin, only copied by hand")
+        fail(f"{os.path.relpath(path, ROOT)} is missing - without it the skill cannot "
+             f"be installed with /plugin, only copied by hand")
         continue
     try:
         data = json.loads(read(path))
@@ -178,6 +180,14 @@ if plugin and marketplace:
             elif not os.path.exists(os.path.join(target, ".claude-plugin",
                                                  "plugin.json")):
                 fail(f"marketplace source {source!r} has no .claude-plugin/plugin.json")
+            elif target != SKILL_DIR:
+                # Installing copies the source directory whole, and honours no ignore
+                # file. Point it at the repository root and every install carries
+                # `test/`, the fixtures and whatever `.venv` the author happened to
+                # have - megabytes, to deliver one SKILL.md.
+                fail(f"marketplace source {source!r} is not the skill directory - it "
+                     f"must be ./skills/trz-expert, or the install ships the whole "
+                     f"repository")
     if not marketplace.get("description"):
         fail("marketplace.json has no description - users see it when browsing")
     if not (marketplace.get("owner") or {}).get("name"):
@@ -241,18 +251,36 @@ else:
         note(f"rates verification date {dotted} agrees in all seven places")
 
 # ------------------------------------------------------------------ licences
+# The repository is dual-licensed - CC BY 4.0 for the skill prose, MIT for the Python
+# under `test/` - but only the skill directory is published as the plugin. So the
+# repository needs both licence files and the bundle needs the one that covers what it
+# actually carries, travelling *with* it: an install never sees the repository root.
 for path, label in ((os.path.join(ROOT, "LICENSE"), "LICENSE"),
                     (os.path.join(ROOT, "LICENSE-DOCS"), "LICENSE-DOCS")):
     if not os.path.exists(path):
         fail(f"{label} is missing - a public repository without a licence cannot be "
              f"reused legally, whatever the README says")
 
-if plugin and os.path.exists(os.path.join(ROOT, "LICENSE")):
+BUNDLED_LICENCE = os.path.join(SKILL_DIR, "LICENSE-DOCS")
+if not os.path.exists(BUNDLED_LICENCE):
+    fail("skills/trz-expert/LICENSE-DOCS is missing - the skill directory is what gets "
+         "installed, and CC BY 4.0 requires its terms to travel with the text")
+elif os.path.exists(os.path.join(ROOT, "LICENSE-DOCS")):
+    if read(BUNDLED_LICENCE) != read(os.path.join(ROOT, "LICENSE-DOCS")):
+        fail("skills/trz-expert/LICENSE-DOCS has drifted from the root LICENSE-DOCS - "
+             "they are one licence, and installed users only ever read the copy")
+
+if plugin:
+    # Only what the bundle carries may be declared. `MIT AND CC-BY-4.0` was right when
+    # the whole repository was the plugin; now no MIT-licensed file ships.
     spdx = plugin.get("license", "")
     for part in re.split(r"\s+(?:AND|OR)\s+", spdx):
-        if part and part not in ("MIT", "CC-BY-4.0"):
-            fail(f"plugin.json license {part!r} is not one of the licence files "
-                 f"present in the repository")
+        if part and part != "CC-BY-4.0":
+            fail(f"plugin.json license {part!r} covers nothing the installed plugin "
+                 f"contains - the bundle is the skill directory, which is CC BY 4.0")
+    if spdx != frontmatter.get("license"):
+        fail(f"licence drift: plugin.json says {spdx!r}, SKILL.md frontmatter says "
+             f"{frontmatter.get('license')!r} - they describe the same files")
 
 # --------------------------------------------------------------------- report
 print("Skill and packaging validation")

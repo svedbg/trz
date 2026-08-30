@@ -46,8 +46,12 @@ A false positive fails exactly like a miss.
 
 ## Things that break quietly
 
-- **Two manifests.** `version` lives in both `.claude-plugin/plugin.json` and
-  `.claude-plugin/marketplace.json` and must match.
+- **Two manifests, in two places.** `version` lives in both
+  `skills/trz-expert/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+  and must match. The plugin manifest sits *inside* the skill directory on purpose:
+  installing copies the source directory whole and honours no ignore file, so a
+  `source` of `.` would ship `test/`, the fixtures and any local `.venv` to deliver
+  one SKILL.md. `skill_test.py` fails if `source` stops being `./skills/trz-expert`.
 - **Two READMEs.** `README.md` and `README.bg.md` are the same document. A change to
   one that skips the other is a defect; the figures in them must agree.
 - **The verification date is in seven places** (stavki.md, SKILL.md `compatibility`
