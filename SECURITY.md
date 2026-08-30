@@ -51,9 +51,13 @@ finding. Do not extend the dismissal to it.
 `test/pair_test.py` raised the same rule when the two-month suite was added, and it
 was **fixed rather than dismissed**. The remediation CodeQL gives for this rule is
 one line — sensitive data should not be logged — and the honest way to apply it was
-to stop logging it: the I7 finding no longer prints the two implied monthly bases,
-the amounts stay in the returned finding for anything driving the suite, and people
-are identified by row rather than by name there as elsewhere.
+to stop logging it: the I7 finding no longer carries the two implied monthly bases
+at all, and people are identified by row rather than by name there as elsewhere.
+
+Guarding the print behind a flag was tried first and did not work, for a reason
+worth keeping: a runtime condition is invisible to the scanner, and the value had
+already entered the structure being printed. Half the alert cleared and half did
+not, which was the useful signal. The value is now never computed into the finding.
 
 It was not fixed by renaming. The value is a monthly base and is still called one;
 calling it something else so the scanner stops recognising it is how a real finding
