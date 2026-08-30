@@ -118,9 +118,12 @@ CHECKS = [
     ("limit of the чл. 19 ЗДДФЛ relief",
      r"удържани от работодателя \| до \*\*([\d.]+)%\*\*",
      M.RELIEF_LIMIT * 100),
-    ("exact conversion of the social-expense threshold",
-     r"превалутиране на 60 лв\. е ([\d.]+) EUR",
-     M.SOCIAL_EXPENSE_THRESHOLD, 0.005),
+    ("social-expense threshold in euro, 2026 - now confirmed",
+     r"Същият праг \*\*в евро за 2026 г\.\*\* \| \*\*([\d.]+) EUR\*\*",
+     M.SOCIAL_EXPENSE_THRESHOLD),
+    ("the чл. 12/13 ЗВЕРБ conversion behind it",
+     r"60 ÷ 1\.95583 = ([\d.]+)…",
+     60 / M.FIXED_EUR_RATE, 0.0001),
     ("fixed euro rate",
      r"фиксиран курс \*\*([\d.]+) лв\. за 1 евро\*\*",
      M.FIXED_EUR_RATE),
@@ -134,6 +137,9 @@ CHECKS = [
     ("overtime premium on working days",
      r"\| Работни дни \| \*\*\+([\d.]+)%\*\*",
      M.OVERTIME_WORKDAY * 100),
+    ("night-work floor after the euro changeover",
+     r"\| 2026 \| 620\.20 EUR \|[^|]*\| ([\d.]+) EUR \|",
+     M.NIGHT_FLOOR),
 ]
 
 # --- rules the reference states in words, with no figure to extract ----------
@@ -149,9 +155,6 @@ PHRASES = [
 
 # --- rates the reference file explicitly marks as unconfirmed ---------------
 UNCONFIRMED = [
-    ("the social-expense threshold in euro",
-     r"Същият праг \*\*в евро за 2026 г\.\*\* \| \*\*липсва\*\*[^|]*\|[^|]*\| \*\*за потвърждение\*\*",
-     "M.SOCIAL_EXPENSE_THRESHOLD"),
 ]
 
 
