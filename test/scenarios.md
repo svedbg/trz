@@ -290,3 +290,34 @@ the findings in any payroll report. Both are fixed and both are now self-test ca
   are there, the skill is required to read them (`SKILL.md`, "How to read a
   spreadsheet"); the suite measures the harder case.
 - **Rates and working-time regimes.** That is suite 1's job.
+
+## How much of `proverki.md` the suites reach
+
+**27 of the 78 checks** have a test behind them: 13 in suite 1's static answer key,
+17 across the generated suites, three of them shared. The number is worth stating
+plainly, because a green run is easy to read as "the skill is tested" when what it
+means is "the tested part of the skill still works".
+
+Coverage is not spread evenly, and the shape of the gap is not accidental. Group K
+sits at 8 of 10 because file construction is exactly what a generated workbook can
+express. Two groups sit at zero:
+
+- **H — termination and severance.** A month's payroll shows the payment, not the
+  entitlement. To inject a defect here the fixture would need the event behind it:
+  a termination on a given ground, a notice period, a service record, a base drawn
+  from a month the sheet does not contain. That is a different fixture, not another
+  scenario in this one — the two-month workbook exists because paid leave needed
+  the preceding month, and severance needs considerably more than that.
+- **J — deadlines and formalities.** These are checks about *when* something was
+  done and whether it was filed, and a spreadsheet of amounts carries neither.
+  They are answered from dates and documents outside the payroll.
+
+The rest of the gap is ordinary and closable: `B2`, `B3`, `C3`–`C6`, `E1`, `E2`,
+`F1`, `F6` and the like are all expressible in a monthly sheet and simply have no
+scenario yet. Nothing about the fixtures blocks them.
+
+Two things this does **not** mean. An uncovered check is not an unimplemented one —
+`proverki.md` describes all 78 and the skill is asked to apply all 78; what is
+missing is the proof that it does. And the count is of checks, not of risk: the
+covered ones were chosen because they are the errors that actually turn up in real
+payrolls, which is why the suites keep finding bugs in themselves.
