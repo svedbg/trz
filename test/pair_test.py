@@ -8,6 +8,10 @@
 breaks the things that can only be broken across months. This file has to find exactly
 those and nothing else.
 
+People are identified by row, never by name, as in `structural_test.py`. The names in
+these fixtures are invented, but the report is the part a person pastes into an issue, and
+a row number carries the same information.
+
 Everything here is derived from the two sheets, never from the manifest. The manifest is
 opened once, at the end, to score the run. That is not fastidiousness: the checks are
 meant to be the ones a person could perform with the file alone, and a check that quietly
@@ -149,9 +153,9 @@ def check(xlsx, manifest, quiet=False):
         was, now = (implied_salary(before, early_norm), implied_salary(after, late_norm))
         if was and now and abs(now - was) > SALARY_TOL:
             F.add("I7_unexplained_jump", row_no,
-                  f"„{after['Име']}“ implies a monthly salary of {now:.2f} in "
-                  f"„{late_name}“ against {was:.2f} in „{early_name}“, with the same "
-                  f"contract and nothing in the file to explain the change", now, was)
+                  f"the row implies a monthly salary of {now:.2f} in „{late_name}“ "
+                  f"against {was:.2f} in „{early_name}“, with the same contract and "
+                  f"nothing in the file to explain the change", now, was)
 
         # --- чл. 177 КТ: the base for paid leave ---------------------------
         days_leave = after["Дни платен отпуск"]
@@ -171,9 +175,9 @@ def check(xlsx, manifest, quiet=False):
         why = " - from the contracted daily rate, not from the preceding month" \
             if abs(stated - r2(contract_daily * days_leave)) <= TOL else ""
         F.add("E3_leave_from_contract", row_no,
-              f"paid leave for {days_leave:g} days of „{after['Име']}“{why}; "
-              f"чл. 177 КТ measures it against the average daily gross of "
-              f"„{early_name}“ ({due_daily:.4f})", stated, due)
+              f"paid leave for {days_leave:g} days{why}; чл. 177 КТ measures it "
+              f"against the average daily gross of „{early_name}“ ({due_daily:.4f})",
+              stated, due)
 
     # ----------------------------------------------------------------- scoring
     man = manifest if isinstance(manifest, dict) else json.load(
