@@ -86,7 +86,7 @@ column, and the days that no longer reconcile. That is how it goes in reality to
 ```sh
 pip install -r test/requirements.txt
 
-python test/run_tests.py                   # all three suites, 50 seeds
+python test/run_tests.py                   # all four suites, 50 seeds
 python test/run_tests.py --seeds 300       # longer
 python test/structural_test.py --seed 42   # one seed, with the findings
 python test/generate_wide.py --seed 42     # generate only, with the answers
@@ -99,6 +99,57 @@ like misses.
 `run_tests.py` also prints coverage — how many times each scenario was injected. A
 scenario with zero injections did not pass, it was not tested; at low seed counts
 some scenarios find no suitable row and are skipped.
+
+## The two-month suite
+
+```sh
+python test/pair_test.py --seed 7
+python test/generate_pair.py --seed 7     # generate only, with the answers
+```
+
+Three of the documented checks cannot be expressed in one sheet, and until this fixture
+none of them had a scenario. In a single sheet a stale threshold looks exactly like the
+threshold, a jump has nothing to jump from, and the base for paid leave is in the month
+before.
+
+`generate_pair.py` writes **July and August 2026** into one workbook with one roster. The
+months are not arbitrary: the 2026 budget was adopted late, so the thresholds change on
+1 August. Two adjacent sheets therefore need different figures, and copying the first
+forward is both the most natural thing for a person to do and demonstrably wrong. July
+carries no paid leave — it is the base month, and its gross has to be unambiguous for
+August's leave to be measured against it.
+
+| id | Group | Defect | How it is caught |
+| --- | --- | --- | --- |
+| `K8_stale_thresholds` | K8 | The later sheet keeps the earlier sheet's norm and thresholds | Two independent signs: the day sums reconcile to the other month's norm, and rows sit on the other period's cap |
+| `I7_unexplained_jump` | I7 | Someone's pay jumps between adjacent months | The **implied monthly salary** — base pay ÷ days worked × the sheet's norm — changes with no annex in the file |
+| `E3_leave_from_contract` | E3 | Paid leave computed from the contract | чл. 177 КТ measures it against the average daily gross of the preceding month |
+
+**The sheet's norm is not the month's norm**, and the distinction carries the suite. When
+a sheet is copied forward, the first stops following the second, and every row then
+reconciles perfectly against a month that is not its own. So the norm is derived from the
+day sums and only then compared with the calendar. Deriving it from the calendar instead
+would turn one file-level defect into a row-level finding against every person on the
+sheet — the cascade the single-sheet suite already learned to avoid.
+
+The same reasoning drives I7. A gross may legitimately move with a bonus, with leave,
+with sick days, or simply because the two months hold a different number of working days.
+The salary behind it may not, so that is what is compared.
+
+Everything is read from the two sheets. The manifest is opened once, at the end, to score
+the run — a check that quietly consults the answer key proves nothing about the file.
+
+Each check was blinded in turn to confirm it carries its own weight. Removing the
+preceding-month base turns every leave row red (21/21 seeds); comparing gross instead of
+the implied salary turns every jump red (24/24). K8 is the interesting one: silencing the
+derived-norm evidence changes nothing, because the cap evidence catches it independently,
+and only silencing both makes it fail (12/12). Two witnesses to the same defect, which is
+why it is stated as two signs above.
+
+That test had to be built carefully. The first attempt patched the model *before*
+generating the fixtures, so the generator and the checker moved together and everything
+stayed green — the identical failure this repository has now hit twice for real. Fixtures
+are built first, and only then is the checker blinded.
 
 ## Evaluating the skill itself
 

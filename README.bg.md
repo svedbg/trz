@@ -125,7 +125,7 @@ ln -s "$PWD/trz/skills/trz-expert" ~/.claude/skills/trz-expert
 
 ```sh
 pip install -r test/requirements.txt
-python test/run_tests.py              # трите комплекта
+python test/run_tests.py              # четирите комплекта
 python test/run_tests.py --seeds 300  # по-дълъг случаен пробег
 python test/skill_test.py             # пакетиране: frontmatter, справочници, манифести
 ```

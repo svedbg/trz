@@ -5,7 +5,7 @@
     python test/run_tests.py --seeds 200     # longer
     python test/run_tests.py --from 500 --seeds 100
 
-Three suites:
+Four suites:
 
 0. `rates_test.py` - cross-checks the rates in `trz_model.py` against
    `references/stavki.md`. The only test that reads the skill itself, and
@@ -23,6 +23,13 @@ Three suites:
    month, a different accident rate and a different set of defects. It checks the
    construction of the file and the composition of the bases. The scenarios are
    described in `scenarios.md`.
+
+3. `pair_test.py` over a two-sheet payroll - July and August 2026, one roster,
+   the months the thresholds change between. It covers the three checks that
+   cannot be expressed in a single sheet: a copied sheet keeping the previous
+   month's norm and thresholds (K8), a jump in someone's implied salary between
+   adjacent months (I7), and paid leave measured against the contract rather than
+   the preceding month's gross, which is what чл. 177 КТ requires (E3).
 
 Not included: `eval_skill.py`. That one calls Claude, so it needs authentication
 and costs money per run. It is run by hand when the guidance in SKILL.md changes.
@@ -42,7 +49,9 @@ sys.path.insert(0, HERE)
 
 import trz_model as M                                    # noqa: E402
 import generate_wide as G                                 # noqa: E402
+import generate_pair as P                                 # noqa: E402
 from structural_test import check                         # noqa: E402
+from pair_test import check as check_pair                 # noqa: E402
 
 
 def suite_rates():
@@ -127,6 +136,42 @@ def suite_structural(start, count, quiet=True):
     return not failures and not untested
 
 
+def suite_pair(start, count, quiet=True):
+    print()
+    print("=" * 78)
+    print(f"SUITE 3 - two-month payrolls, seeds {start}..{start + count - 1}")
+    print("=" * 78)
+    coverage = collections.Counter()
+    failures = []
+    injected = found = 0
+    for seed in range(start, start + count):
+        xlsx, _, man = P.generate(seed)
+        for _, _, ident in man["cross_expected"]:
+            coverage[ident] += 1
+        result = check_pair(xlsx, man, quiet=quiet)
+        injected += result["injected"]
+        found += result["found"]
+        if result["missed"] or result["extra"]:
+            failures.append((seed, result))
+
+    print(f"  seeds: {count} · injected defects: {injected} · found: {found}")
+    print("\n  coverage per scenario:")
+    for ident in M.PAIR_SCENARIOS:
+        n = coverage.get(ident, 0)
+        print(f"  {'  ' if n else '!!'} {ident:26} {n:4d}  {M.PAIR_SCENARIOS[ident][1]}")
+    untested = [i for i in M.PAIR_SCENARIOS if not coverage.get(i)]
+    if untested:
+        print(f"\n  WARNING: never injected at these seeds: {', '.join(untested)}")
+    if failures:
+        print(f"\n  FAILING SEEDS ({len(failures)}):")
+        for seed, result in failures:
+            print(f"    seed {seed}: missed {result['missed']} "
+                  f"| extra {result['extra']}")
+    else:
+        print(f"\n  -> OK: zero missed, zero false positives across {count} seeds")
+    return not failures and not untested
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=50)
@@ -139,9 +184,11 @@ if __name__ == "__main__":
     print()
     ok1 = suite_static()
     ok2 = suite_structural(a.start, a.seeds, quiet=not a.verbose)
+    ok3 = suite_pair(a.start, a.seeds, quiet=not a.verbose)
     print()
     print("=" * 78)
     print(f"RESULT: suite 0 {'OK' if ok0 else 'FAILED'} · "
           f"suite 1 {'OK' if ok1 else 'FAILED'} · "
-          f"suite 2 {'OK' if ok2 else 'FAILED'}")
-    sys.exit(0 if (ok0 and ok1 and ok2) else 1)
+          f"suite 2 {'OK' if ok2 else 'FAILED'} · "
+          f"suite 3 {'OK' if ok3 else 'FAILED'}")
+    sys.exit(0 if (ok0 and ok1 and ok2 and ok3) else 1)

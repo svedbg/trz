@@ -127,7 +127,7 @@ through the normal permission prompt — deliberately, for something that reads 
 
 ```sh
 pip install -r test/requirements.txt
-python test/run_tests.py              # all three suites
+python test/run_tests.py              # all four suites
 python test/run_tests.py --seeds 300  # longer randomised run
 python test/skill_test.py             # packaging: frontmatter, references, manifests
 ```

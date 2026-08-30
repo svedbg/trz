@@ -206,7 +206,25 @@ def sick_daily_base(monthly_salary, seniority_pct, norm_days,
     return max(gross, agreed)
 
 
-def clean_row(inp, regime, tzpb, policy, norm_days):
+def leave_daily_base(previous_work_pay, previous_paid_days):
+    """The daily figure paid leave is computed on — чл. 177, ал. 1 КТ.
+
+    Not the contracted salary. The statute measures the average daily gross of the last
+    calendar month before the leave in which the person worked at least ten working
+    days. A payroll that pays leave from the contract understates it for anyone whose
+    previous month carried a bonus, and the shape of the error is the same as
+    чл. 40, ал. 5: a figure that happens to coincide most months is used as if it were
+    the rule. Neither is visible in a single month, which is why the pair fixture exists.
+
+    What counts as "брутно трудово възнаграждение" is taken here as it is in
+    sick_daily_base - the remuneration accrued for labour over the days it covers - so
+    that the two readings in this model agree with each other. The choice is the
+    model's, not the statute's.
+    """
+    return previous_work_pay / previous_paid_days if previous_paid_days else 0.0
+
+
+def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
     """Compute one correct row from its inputs.
 
     inp: monthly_salary, seniority_pct, days_*, bonus, compensation_224,
@@ -223,7 +241,9 @@ def clean_row(inp, regime, tzpb, policy, norm_days):
 
     base = r2(daily * wd)
     seniority = r2(base * pct / 100.0)
-    leave = r2(daily * uplift * pl)
+    # Without a preceding month there is nothing to measure the leave against, so the
+    # contracted daily rate stands in. The pair fixture supplies the real base.
+    leave = r2((daily * uplift if leave_daily is None else leave_daily) * pl)
     bonus = r2(inp["bonus"])
     comp_224 = r2(inp["compensation_224"])
 
@@ -325,4 +345,14 @@ SCENARIOS = {
     "C2_seniority_on_gross":      ("C2", "length-of-service supplement computed on a wider base"),
     "E3_leave_without_seniority": ("E3", "paid leave computed without the supplement"),
     "I5_days_do_not_reconcile":   ("I5", "day counts do not add up to the month's norm"),
+}
+
+# Scenarios that need two months in one file. They live in the pair fixture
+# (`generate_wide.generate_pair`, checked by `pair_test.py`), because none of them is
+# visible in a single sheet: a stale threshold looks like the threshold, an unexplained
+# jump has nothing to jump from, and the base for paid leave is the month before.
+PAIR_SCENARIOS = {
+    "K8_stale_thresholds":    ("K8", "the later sheet keeps the earlier sheet's thresholds"),
+    "I7_unexplained_jump":    ("I7", "gross jumps between adjacent months with nothing to explain it"),
+    "E3_leave_from_contract": ("E3", "paid leave computed from the contract, not the preceding month's gross"),
 }
