@@ -348,7 +348,7 @@ SCENARIOS = {
 }
 
 # Scenarios that need two months in one file. They live in the pair fixture
-# (`generate_wide.generate_pair`, checked by `pair_test.py`), because none of them is
+# (`generate_pair.py`, checked by `pair_test.py`), because none of them is
 # visible in a single sheet: a stale threshold looks like the threshold, an unexplained
 # jump has nothing to jump from, and the base for paid leave is the month before.
 PAIR_SCENARIOS = {

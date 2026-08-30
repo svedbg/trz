@@ -144,17 +144,29 @@ Answer key: [`test/expected_findings.md`](test/expected_findings.md).
 **Suite 2 — file construction and base composition.** Payrolls in a wide layout, generated
 from a seed. Every seed changes the company, the people, the salaries, the month, the rate
 regime, the occupational-accident insurance rate (ТЗПБ) and which defects are injected —
-eighteen scenarios drawn from real audits: the sick-pay compensation sitting in the
+nineteen scenarios drawn from real audits: the sick-pay compensation sitting in the
 social-security base and outside the tax base at the same time, an amount typed into a day
 column, a control column that reads zero while money is missing, a total typed by hand, the
 cost of labour computed from net after deductions, the cap from the wrong half of the year, a
 benefit in one base but not the other. Catalogue: [`test/scenarios.md`](test/scenarios.md).
 
+**Suite 3 — two months in one file.** July and August 2026 on two sheets with one roster,
+also generated from a seed. The months are not arbitrary: the 2026 budget was adopted late,
+so the thresholds change on 1 August, and two adjacent sheets therefore need different
+figures — copying the first forward is at once the most natural thing for a person to do and
+demonstrably wrong. Three scenarios that no single sheet can hold, because in one sheet a
+stale threshold looks exactly like the threshold, a jump has nothing to jump from, and the
+base for paid leave is in the month before: a sheet still built on the previous month's norm
+and thresholds (K8), an implied monthly salary that moves between the months with no annex in
+the file (I7), and paid leave computed from the contract instead of the preceding month's
+average daily gross (E3, чл. 177 КТ).
+
 A run passes only when **every** injected defect is found and **no** finding is raised
 beyond them. False positives fail the suite exactly like misses: a skill that sees
 violations everywhere is as useless as one that sees none.
 
-Current state: 3000 seeds, 25 887 injected defects, 25 887 found, zero false positives.
+Current state, both generated suites at 3000 seeds: 25 825 injected defects in suite 2 and
+6 853 in suite 3, every one of them found, zero false positives.
 Randomisation earned its keep — it exposed three bugs in the checks themselves, including
 one where five separately rounded contributions drift up to 0.03 from 13.78% of the base and
 a two-cent tolerance produces a phantom violation every few hundred rows. A static fixture
@@ -165,7 +177,8 @@ national identity number (ЕГН).
 
 ### Running them when the skill changes
 
-There is a third suite, and it is the only one that reads the skill itself:
+One more suite reads the skill itself, and it is the only one that does. `run_tests.py` puts
+it first and numbers it zero, because a drift here makes the other three meaningless:
 
 ```sh
 python test/rates_test.py    # no dependencies — reads markdown
@@ -178,7 +191,7 @@ otherwise leave the tests passing happily with last year's numbers. A restructur
 fails the check too — if the value can no longer be located, the correspondence is no longer
 verifiable.
 
-The other two suites test Python, not markdown. Editing `SKILL.md` cannot change their
+The other three suites test Python, not markdown. Editing `SKILL.md` cannot change their
 result, so running them on every prose edit is theatre. The split is wired into the
 pre-commit hook:
 
@@ -187,7 +200,7 @@ git config core.hooksPath .githooks   # once
 python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt
 ```
 
-Every commit runs the rate check. Commits that touch `test/*.py` also run the two suites at
+Every commit runs the rate check. Commits that touch `test/*.py` also run the other three at
 25 seeds. Nothing is skipped silently: if the environment cannot run a check, the hook says
 so and stops rather than passing quietly. `--no-verify` overrides it.
 
