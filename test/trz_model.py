@@ -67,15 +67,19 @@ RELIEF_LIMIT = 0.10                       # чл. 42, ал. 3 във вр. с ч
 # rates and rates_test.py guards it. Keeping a second transcription in checks_test.py
 # put four figures outside that guarantee.
 NIGHT_FACTOR = 0.0015                     # чл. 8 НСОРЗ - per night hour, of the МРЗ
+NIGHT_FLOOR = 0.51                        # чл. 8 НСОРЗ „но не по-малко от 0,51 евро“,
+                                          # ПМС № 353, ДВ бр. 115/30.12.2025. The due
+                                          # amount is the higher of the two; for 2026
+                                          # the percentage wins (0.9303 > 0.51).
 OVERTIME_WORKDAY = 0.50                   # чл. 262, ал. 1, т. 1 КТ
 HOLIDAY_MULTIPLIER = 2.0                  # чл. 264 КТ - „удвоения размер“. The statute
                                           # writes the doubling in words and gives no
                                           # numeral, so rates_test guards the phrase.
 
-# 60 лв in euro, at the fixed rate. Derived rather than copied, so that
-# rates_test.py can check it against the reference file.
-# STATUS: unconfirmed. The exact conversion is 30.6773; whether the legislator
-# adopted that or rounded it is not established. See stavki.md.
+# 60 лв in euro. Derived rather than copied, so that rates_test.py can check it
+# against the reference file - and the derivation is now the law's own: чл. 12 и чл. 13
+# ЗВЕРБ divide by the full rate and round on the third decimal, giving 30.68. НАП
+# publishes the same figure verbatim. Confirmed 30.08.2026; no longer a hypothesis.
 FIXED_EUR_RATE = 1.95583
 SOCIAL_EXPENSE_THRESHOLD = r2(60 / FIXED_EUR_RATE)      # 30.68
 

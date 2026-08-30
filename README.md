@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![licence: MIT + CC BY 4.0](https://img.shields.io/badge/licence-MIT%20%2B%20CC--BY--4.0-blue)](#licence)
-[![rates verified](https://img.shields.io/badge/rates%20verified-2026--08--21-green)](skills/trz-expert/references/stavki.md)
+[![rates verified](https://img.shields.io/badge/rates%20verified-2026--08--30-green)](skills/trz-expert/references/stavki.md)
 
 A [Claude Code](https://claude.com/claude-code) skill that turns Claude into a senior payroll
 specialist for Bulgaria — ТРЗ, as the payroll-and-wages function is called there. Give it a
@@ -11,7 +11,7 @@ it checks the numbers against the Labour Code (КТ), the Social Security Code (
 Personal Income Taxes Act (ЗДДФЛ) and the Ordinance on the Structure and Organisation of Wages
 (НСОРЗ).
 
-**Read this first:** the rates shipped here are current as of **21 August 2026**. The minimum
+**Read this first:** the rates shipped here are current as of **30 August 2026**. The minimum
 wage, the social-security thresholds and the contribution rates change every year — and in
 2025 and 2026 they changed *mid-year*, because both budgets were adopted late. Check
 [`skills/trz-expert/references/stavki.md`](skills/trz-expert/references/stavki.md) before
@@ -256,12 +256,12 @@ payroll actually applied and asks you to confirm it, because at a few hundred th
 insurable income every tenth of a point is real money — this is routinely the largest
 unverified number in an audit.
 
-**The social-expense threshold in euro for 2026.** Until 2025 it was 60 BGN per person per
-month for voluntary insurance premiums paid at the employer's expense. The exact conversion
-is 30.6773 EUR; whether the legislator adopted that or rounded it is not verified here. The
-amount matters because the excess over the threshold enters the bases, so it moves both
-contributions and tax for every person with such a benefit. The skill computes all three
-variants and marks the finding `за проверка` rather than picking one.
+**The social-expense threshold in euro for 2026 — resolved on 30 August 2026.** Until 2025 it
+was 60 BGN per person per month for voluntary insurance premiums paid at the employer's
+expense. It is **30.68 EUR**: articles 12 and 13 of the euro-adoption act divide by the full
+1.95583 and round on the third decimal, and НАП publishes exactly that figure. The skill no
+longer computes three variants and no longer downgrades the finding. What remains unverified
+is not the threshold but the *treatment* of the excess over it — see below.
 
 One other item is unverified, and it is unverified for an interesting reason: **the
 employer/employee split of the pension contribution** (11.02/8.78 and 8.22/6.58). This is not
@@ -276,6 +276,13 @@ employer / 0.44 employee, and that reconstruction fits both age cohorts to the d
 The reference file documents this in full. Practical impact is nil: the totals are
 verified, every payroll system uses these figures, and employee contributions sum to
 exactly 13.78% — which is the control the skill checks against.
+
+Since 30 August 2026 the figures also have an official footing, though not the one that
+would close the gap: НОИ publishes 11.02/8.78 and 8.22/6.58 verbatim in its 1 August 2026
+guidance — but for a *different* group, the civil servants, judges and prosecutors being
+aligned from 1 January 2027. It confirms these are the values the institution applies. It
+is still not a provision about employees under an employment contract, so the reference
+keeps the caveat: what is missing is the citation, not the number.
 
 ## Personal data
 

@@ -4,11 +4,11 @@ description: Старши експертиза по ТРЗ (труд и рабо
 license: CC-BY-4.0
 compatibility: Prose and reference material only; no bundled scripts. Needs a Bulgarian
   payroll context and a working Python with openpyxl for spreadsheet work. The rates in
-  references/stavki.md were verified on 21.08.2026 and must be re-verified for any later
+  references/stavki.md were verified on 30.08.2026 and must be re-verified for any later
   period; the skill refuses to guess one.
 metadata:
   jurisdiction: BG
-  rates_verified: '2026-08-21'
+  rates_verified: '2026-08-30'
   reference_language: bg
 ---
 

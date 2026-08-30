@@ -35,7 +35,10 @@ MIN_WAGE_HOUR = _H1["min_wage_hour"]
 MAX_INSURABLE = _H1["max_insurable"]
 MIN_INSURABLE_ACTIVITY = None   # Приложение №1 - MISSING from the reference
 SENIORITY_MIN = M.SENIORITY_RATE / 100.0
-NIGHT_HOUR = round(M.NIGHT_FACTOR * MIN_WAGE, 4)          # чл. 8 НСОРЗ = 0.9303
+# чл. 8 НСОРЗ owes the higher of the two: 0.15% of the minimum wage, or the floor.
+# For 2026 the percentage wins - 0.9303 against a floor of 0.51 - but the max() is the
+# rule, not the arithmetic of one year.
+NIGHT_HOUR = round(max(M.NIGHT_FACTOR * MIN_WAGE, M.NIGHT_FLOOR), 4)
 OVERTIME_WORKDAY = M.OVERTIME_WORKDAY
 HOLIDAY_MULTIPLIER = M.HOLIDAY_MULTIPLIER
 SICK_DAYS_EMPLOYER = M.SICK_DAYS_EMPLOYER
