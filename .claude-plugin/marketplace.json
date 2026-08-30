@@ -8,14 +8,14 @@
   "plugins": [
     {
       "name": "trz-expert",
-      "source": ".",
+      "source": "./skills/trz-expert",
       "description": "Bulgarian payroll (ТРЗ) audit: checks a payroll register, payslip, employment contract or work schedule against the Labour Code (КТ), the Social Security Code (КСО), the income tax act (ЗДДФЛ) and the wage-structure ordinance (НСОРЗ). No rate from memory — every figure comes from a dated, status-marked reference file.",
       "version": "2.1.0",
       "author": {
         "name": "Svetoslav Rankov",
         "url": "https://github.com/svedbg"
       },
-      "license": "MIT AND CC-BY-4.0",
+      "license": "CC-BY-4.0",
       "homepage": "https://github.com/svedbg/trz",
       "category": "compliance",
       "keywords": [
