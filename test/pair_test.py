@@ -12,6 +12,13 @@ People are identified by row, never by name, as in `structural_test.py`. The nam
 these fixtures are invented, but the report is the part a person pastes into an issue, and
 a row number carries the same information.
 
+The I7 finding prints no figures. Its evidence is a pay figure rather than a discrepancy
+in one - the same row implying two different monthly bases - and writing that to stdout is
+clear-text logging of exactly the kind CodeQL flags, whatever the data behind it happens
+to be. The two amounts stay in the returned finding, so nothing driving the suite loses
+them; they are simply not printed. Reproduce a case with its seed and the numbers are one
+`--seed` away.
+
 Everything here is derived from the two sheets, never from the manifest. The manifest is
 opened once, at the end, to score the run. That is not fastidiousness: the checks are
 meant to be the ones a person could perform with the file alone, and a check that quietly
@@ -45,11 +52,19 @@ class Findings:
         self.items = []
         self._seen = set()
 
-    def add(self, ident, where, text, stated=None, due=None):
+    def add(self, ident, where, text, stated=None, due=None, figures=True):
+        """`figures=False` keeps the two amounts out of the printed report.
+
+        They stay in the returned finding, so the suite and anything driving it still
+        have them; what changes is that they are not written to stdout. See the note in
+        the module docstring - this is the one finding whose evidence is a pay figure
+        rather than a discrepancy in one.
+        """
         if (where, ident) in self._seen:
             return
         self._seen.add((where, ident))
-        self.items.append(dict(id=ident, where=where, text=text, stated=stated, due=due))
+        self.items.append(dict(id=ident, where=where, text=text, stated=stated, due=due,
+                               figures=figures))
 
     def keys(self):
         return {(f["where"], f["id"]) for f in self.items}
@@ -153,9 +168,9 @@ def check(xlsx, manifest, quiet=False):
         was, now = (implied_salary(before, early_norm), implied_salary(after, late_norm))
         if was and now and abs(now - was) > SALARY_TOL:
             F.add("I7_unexplained_jump", row_no,
-                  f"the row implies a monthly salary of {now:.2f} in „{late_name}“ "
-                  f"against {was:.2f} in „{early_name}“, with the same contract and "
-                  f"nothing in the file to explain the change", now, was)
+                  f"the row implies a different monthly base in „{late_name}“ than in "
+                  f"„{early_name}“, with the same contract and nothing in the file to "
+                  f"explain the change", now, was, figures=False)
 
         # --- чл. 177 КТ: the base for paid leave ---------------------------
         days_leave = after["Дни платен отпуск"]
@@ -196,7 +211,7 @@ def check(xlsx, manifest, quiet=False):
         for f in sorted(F.items, key=lambda x: (str(x["where"]), x["id"])):
             where = "file" if f["where"] == "file" else f"row {f['where']}"
             print(f"  [{where:8}] {f['id']:24} {f['text']}")
-            if f["due"] is not None:
+            if f["due"] is not None and f["figures"]:
                 print(f"{'':13} stated {f['stated']} | due {f['due']}")
         if missed:
             print(f"\nMISSED ({len(missed)}):")
