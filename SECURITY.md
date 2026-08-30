@@ -33,6 +33,7 @@ any standing dismissal is recorded here instead of only in the GitHub UI.
 | Rule | Where | Why it is dismissed |
 | --- | --- | --- |
 | `py/clear-text-logging-sensitive-data` | `test/structural_test.py:474` and `:476` | Test-only. The taint source is `c["monthly_salary"]` at line 207, which comes from the manifest `generate_wide.py` writes from a seed. `check()` cannot run without that manifest, so every salary printed there is invented. |
+| `py/clear-text-logging-sensitive-data` | `test/pair_test.py:194` and `:196` | Test-only, and the same print statements — the report block of the two-month suite. **The guarantee is weaker than the one above and should be read as such.** There the taint comes from the manifest, which the checker cannot run without; here it comes from a cell of the workbook, and nothing in the language stops someone pointing the file at a real payroll. What stops it in practice is that `check()` scores against `cross_expected` and has nothing to say without a generated manifest. The figures printed are an implied salary and a leave amount, and they are the evidence for the finding: an unexplained jump stated without the two salaries is an assertion rather than a finding. |
 
 Two notes on that dismissal, because it is the kind that ages badly.
 
@@ -46,6 +47,14 @@ finding and to keep file contents off external services — see below.
 
 An alert of this rule that appears anywhere other than the test harness is a real
 finding. Do not extend the dismissal to it.
+
+The second row was added rather than folded into the first on purpose. It is the
+same rule and the same two print statements, but not the same argument: one is
+guarded by the language, the other by how the file is used. Two entries make that
+visible; one entry would have buried it. Names were dropped from those findings at
+the same time — the suites identify people by row, and the row number carries the
+same information — so what remains printed is only the arithmetic the finding rests
+on.
 
 ## Personal data
 
