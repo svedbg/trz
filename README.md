@@ -281,6 +281,12 @@ Two licences, because the repository holds two kinds of thing:
 | the skill — `skills/trz-expert/SKILL.md` and `references/*.md` | [CC BY 4.0](LICENSE-DOCS) |
 | everything else — all Python under `test/`, the git hook, the CI workflow | [MIT](LICENSE) |
 
+**What an install carries is CC BY 4.0 alone.** The plugin's source is
+`./skills/trz-expert`, not the repository root, so a `/plugin install` copies the skill,
+its three reference files and a copy of `LICENSE-DOCS` — and no MIT-licensed file at all.
+That is why `plugin.json` declares `CC-BY-4.0` rather than the repository's pair: a bundle
+may only declare what it actually contains.
+
 Use it, change it, ship it commercially. Keep the attribution, and if you change the
 reference material say that you did — someone downstream needs to know whose verification
 date they are trusting.
