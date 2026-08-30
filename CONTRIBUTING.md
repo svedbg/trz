@@ -79,7 +79,7 @@ red. A check that has never failed has not been tested.
 python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt
 git config core.hooksPath .githooks     # once
 
-python test/run_tests.py                # all three suites, 50 seeds
+python test/run_tests.py                # all four suites, 50 seeds
 python test/rates_test.py               # rates only, no dependencies
 python test/skill_test.py               # packaging: frontmatter, manifests, licences
 python test/eval_skill.py --dry         # what the skill eval would send, free
