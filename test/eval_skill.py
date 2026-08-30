@@ -48,6 +48,7 @@ Hence three numbers rather than one:
 The keyword patterns are Bulgarian because the skill reports in Bulgarian.
 """
 import argparse
+import hashlib
 import csv
 import json
 import os
@@ -66,6 +67,7 @@ import generate_wide as G                                      # noqa: E402
 
 VENV = "/tmp/trz-eval-venv"          # venv with openpyxl, outside the repository
 WORKDIR = "/tmp/trz-eval"            # one directory per run
+REPO_SKILL = os.path.join(HERE, "..", "skills", "trz-expert")
 
 # --- keywords for the mapping. Each entry is a list: all of them must match ---
 # --- the finding's description. Deliberately broad: the point is not to score ---
@@ -522,6 +524,90 @@ def run_seed(seed, model, dry, timeout, refusal=False):
                 result=graded, unattributed=unattributed)
 
 
+
+
+# --------------------------------------------------------------- which skill
+# This file evaluates *the skill*, and the session loads it from wherever Claude Code
+# resolves `trz-expert` - not from the working tree. Those are the same thing only when
+# the install points back at this repository.
+#
+# On 30.08.2026 they were not. A `/plugin install` had frozen a 2.1.0 snapshot into
+# ~/.claude/plugins/cache, and a paid run began measuring guidance that was nine days
+# and one release stale. Nothing in the output would have said so: the run reports a
+# confident score either way, and the score would have been about the wrong text.
+#
+# So: find every copy the session could load, and refuse to spend anything unless each
+# one matches the tree being tested. Comparing content rather than modelling precedence
+# is deliberate - it does not matter which copy wins if a stale copy exists at all.
+
+def _skill_signature(root):
+    """Content of the files a session actually reads, or None if incomplete."""
+    parts = []
+    for rel in ("SKILL.md", "references/stavki.md", "references/proverki.md",
+                "references/normativna-baza.md"):
+        path = os.path.join(root, rel)
+        if not os.path.exists(path):
+            return None
+        parts.append(open(path, encoding="utf8").read())
+    return hashlib.sha256("".join(parts).encode("utf8")).hexdigest()[:12]
+
+
+def installed_skill_copies():
+    """Every resolvable trz-expert, as (label, directory)."""
+    found = []
+    home = os.path.expanduser("~")
+    personal = os.path.join(home, ".claude", "skills", "trz-expert")
+    if os.path.exists(personal):
+        found.append(("personal skill  ~/.claude/skills/trz-expert", personal))
+    manifest = os.path.join(home, ".claude", "plugins", "installed_plugins.json")
+    if os.path.exists(manifest):
+        try:
+            data = json.loads(open(manifest, encoding="utf8").read())
+        except ValueError:
+            data = {}
+        for name, installs in (data.get("plugins") or {}).items():
+            if not name.startswith("trz-expert"):
+                continue
+            for inst in installs:
+                path = inst.get("installPath")
+                if path and os.path.exists(path):
+                    found.append((f"plugin {name} v{inst.get('version')}", path))
+    project = os.path.join(HERE, "..", ".claude", "skills", "trz-expert")
+    if os.path.exists(project):
+        found.append(("project skill  .claude/skills/trz-expert", project))
+    return found
+
+
+def check_skill_matches_tree():
+    """Fail loudly, and for free, rather than paying to measure the wrong version."""
+    want = _skill_signature(REPO_SKILL)
+    if want is None:
+        print("the working tree has no complete skill at skills/trz-expert - "
+              "nothing to evaluate")
+        return False
+    copies = installed_skill_copies()
+    if not copies:
+        print("No installed `trz-expert` was found, so the session has no skill to load")
+        print("and the run would measure Claude without it. Install the working tree:")
+        print(f"  ln -s {os.path.realpath(REPO_SKILL)} ~/.claude/skills/trz-expert")
+        return False
+    stale = [(label, path, _skill_signature(path)) for label, path in copies
+             if _skill_signature(path) != want]
+    for label, path, got in stale:
+        print(f"  STALE   {label}")
+        print(f"          {path}")
+        print(f"          content {got or 'incomplete'}, working tree {want}")
+    if stale:
+        print()
+        print("A copy the session could load does not match the tree being tested, so a")
+        print("paid run would score the wrong text and say nothing about it. Point the")
+        print("install at this repository, or remove the stale copy, then re-run.")
+        return False
+    for label, path in copies:
+        print(f"  ok      {label} matches the working tree ({want})")
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=1)
@@ -544,6 +630,10 @@ def main():
 
     if a.selftest:
         return selftest()
+
+    # --dry pays nothing, so a mismatch there is worth saying but not worth blocking.
+    if not check_skill_matches_tree() and not a.dry:
+        return 1
 
     ensure_venv()
     os.makedirs(WORKDIR, exist_ok=True)
