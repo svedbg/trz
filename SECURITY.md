@@ -33,7 +33,7 @@ any standing dismissal is recorded here instead of only in the GitHub UI.
 | Rule | Where | Why it is dismissed |
 | --- | --- | --- |
 | `py/clear-text-logging-sensitive-data` | `test/structural_test.py:474` and `:476` | Test-only. The taint source is `c["monthly_salary"]` at line 207, which comes from the manifest `generate_wide.py` writes from a seed. `check()` cannot run without that manifest, so every salary printed there is invented. |
-| `py/clear-text-logging-sensitive-data` | `test/pair_test.py:194` and `:196` | Test-only, and the same print statements — the report block of the two-month suite. **The guarantee is weaker than the one above and should be read as such.** There the taint comes from the manifest, which the checker cannot run without; here it comes from a cell of the workbook, and nothing in the language stops someone pointing the file at a real payroll. What stops it in practice is that `check()` scores against `cross_expected` and has nothing to say without a generated manifest. The figures printed are an implied salary and a leave amount, and they are the evidence for the finding: an unexplained jump stated without the two salaries is an assertion rather than a finding. |
+
 
 Two notes on that dismissal, because it is the kind that ages badly.
 
@@ -48,13 +48,24 @@ finding and to keep file contents off external services — see below.
 An alert of this rule that appears anywhere other than the test harness is a real
 finding. Do not extend the dismissal to it.
 
-The second row was added rather than folded into the first on purpose. It is the
-same rule and the same two print statements, but not the same argument: one is
-guarded by the language, the other by how the file is used. Two entries make that
-visible; one entry would have buried it. Names were dropped from those findings at
-the same time — the suites identify people by row, and the row number carries the
-same information — so what remains printed is only the arithmetic the finding rests
-on.
+`test/pair_test.py` raised the same rule when the two-month suite was added, and it
+was **fixed rather than dismissed**. The remediation CodeQL gives for this rule is
+one line — sensitive data should not be logged — and the honest way to apply it was
+to stop logging it: the I7 finding no longer prints the two implied monthly bases,
+the amounts stay in the returned finding for anything driving the suite, and people
+are identified by row rather than by name there as elsewhere.
+
+It was not fixed by renaming. The value is a monthly base and is still called one;
+calling it something else so the scanner stops recognising it is how a real finding
+gets hidden a year later, and it would have left the same data going to the same
+stdout.
+
+That leaves an inconsistency worth naming: `structural_test.py` still prints its
+figures under a dismissal, while `pair_test.py` does not print the comparable ones.
+The difference is what the evidence *is*. A finding that a total does not match the
+sum of its column has to show both numbers or it says nothing; a finding that one
+row implies two different monthly bases is complete without them, and the seed
+reproduces the case in full.
 
 ## Personal data
 
