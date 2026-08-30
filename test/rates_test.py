@@ -124,6 +124,27 @@ CHECKS = [
     ("fixed euro rate",
      r"фиксиран курс \*\*([\d.]+) лв\. за 1 евро\*\*",
      M.FIXED_EUR_RATE),
+
+    ("minimum wage per hour, 2026",
+     r"01\.01\.2026 – 31\.12\.2026 \|[^|]*\|[^|]*?\*\*([\d.]+) EUR\*\*",
+     M.REGIMES["H1"]["min_wage_hour"]),
+    ("night-hour supplement 2026 - 0.15% of the minimum wage",
+     r"\| 2026 \| 620\.20 EUR \| ([\d.]+) →",
+     round(M.NIGHT_FACTOR * M.REGIMES["H1"]["min_wage"], 4), 0.0001),
+    ("overtime premium on working days",
+     r"\| Работни дни \| \*\*\+([\d.]+)%\*\*",
+     M.OVERTIME_WORKDAY * 100),
+]
+
+# --- rules the reference states in words, with no figure to extract ----------
+# чл. 264 КТ writes the doubling as „удвоения размер“ and gives no numeral, so there is
+# nothing for a regex to capture. Guard the wording instead: if the rule is ever
+# restated, the constant in the model has to be revisited by hand rather than silently
+# kept.
+PHRASES = [
+    ("work on a public holiday is paid at double",
+     r"от удвоения размер на трудовото му възнаграждение",
+     "M.HOLIDAY_MULTIPLIER", M.HOLIDAY_MULTIPLIER, 2.0),
 ]
 
 # --- rates the reference file explicitly marks as unconfirmed ---------------
@@ -156,6 +177,22 @@ def main():
             print(f"  ok          {label:58} {in_reference}")
 
     print()
+    for label, pattern, name, in_model, expected in PHRASES:
+        if not re.search(pattern, TEXT):
+            print(f"  CHANGED     {label}")
+            print(f"              the reference file no longer states this rule in "
+                  f"these words. {name} rests on it - re-read the section before "
+                  f"trusting the constant.")
+            failed.append(label)
+        elif in_model != expected:
+            print(f"  MISMATCH    {label}")
+            print(f"              the wording still says double, but {name} is "
+                  f"{in_model}, not {expected}")
+            failed.append(label)
+        else:
+            print(f"  ok          {label:58} {name} = {in_model}")
+
+    print()
     for label, pattern, constant in UNCONFIRMED:
         if re.search(pattern, TEXT):
             print(f"  ok          {label} - still marked `за потвърждение`;")
@@ -169,7 +206,7 @@ def main():
             failed.append(label)
 
     print("=" * 78)
-    total = len(CHECKS) + len(UNCONFIRMED)
+    total = len(CHECKS) + len(PHRASES) + len(UNCONFIRMED)
     if failed:
         print(f"FAILED: {len(failed)} of {total}")
         print("A rate in the reference file has drifted from test/trz_model.py. Fix "
