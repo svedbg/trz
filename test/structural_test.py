@@ -289,8 +289,26 @@ def check(xlsx, manifest, quiet=False):
             if len(matches) == 1:
                 inside_unique = matches[0]
 
+        # The same solve for the taxable base, separately. The two bases do not have
+        # to agree: reading В of the excess (stavki.md) puts it inside the insurable
+        # income and outside the taxable base, and a file applying В throughout is
+        # correct. Inferring one practice and using it for both reports В as a defect.
+        # There is no ceiling on the taxable base, so capped rows stay in this sample.
+        inside_unique_tax = None
+        if not no_work:
+            t_matches = []
+            for mask, subset_sum in _subsets([("in_kind", in_kind), ("excess", excess)]):
+                before = r2(gross + subset_sum - sick_pay - employee_total)
+                applied = r2(min(deduction, r2(before * M.RELIEF_LIMIT))) \
+                    if deduction else 0.0
+                if abs(r2(before - applied) - taxable) <= M.TOL:
+                    t_matches.append(mask)
+            if len(t_matches) == 1:
+                inside_unique_tax = t_matches[0]
+
         data.append(dict(row=r, work_base=work_base, elements=elements,
-                         inside_unique=inside_unique, at_cap=at_cap, no_work=no_work,
+                         inside_unique=inside_unique, inside_unique_tax=inside_unique_tax,
+                         at_cap=at_cap, no_work=no_work,
                          insurable=insurable, sick_pay=sick_pay, in_kind=in_kind,
                          excess=excess, gross=gross, employee_total=employee_total,
                          taxable=taxable, deduction=deduction, er_social=er_social))
@@ -303,9 +321,9 @@ def check(xlsx, manifest, quiet=False):
     # cap (there the composition is indistinguishable) and has accruals for work.
     # If no practice can be established, no conclusion is drawn for that element -
     # exactly as a live auditor would ask instead of guessing.
-    def practice_for(el):
-        sample = [el in d["inside_unique"] for d in data
-                  if d["inside_unique"] is not None and d["elements"][el]]
+    def practice_for(el, key):
+        sample = [el in d[key] for d in data
+                  if d[key] is not None and d["elements"][el]]
         if len(sample) < 3:
             return None, len(sample)
         counter = Counter(sample)
@@ -314,15 +332,23 @@ def check(xlsx, manifest, quiet=False):
             return None, len(sample)
         return value, len(sample)
 
+    # One practice per element PER BASE - see the note in pass 1.
     practice, sample_size = {}, {}
+    practice_tax, sample_size_tax = {}, {}
     for el in ("in_kind", "excess"):
-        practice[el], sample_size[el] = practice_for(el)
-        if practice[el] is None and any(d["elements"][el] for d in data):
-            F.add("F10_practice_not_establishable", "file",
-                  f"the file's practice for {el} cannot be inferred from the file "
-                  f"itself ({sample_size[el]} usable rows) - the composition of the "
-                  f"bases for those people does not support a conclusion without the "
-                  f"internal rules")
+        practice[el], sample_size[el] = practice_for(el, "inside_unique")
+        practice_tax[el], sample_size_tax[el] = practice_for(el, "inside_unique_tax")
+        if not any(d["elements"][el] for d in data):
+            continue
+        for label, value, size in (("осигурителния доход", practice[el], sample_size[el]),
+                                   ("данъчната основа", practice_tax[el],
+                                    sample_size_tax[el])):
+            if value is None:
+                F.add("F10_practice_not_establishable", "file",
+                      f"the file's practice for {el} in {label} cannot be inferred "
+                      f"from the file itself ({size} usable rows) - the composition "
+                      f"for those people does not support a conclusion without the "
+                      f"internal rules")
 
     # ================== pass 2: composition, symmetry, file-level findings
     NAMES = dict(in_kind="the benefit in kind", excess="the threshold excess",
@@ -340,10 +366,15 @@ def check(xlsx, manifest, quiet=False):
         # An unestablishable practice only stops conclusions about the composition
         # of the insurable income. The checks that do not depend on it - the cap,
         # the taxable base, the relief limit - carry on.
-        practice_clear = not any(el[k] and practice[k] is None
+        practice_clear = not any(el[k] and (practice[k] is None
+                                            or practice_tax[k] is None)
                                  for k in ("in_kind", "excess"))
         allowed = {k for k in ("in_kind", "excess") if practice[k] and el[k]}
         allowed_sum = r2(sum(el[k] for k in allowed))
+        # What the file's practice puts in the TAXABLE base, which need not be the
+        # same set - reading В of the excess is in one base only.
+        allowed_tax = {k for k in ("in_kind", "excess") if practice_tax[k] and el[k]}
+        allowed_tax_sum = r2(sum(el[k] for k in allowed_tax))
         # The чл. 40, ал. 5 КСО sick pay belongs to the expectation, not to the
         # candidate deviations from it (чл. 3, ал. 1 НЕВДПОВ). It can therefore only
         # be found missing, never found added.
@@ -398,7 +429,7 @@ def check(xlsx, manifest, quiet=False):
         def taxable_for(delta, relief_mode):
             # The sick pay sits inside the gross and outside the taxable base
             # (чл. 24, ал. 2, т. 14 ЗДДФЛ), so it comes back out here.
-            before = r2(d["gross"] + allowed_sum - d["sick_pay"] + delta
+            before = r2(d["gross"] + allowed_tax_sum - d["sick_pay"] + delta
                         - d["employee_total"])
             if relief_mode == "limit":
                 applied = r2(min(d["deduction"], r2(before * M.RELIEF_LIMIT))) \
@@ -426,13 +457,16 @@ def check(xlsx, manifest, quiet=False):
             for k in ("in_kind", "excess"):
                 if not el[k]:
                     continue
-                sign = -1.0 if k in allowed else 1.0
+                # Measured against what the OTHER ROWS do with this element in this
+                # base - not against the insurable income. The two bases are allowed
+                # to differ; rows are not.
+                sign = -1.0 if k in allowed_tax else 1.0
                 candidates.append((sign * el[k], "limit", ID_FOR[k],
                                    f"{NAMES[k]} ({el[k]:.2f}) is "
-                                   + ("outside" if sign < 0 else "only inside")
-                                   + " the taxable base while the insurable income "
-                                   + ("includes" if sign < 0 else "does not include")
-                                   + " it"))
+                                   + ("outside" if sign < 0 else "inside")
+                                   + " the taxable base while the other rows "
+                                   + ("include" if sign < 0 else "leave")
+                                   + " it" + ("" if sign < 0 else " out")))
             found = []
             for delta, mode, ident, text in candidates:
                 value, applied, before = taxable_for(delta, mode)
@@ -493,7 +527,8 @@ def check(xlsx, manifest, quiet=False):
         print(f"=== {os.path.basename(xlsx)} · {man['month']:02d}.{man['year']} · "
               f"regime {man['regime']} (cap {max_insurable}) · {norm} days · "
               f"{len(data)} people · accident rate {tzpb_due}% ===")
-        print(f"practice: inferred {practice} | set {man['policy']}")
+        print(f"practice: insurable {practice} · taxable {practice_tax} "
+              f"| set {man['policy']}")
         print(f"\nFINDINGS ({len(F.items)}):")
         for f in sorted(F.items, key=lambda x: (str(x["where"]), x["id"])):
             where = "file" if f["where"] == "file" else f"row {f['where']}"

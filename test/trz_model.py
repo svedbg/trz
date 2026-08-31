@@ -18,6 +18,11 @@ social-expense threshold are treated has more than one defensible reading (see
 proverki.md, F10). The model therefore does not fix an answer: a `policy` is
 chosen per file and applied consistently. The suite tests **consistency**, not
 doctrine — which is also how the skill is told to behave.
+
+Consistency is not symmetry. One of the three readings of the excess — В — is
+asymmetric by design: inside the insurable income, outside the taxable base. So the
+policy carries a flag per base rather than one per element, and a file applying В
+throughout must produce no finding.
 """
 from decimal import Decimal, ROUND_HALF_UP
 import datetime
@@ -82,6 +87,41 @@ HOLIDAY_MULTIPLIER = 2.0                  # чл. 264 КТ - „удвоения
 # publishes the same figure verbatim. Confirmed 30.08.2026; no longer a hypothesis.
 FIXED_EUR_RATE = 1.95583
 SOCIAL_EXPENSE_THRESHOLD = r2(60 / FIXED_EUR_RATE)      # 30.68
+
+# The three readings of the excess over the social-expense threshold (stavki.md).
+# Each says whether the excess enters the insurable income and the taxable base.
+# Reading В is asymmetric on purpose: contributions are due, the personal tax is not,
+# and the company pays the ЗКПО tax on the expense. A file that applies В consistently
+# is correct, not inconsistent - so the model has to be able to express it, and a
+# checker built on a single "is it in the bases" flag reports it as a defect.
+# The fourth combination - outside the insurable income, inside the taxable base -
+# follows from none of the three and is never generated.
+EXCESS_READINGS = {
+    "А": dict(insurable=True,  taxable=True),    # приравнен на доход в пари
+    "Б": dict(insurable=False, taxable=False),   # социален разход в натура, по ЗКПО
+    "В": dict(insurable=True,  taxable=False),   # праг по НЕВДПОВ, освободен по ЗДДФЛ
+}
+
+
+def additions_for(policy, in_kind, excess, work_base):
+    """What the benefits add to each base, as (insurable, taxable).
+
+    Two numbers, not one — see EXCESS_READINGS. With no accruals for work there is no
+    income from labour activity for the benefits to attach to (чл. 6, ал. 2 КСО), so
+    both are zero.
+    """
+    if work_base <= 0:
+        return 0.0, 0.0
+    ins = tax = 0.0
+    if policy["in_kind_in_bases"]:
+        ins += in_kind
+        tax += in_kind
+    if policy["excess_in_insurable"]:
+        ins += excess
+    if policy["excess_in_taxable"]:
+        tax += excess
+    return r2(ins), r2(tax)
+
 
 TOL = 0.02          # money comparisons
 TOL_STRICT = 0.005  # totals and control columns
@@ -243,7 +283,8 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
 
     inp: monthly_salary, seniority_pct, days_*, bonus, compensation_224,
          card_employer, card_employee, premium, personal_contribution
-    policy: in_kind_in_bases / excess_in_bases (bool) - see the module docstring
+    policy: in_kind_in_bases, excess_in_insurable, excess_in_taxable (bool) -
+            one flag per base, because reading В is asymmetric; see the docstring
     Returns dict: column name -> value.
     """
     ms = inp["monthly_salary"]
@@ -281,27 +322,24 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
     premium = r2(inp["premium"]) if inp["premium"] else 0.0
     excess = r2(max(0.0, premium - SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
 
-    if work_base <= 0:
-        # A person with no accruals for work this month (a full month of
-        # maternity leave): there is nothing for the benefits to attach to,
-        # because there is no income from labour activity (чл. 6, ал. 2 КСО).
-        additions = 0.0
-    else:
-        additions = ((in_kind if policy["in_kind_in_bases"] else 0.0)
-                     + (excess if policy["excess_in_bases"] else 0.0))
+    # Two figures, not one: under reading В the excess is inside the insurable income
+    # and outside the taxable base. A person with no accruals for work this month (a
+    # full month of maternity leave) gets zero on both — see additions_for.
+    add_insurable, add_taxable = additions_for(policy, in_kind, excess, work_base)
     insurable = r2(min(regime["max_insurable"],
-                       r2(work_base + sick_pay + additions)))
+                       r2(work_base + sick_pay + add_insurable)))
 
     contributions = {k: r2(insurable * p / 100.0) for k, p in EMPLOYEE.items()}
     employee_total = r2(sum(contributions.values()))
 
     # --- taxable base ------------------------------------------------------
-    # Whatever enters the insurable income as income in kind or as excess also
-    # enters the taxable base. The чл. 224 КТ compensation is taxable. The
+    # What the benefits add here is not necessarily what they add to the insurable
+    # income: reading В puts the excess in one and not the other. The чл. 224 КТ
+    # compensation is taxable. The
     # чл. 40, ал. 5 КСО sick pay is not - чл. 24, ал. 2, т. 14 ЗДДФЛ exempts the
     # benefits under part one of the КСО, and the справка по чл. 73, ал. 6 reports
     # it under код 107. It sits inside `gross`, so it is subtracted back out here.
-    taxable_before = r2(gross + additions - sick_pay - employee_total)
+    taxable_before = r2(gross + add_taxable - sick_pay - employee_total)
     limit = r2(taxable_before * RELIEF_LIMIT)
     relief = r2(min(inp["personal_contribution"], limit)) \
         if inp["personal_contribution"] else 0.0

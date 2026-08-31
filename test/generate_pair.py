@@ -116,8 +116,11 @@ def generate(seed):
     regime_july = M.REGIMES["H1"]
     regime_august = M.REGIMES["H2"]
     tzpb = rnd.choice([0.4, 0.5, 0.7, 1.1])
+    reading = rnd.choice(list(M.EXCESS_READINGS))
     policy = dict(in_kind_in_bases=rnd.random() < 0.5,
-                  excess_in_bases=rnd.random() < 0.5)
+                  excess_in_insurable=M.EXCESS_READINGS[reading]["insurable"],
+                  excess_in_taxable=M.EXCESS_READINGS[reading]["taxable"],
+                  excess_reading=reading)
     company = rnd.choice(G.COMPANIES)
     n = rnd.randint(8, 12)
 

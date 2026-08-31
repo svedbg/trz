@@ -69,7 +69,7 @@ The groups match `references/proverki.md`.
 | `F9_sick_pay_amount` | F9 | Sick pay computed from the agreed daily rate when the month's average daily gross is higher | The two measures of чл. 40, ал. 5 КСО are computed separately and the larger is owed; the base is rebuilt from the contract so a defect elsewhere on the row is not counted twice |
 | `F9_missing_health_on_sick` | F9 | No health contribution under чл. 40, ал. 1, т. 5 ЗЗО for days of incapacity | 4.8% × the self-employed minimum × days / norm |
 | `F10_in_kind_asymmetry` | F10 | The benefit in kind is in one base but not the other | The composition of the two bases is solved separately and compared |
-| `F10_excess_asymmetry` | F10 | The same, for the excess over the social-expense threshold | Same |
+| `F10_excess_asymmetry` | F10 | The same, for the excess over the social-expense threshold | Same — but the practice is inferred **per base**, because reading В (`stavki.md`) puts the excess inside the insurable income and outside the taxable base. A file applying В throughout is correct and must produce no finding; the defect is a row that departs from what the other rows do |
 | `F7_relief_over_limit` | F7 | Tax relief above 10% of the monthly taxable base | The amount deducted is solved from the equation and compared with the limit |
 | `F5_tzpb_below_due` | F5 | Employer contributions carry an accident rate below the applicable one | Implied rate: contributions / insurable income − 10.92% |
 | `B4_cap_from_wrong_period` | B4 | The cap of the other half-year is applied | Capped rows sit at a threshold other than the applicable one |

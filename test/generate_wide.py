@@ -195,13 +195,11 @@ def _recompute_downstream(row, inp, regime, tzpb, policy, *,
     work_base = r2(row["Основна за отработеното"] + row["Клас сума"]
                    + row["Бонус"] + row["Платен отпуск"])
     sick_pay = row["Болнични (работодател)"]
-    additions = 0.0 if work_base <= 0 else (
-        (in_kind if policy["in_kind_in_bases"] else 0.0)
-        + (excess if policy["excess_in_bases"] else 0.0))
+    add_insurable, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
 
     if insurable is None:
         insurable = r2(min(regime["max_insurable"],
-                           r2(work_base + sick_pay + additions)))
+                           r2(work_base + sick_pay + add_insurable)))
     row["Осигурителен доход"] = insurable
 
     for column, key in M.EMPLOYEE_COLUMNS:
@@ -211,7 +209,7 @@ def _recompute_downstream(row, inp, regime, tzpb, policy, *,
 
     if taxable is None:
         # the sick pay is inside the gross and outside the taxable base
-        before = r2(gross + additions - sick_pay - employee_total)
+        before = r2(gross + add_taxable - sick_pay - employee_total)
         limit = r2(before * M.RELIEF_LIMIT)
         deduction = row["Удръжка доброволно осиг. (лична)"]
         relief = r2(min(deduction, limit)) if deduction else 0.0
@@ -280,10 +278,8 @@ def m_stale_contributions(row, inp, regime, tzpb, policy, rnd):
     excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
     work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
                    + row["Платен отпуск"])
-    additions = 0.0 if work_base <= 0 else (
-        (in_kind if policy["in_kind_in_bases"] else 0.0)
-        + (excess if policy["excess_in_bases"] else 0.0))
-    before = r2(row["БРУТО"] + additions - row["Болнични (работодател)"]
+    _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
+    before = r2(row["БРУТО"] + add_taxable - row["Болнични (работодател)"]
                 - employee_total)
     limit = r2(before * M.RELIEF_LIMIT)
     deduction = row["Удръжка доброволно осиг. (лична)"]
@@ -349,15 +345,14 @@ def m_sick_pay_out_of_insurable(row, inp, regime, tzpb, policy, rnd):
     excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
     work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
                    + row["Платен отпуск"])
-    additions = ((in_kind if policy["in_kind_in_bases"] else 0.0)
-                 + (excess if policy["excess_in_bases"] else 0.0))
-    if r2(work_base + additions + row["Болнични (работодател)"]) \
+    add_insurable, _ = M.additions_for(policy, in_kind, excess, work_base)
+    if r2(work_base + add_insurable + row["Болнични (работодател)"]) \
             > regime["max_insurable"] - 1.0:
         # the correct figure touches the cap: the composition is no longer
         # recoverable and the finding cannot be located, by the suite or by a
         # live auditor
         return None
-    insurable = r2(work_base + additions)
+    insurable = r2(work_base + add_insurable)
     if abs(insurable - row["Осигурителен доход"]) < 1.0:
         return None                      # too small to tell from rounding
     return _recompute_downstream(row, inp, regime, tzpb, policy, insurable=insurable), \
@@ -378,11 +373,9 @@ def m_sick_pay_in_taxable(row, inp, regime, tzpb, policy, rnd):
     excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
     work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
                    + row["Платен отпуск"])
-    additions = 0.0 if work_base <= 0 else (
-        (in_kind if policy["in_kind_in_bases"] else 0.0)
-        + (excess if policy["excess_in_bases"] else 0.0))
+    _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
     # the correct base subtracts the sick pay here; this one does not
-    before = r2(row["БРУТО"] + additions - row["Лични вноски общо"])
+    before = r2(row["БРУТО"] + add_taxable - row["Лични вноски общо"])
     limit = r2(before * M.RELIEF_LIMIT)
     deduction = row["Удръжка доброволно осиг. (лична)"]
     relief = r2(min(deduction, limit)) if deduction else 0.0
@@ -458,23 +451,26 @@ def _asymmetry(row, inp, regime, tzpb, policy, element, ident, usable=99):
     # the cap too - without it a row that is in fact unusable looks usable.
     if r2(work_base + sick_pay + in_kind + excess) > regime["max_insurable"] - 1.0:
         return None
-    included = policy["in_kind_in_bases"] if element == "in_kind" \
-        else policy["excess_in_bases"]
+    # The defect is a departure from the file's own practice in exactly ONE base -
+    # not an asymmetry between the two bases, which under reading В is correct.
+    in_insurable = policy["in_kind_in_bases"] if element == "in_kind" \
+        else policy["excess_in_insurable"]
+    add_insurable, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
     row = dict(row)
-    other = ((excess if element == "in_kind" and policy["excess_in_bases"] else 0.0)
-             + (in_kind if element == "excess" and policy["in_kind_in_bases"] else 0.0))
-    if included:
-        # removed from the insurable income only
-        insurable = r2(min(regime["max_insurable"], r2(work_base + sick_pay + other)))
+    if in_insurable:
+        # taken out of the insurable income only; the taxable base stays as the file's
+        # practice has it
+        insurable = r2(min(regime["max_insurable"],
+                           r2(work_base + sick_pay + add_insurable - value)))
         row = _recompute_downstream(row, inp, regime, tzpb, policy, insurable=insurable)
     else:
-        # added to the taxable base only; the relief is limited against that same
-        # base, so that the file is not inconsistent in a third respect as well -
-        # the suite must measure one defect at a time
+        # the element is in neither base for this file, so it is added to the taxable
+        # base only. The relief is limited against that same base, so that the file is
+        # not inconsistent in a third respect as well - the suite measures one defect
+        # at a time.
         insurable = row["Осигурителен доход"]
-        additions_tax = r2(other + value)
         employee_total = r2(sum(r2(insurable * M.EMPLOYEE[k] / 100.0) for k in M.EMPLOYEE))
-        before = r2(row["БРУТО"] + additions_tax - sick_pay - employee_total)
+        before = r2(row["БРУТО"] + add_taxable + value - sick_pay - employee_total)
         limit = r2(before * M.RELIEF_LIMIT)
         deduction = row["Удръжка доброволно осиг. (лична)"]
         relief = r2(min(deduction, limit)) if deduction else 0.0
@@ -503,9 +499,8 @@ def m_relief_over_limit(row, inp, regime, tzpb, policy, rnd):
                    + row["Платен отпуск"])
     if work_base <= 0:
         return None
-    additions = ((in_kind if policy["in_kind_in_bases"] else 0.0)
-                 + (excess if policy["excess_in_bases"] else 0.0))
-    before = r2(row["БРУТО"] + additions - row["Болнични (работодател)"]
+    _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
+    before = r2(row["БРУТО"] + add_taxable - row["Болнични (работодател)"]
                 - row["Лични вноски общо"])
     contribution = r2(before * M.RELIEF_LIMIT + rnd.uniform(30, 150))
     row["Удръжка доброволно осиг. (лична)"] = contribution
@@ -605,8 +600,13 @@ def generate(seed, month=None, year=2026):
     regime_id = M.regime_for(year, month) if rates_known else "H2"
     regime = M.REGIMES[regime_id]
     tzpb = rnd.choice([0.4, 0.5, 0.7, 1.1])
+    # One of the three readings of the excess, applied to the whole file. В is the
+    # asymmetric one and must produce no finding when it is applied consistently.
+    reading = rnd.choice(list(M.EXCESS_READINGS))
     policy = dict(in_kind_in_bases=rnd.random() < 0.5,
-                  excess_in_bases=rnd.random() < 0.5)
+                  excess_in_insurable=M.EXCESS_READINGS[reading]["insurable"],
+                  excess_in_taxable=M.EXCESS_READINGS[reading]["taxable"],
+                  excess_reading=reading)
     company = rnd.choice(COMPANIES)
     n = rnd.randint(9, 15)
 
