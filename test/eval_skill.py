@@ -73,12 +73,15 @@ REPO_SKILL = os.path.join(HERE, "..", "skills", "trz-expert")
 # --- the finding's description. Deliberately broad: the point is not to score ---
 # --- a correct finding as a miss because it was worded differently. ---
 KEYWORDS = {
-    "K1_sum_omits_column":        [r"сбор|включ|извън|липсва|обхват|формула"],
+    "K1_sum_omits_column":        [r"сбор|включ|извън|липсва|обхват|формула",
+                                   r"колон|брутo|бруто|БРУТО"],
     "K2_amount_in_day_column":    [r"сума|стойност|размер", r"дни|ден"],
     "K3_stale_contributions":     [r"вноск", r"процент|13\.?78|не отговар|твърд|изостан"],
     "K4_control_column_blind":    [r"изплат|разлика|контрол"],
     "K5_total_not_sum":           [r"сбор|сум|общо", r"ръчно|не отговар|различ|вписан|≠"],
-    "K6_unrounded_accrual":       [r"закръгл|знак|цент|десетичн"],
+    # \bцент, not цент: the latter matches „процент" and quietly claimed every
+    # finding that mentions a percentage.
+    "K6_unrounded_accrual":       [r"закръгл|знак|\bцент|десетичн"],
     "K7_cost_from_net":           [r"разход"],
     "F9_sick_pay_out_of_insurable": [r"болничен|болнични|неработоспособ|чл\.? ?40",
                                    r"осигурителн"],
@@ -89,16 +92,19 @@ KEYWORDS = {
     "F9_missing_health_on_sick":  [r"здравн|ЗЗО", r"болничен|майчинств|неработоспособ"],
     "F10_in_kind_asymmetry":      [r"натура|карт"],
     "F10_excess_asymmetry":       [r"превишен|праг|застрахов|доброволн|30\.?6|60 лв"],
-    "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19|чл\.? ?42"],
+    "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19|чл\.? ?42",
+                                   r"над|превиш|надвиш|повече от"],
     "F7_relief_combined_limit":   [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19",
-                                   r"две|two|отделн|поотделно|група|груп|общо|20 ?%"],
+                                   r"два|две|отделн|поотделно|груп|общ|20 ?%|вместо|по-малк"],
+    # A bare `0` matched any text containing a zero digit, i.e. almost everything;
+    # `0\.00` was no better - it matches the tail of „250.00".
     "F7_relief_not_applied":      [r"облекчен|приспадн|намал|чл\.? ?19|чл\.? ?42",
-                                   r"не е|липсв|без|нула|0"],
+                                   r"не е|липсв|без|нула|не намал"],
     "F5_tzpb_below_due":          [r"ТЗПБ|трудова злополука"],
     "B4_cap_from_wrong_period":   [r"таван|максимал"],
     "C2_seniority_on_gross":      [r"клас", r"база|бруто|основна"],
     "E3_leave_without_seniority": [r"отпуск"],
-    "I5_days_do_not_reconcile":   [r"дни|ден", r"норма|не се връзва|сбор|липсв|2[0-3]"],
+    "I5_days_do_not_reconcile":   [r"дни|ден", r"норма|не се връзва|не отговарят|сбор"],
 }
 
 # --------------------------------------------------------------- refusal mode
@@ -385,8 +391,11 @@ def report_refusal(man, findings):
     return results
 
 
-# One sentence per rate-free scenario that satisfies its KEYWORDS entry. Used only by
-# the self-test, to stand in for a skill that found the defect and described it.
+# One sentence per scenario, phrased the way an auditor would actually write the
+# finding — not reverse-engineered from the pattern. Two jobs: the self-test uses them
+# to stand in for a skill that found the defect, and check_keywords() below uses them
+# to prove the patterns discriminate. A sample written to satisfy its own regex proves
+# nothing, so when a pattern and a natural sentence disagree, fix the pattern.
 SAMPLE_TEXT = {
     "K1_sum_omits_column": "БРУТО не включва колоната за обезщетение - тя е извън сбора",
     "K2_amount_in_day_column": "в колоната за дни е въведена сума, не брой дни",
@@ -397,7 +406,56 @@ SAMPLE_TEXT = {
     "I5_days_do_not_reconcile": "дните на лицето не се връзват с нормата за месеца",
     "C2_seniority_on_gross": "класът е начислен върху по-широка база, а не върху основната заплата",
     "E3_leave_without_seniority": "платеният отпуск е изчислен без допълнението за клас",
+    "K3_stale_contributions": "вноските не са процент от обявения осигурителен доход - стойностите идват от друг период",
+    "F9_sick_pay_out_of_insurable": "болничните за първите дни стоят извън осигурителния доход, а върху тях се дължат вноски",
+    "F9_sick_pay_in_taxable": "болничните за първите дни са в данъчната основа, а са необлагаем доход",
+    "F9_sick_pay_amount": "болничните са сметнати по уговорената дневна ставка, а среднодневното брутно за месеца е по-високо",
+    "F9_missing_health_on_sick": "липсва здравна вноска за дните във временна неработоспособност",
+    "F10_in_kind_asymmetry": "картата в натура е в едната база, но не и в другата",
+    "F10_excess_asymmetry": "превишението над необлагаемия праг влиза само в едната от двете бази",
+    "F7_relief_over_limit": "приспаднато е облекчение над месечния лимит от 10 на сто",
+    "F7_relief_not_applied": "удържана е лична вноска, но облекчението не е приложено и основата не е намалена",
+    "F7_relief_combined_limit": "приспаднато е само 108.04 EUR облекчение вместо дължимите 216.08 EUR",
+    "F5_tzpb_below_due": "изведеният процент ТЗПБ е под приложимия за икономическата дейност",
+    "B4_cap_from_wrong_period": "приложен е максималният осигурителен доход от другото полугодие",
 }
+
+
+def check_keywords():
+    """Prove the keyword patterns discriminate. Free, starts no session.
+
+    A paid run is scored by matching the model's own wording against KEYWORDS, so a
+    pattern that is too loose scores a wrong diagnosis as a hit, and one that is too
+    tight scores a correct finding as a miss. Either way the run reports a confident
+    number about the wrong thing — the failure this whole file exists to avoid, and
+    the one the refusal self-test cannot see, because it only ever exercised the
+    rate-free scenarios.
+
+    Two properties, checked against the sample sentences above:
+      * every sample matches its own scenario's patterns;
+      * no sample matches any OTHER scenario's patterns. Grading attributes a finding
+        to whatever expectation its text satisfies, so an overlap means one scenario
+        can be credited for a description of a different defect.
+    """
+    problems = []
+    for ident, text in sorted(SAMPLE_TEXT.items()):
+        patterns = KEYWORDS.get(ident)
+        if not patterns:
+            problems.append(f"{ident}: has a sample sentence but no KEYWORDS entry")
+            continue
+        if not all(re.search(p, text, re.I) for p in patterns):
+            problems.append(f"{ident}: its own sample does not match its patterns - "
+                            f"the pattern is too tight, a correct finding would score "
+                            f"as a miss")
+        for other, other_patterns in sorted(KEYWORDS.items()):
+            if other != ident and all(re.search(p, text, re.I) for p in other_patterns):
+                problems.append(f"{ident}: its sample also matches {other} - that "
+                                f"pattern is too loose and would take credit for this "
+                                f"description")
+    graded = [i for i in KEYWORDS if i not in SAMPLE_TEXT]
+    for ident in sorted(graded):
+        problems.append(f"{ident}: graded by KEYWORDS but has no sample to check it")
+    return problems
 
 
 def selftest():
@@ -408,6 +466,14 @@ def selftest():
     discovered only after paying for it - and passing everything is much the likeliest
     way for a check like this to be quietly useless.
     """
+    problems = check_keywords()
+    print(f"keyword discrimination: {len(SAMPLE_TEXT)} scenarios")
+    for p in problems:
+        print(f"  FAIL  {p}")
+    if not problems:
+        print("  ok    every sample matches its own patterns and no others")
+    print()
+
     _, _, man = G.generate(1, year=2027)
     hdr = man["hdr"]
     assert not man["rates_known"], "the fixture must be dated outside RATES_KNOWN_YEARS"
@@ -457,7 +523,7 @@ def selftest():
     print("refusal grader self-test - no session is started, nothing is paid")
     print("=" * 78)
     order = ("arithmetic_survives", "refuses_on_rates", "says_what_is_missing")
-    failures = 0
+    failures = len(problems)      # a grader that scores the wrong thing fails here too
     for label, (findings, expected) in cases.items():
         got = tuple(grade_refusal(man, findings)[0][k] for k in order)
         ok = got == expected
@@ -468,7 +534,8 @@ def selftest():
             print(f"       expected {dict(zip(order, expected))}")
     print("=" * 78)
     if failures:
-        print(f"FAILED: the grader does not distinguish {failures} of {len(cases)} cases")
+        print(f"FAILED: {failures} problem(s) - the grading cannot be trusted, so a "
+              f"paid run would report a confident number about the wrong thing")
         return 1
     print(f"OK: the grader separates all {len(cases)} cases; a paid run can be trusted "
           f"to mean something")
