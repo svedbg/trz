@@ -279,9 +279,13 @@ def check(xlsx, manifest, quiet=False):
         no_work = work_base <= 0
         inside_unique = None
         if not at_cap and not no_work:
+            # The sick pay is part of the expectation, not one of the subsets: it is
+            # inside the insurable income by чл. 3, ал. 1 НЕВДПОВ. Leaving it out
+            # here drops every row carrying sick pay out of the sample, the practice
+            # stops being establishable, and F10 findings turn into F1.
             matches = [mask for mask, s in _subsets([("in_kind", in_kind),
                                                      ("excess", excess)])
-                       if abs(r2(work_base + s) - insurable) <= M.TOL]
+                       if abs(r2(work_base + sick_pay + s) - insurable) <= M.TOL]
             if len(matches) == 1:
                 inside_unique = matches[0]
 
@@ -324,7 +328,7 @@ def check(xlsx, manifest, quiet=False):
     NAMES = dict(in_kind="the benefit in kind", excess="the threshold excess",
                  sick_pay="the чл. 40, ал. 5 КСО sick pay",
                  comp_224="the чл. 224 КТ compensation")
-    ID_FOR = dict(sick_pay="F9_sick_pay_in_insurable",
+    ID_FOR = dict(sick_pay="F9_sick_pay_out_of_insurable",
                   comp_224="F1_compensation_in_insurable",
                   in_kind="F10_in_kind_asymmetry", excess="F10_excess_asymmetry")
 
@@ -340,7 +344,11 @@ def check(xlsx, manifest, quiet=False):
                                  for k in ("in_kind", "excess"))
         allowed = {k for k in ("in_kind", "excess") if practice[k] and el[k]}
         allowed_sum = r2(sum(el[k] for k in allowed))
-        expected_insurable = r2(d["work_base"] + allowed_sum)
+        # The чл. 40, ал. 5 КСО sick pay belongs to the expectation, not to the
+        # candidate deviations from it (чл. 3, ал. 1 НЕВДПОВ). It can therefore only
+        # be found missing, never found added.
+        inside_expected = allowed | ({"sick_pay"} if el["sick_pay"] else set())
+        expected_insurable = r2(d["work_base"] + el["sick_pay"] + allowed_sum)
 
         if d["at_cap"]:
             # only whether the cap is the right one for the period
@@ -351,9 +359,9 @@ def check(xlsx, manifest, quiet=False):
                       f"of the other half-year - instead of the applicable "
                       f"{max_insurable:.2f}", other_cap, max_insurable)
         elif practice_clear and abs(d["insurable"] - expected_insurable) > M.TOL:
-            added = [k for k, value in el.items() if value and k not in allowed
+            added = [k for k, value in el.items() if value and k not in inside_expected
                      and abs(r2(expected_insurable + value) - d["insurable"]) <= M.TOL]
-            removed = [k for k in allowed
+            removed = [k for k in inside_expected
                        if abs(r2(expected_insurable - el[k]) - d["insurable"]) <= M.TOL]
             if len(added) == 1:
                 k = added[0]
@@ -388,7 +396,10 @@ def check(xlsx, manifest, quiet=False):
         # difference. Enumerating every subset gives several solutions and leads to
         # the wrong localisation.
         def taxable_for(delta, relief_mode):
-            before = r2(d["gross"] + allowed_sum + delta - d["employee_total"])
+            # The sick pay sits inside the gross and outside the taxable base
+            # (чл. 24, ал. 2, т. 14 ЗДДФЛ), so it comes back out here.
+            before = r2(d["gross"] + allowed_sum - d["sick_pay"] + delta
+                        - d["employee_total"])
             if relief_mode == "limit":
                 applied = r2(min(d["deduction"], r2(before * M.RELIEF_LIMIT))) \
                     if d["deduction"] else 0.0
@@ -403,9 +414,10 @@ def check(xlsx, manifest, quiet=False):
             candidates = [(0.0, "full", "F7_relief_over_limit",
                            "the whole withheld amount was deducted, without the limit")]
             if d["sick_pay"]:
-                candidates.append((-d["sick_pay"], "limit", "F9_sick_pay_out_of_taxable",
-                                   "the чл. 40, ал. 5 КСО sick pay is outside the "
-                                   "taxable base; it is taxable income"))
+                candidates.append((d["sick_pay"], "limit", "F9_sick_pay_in_taxable",
+                                   "the чл. 40, ал. 5 КСО sick pay is inside the "
+                                   "taxable base; it is not taxable income "
+                                   "(чл. 24, ал. 2, т. 14 ЗДДФЛ)"))
             if el["comp_224"]:
                 candidates.append((-el["comp_224"], "limit",
                                    "F6_compensation_out_of_taxable",

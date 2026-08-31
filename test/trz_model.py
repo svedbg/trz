@@ -271,8 +271,12 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
     gross = r2(base + seniority + bonus + leave + comp_224 + sick_pay)
 
     # --- insurable income --------------------------------------------------
-    # The чл. 40, ал. 5 КСО payment is not insurable income (НЕВДПОВ); neither is
-    # the чл. 224 КТ compensation. Both are taxable, however.
+    # The чл. 40, ал. 5 КСО payment IS insurable income: чл. 3, ал. 1 НЕВДПОВ names
+    # „възнагражденията по чл. 40, ал. 5 от КСО“ among the incomes it covers, and
+    # т. 21 of Декларация обр. 1 declares it inside the base. The чл. 224 КТ
+    # compensation is not - чл. 1, ал. 8, т. 7 НЕВДПОВ is an exhaustive list of the
+    # sums no contributions are due on, and чл. 224 is in it. The two run opposite
+    # ways in the tax base as well; see below and F9 in proverki.md.
     in_kind = r2(inp["card_employer"]) if inp["card_employer"] else 0.0
     premium = r2(inp["premium"]) if inp["premium"] else 0.0
     excess = r2(max(0.0, premium - SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
@@ -285,15 +289,19 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
     else:
         additions = ((in_kind if policy["in_kind_in_bases"] else 0.0)
                      + (excess if policy["excess_in_bases"] else 0.0))
-    insurable = r2(min(regime["max_insurable"], r2(work_base + additions)))
+    insurable = r2(min(regime["max_insurable"],
+                       r2(work_base + sick_pay + additions)))
 
     contributions = {k: r2(insurable * p / 100.0) for k, p in EMPLOYEE.items()}
     employee_total = r2(sum(contributions.values()))
 
     # --- taxable base ------------------------------------------------------
     # Whatever enters the insurable income as income in kind or as excess also
-    # enters the taxable base. Compensations and sick pay are taxable.
-    taxable_before = r2(gross + additions - employee_total)
+    # enters the taxable base. The чл. 224 КТ compensation is taxable. The
+    # чл. 40, ал. 5 КСО sick pay is not - чл. 24, ал. 2, т. 14 ЗДДФЛ exempts the
+    # benefits under part one of the КСО, and the справка по чл. 73, ал. 6 reports
+    # it under код 107. It sits inside `gross`, so it is subtracted back out here.
+    taxable_before = r2(gross + additions - sick_pay - employee_total)
     limit = r2(taxable_before * RELIEF_LIMIT)
     relief = r2(min(inp["personal_contribution"], limit)) \
         if inp["personal_contribution"] else 0.0
@@ -347,8 +355,8 @@ SCENARIOS = {
     "K5_total_not_sum":           ("K5", "total row differs from the sum of the cells"),
     "K6_unrounded_accrual":       ("K6", "accrual with more than two decimals"),
     "K7_cost_from_net":           ("K7", "cost of labour computed from net after deductions"),
-    "F9_sick_pay_in_insurable":   ("F9", "sick pay for the first days inside the insurable income"),
-    "F9_sick_pay_out_of_taxable": ("F9", "sick pay for the first days removed from the taxable base"),
+    "F9_sick_pay_out_of_insurable": ("F9", "sick pay for the first days left out of the insurable income"),
+    "F9_sick_pay_in_taxable":     ("F9", "sick pay for the first days left inside the taxable base"),
     "F9_sick_pay_amount":         ("F9", "sick pay from the agreed daily rate when the month's gross is higher"),
     "F9_missing_health_on_sick":  ("F9", "no health contribution for days of incapacity"),
     "F10_in_kind_asymmetry":      ("F10", "income in kind in one base but not the other"),

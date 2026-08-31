@@ -194,12 +194,14 @@ def _recompute_downstream(row, inp, regime, tzpb, policy, *,
     excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
     work_base = r2(row["Основна за отработеното"] + row["Клас сума"]
                    + row["Бонус"] + row["Платен отпуск"])
+    sick_pay = row["Болнични (работодател)"]
     additions = 0.0 if work_base <= 0 else (
         (in_kind if policy["in_kind_in_bases"] else 0.0)
         + (excess if policy["excess_in_bases"] else 0.0))
 
     if insurable is None:
-        insurable = r2(min(regime["max_insurable"], r2(work_base + additions)))
+        insurable = r2(min(regime["max_insurable"],
+                           r2(work_base + sick_pay + additions)))
     row["Осигурителен доход"] = insurable
 
     for column, key in M.EMPLOYEE_COLUMNS:
@@ -208,7 +210,8 @@ def _recompute_downstream(row, inp, regime, tzpb, policy, *,
     row["Лични вноски общо"] = employee_total
 
     if taxable is None:
-        before = r2(gross + additions - employee_total)
+        # the sick pay is inside the gross and outside the taxable base
+        before = r2(gross + additions - sick_pay - employee_total)
         limit = r2(before * M.RELIEF_LIMIT)
         deduction = row["Удръжка доброволно осиг. (лична)"]
         relief = r2(min(deduction, limit)) if deduction else 0.0
@@ -280,7 +283,8 @@ def m_stale_contributions(row, inp, regime, tzpb, policy, rnd):
     additions = 0.0 if work_base <= 0 else (
         (in_kind if policy["in_kind_in_bases"] else 0.0)
         + (excess if policy["excess_in_bases"] else 0.0))
-    before = r2(row["БРУТО"] + additions - employee_total)
+    before = r2(row["БРУТО"] + additions - row["Болнични (работодател)"]
+                - employee_total)
     limit = r2(before * M.RELIEF_LIMIT)
     deduction = row["Удръжка доброволно осиг. (лична)"]
     relief = r2(min(deduction, limit)) if deduction else 0.0
@@ -331,8 +335,12 @@ def m_cost_from_net(row, inp, regime, tzpb, policy, rnd):
     return row, {"K7_cost_from_net"}
 
 
-def m_sick_pay_in_insurable(row, inp, regime, tzpb, policy, rnd):
-    """The first-days sick pay is included in the insurable income."""
+def m_sick_pay_out_of_insurable(row, inp, regime, tzpb, policy, rnd):
+    """The first-days sick pay is left out of the insurable income.
+
+    чл. 3, ал. 1 НЕВДПОВ puts it in, so leaving it out understates the
+    contributions and т. 21 of Декларация обр. 1 by 70% of the daily base per day.
+    """
     if not row["Болнични (работодател)"]:
         return None
     row = dict(row)
@@ -343,20 +351,25 @@ def m_sick_pay_in_insurable(row, inp, regime, tzpb, policy, rnd):
                    + row["Платен отпуск"])
     additions = ((in_kind if policy["in_kind_in_bases"] else 0.0)
                  + (excess if policy["excess_in_bases"] else 0.0))
-    insurable = r2(min(regime["max_insurable"],
-                       r2(work_base + additions + row["Болнични (работодател)"])))
-    if abs(insurable - row["Осигурителен доход"]) < 1.0:
-        return None                      # the cap absorbs it - no visible defect
-    if insurable > regime["max_insurable"] - 1.0:
-        # the result touches the cap: the composition is no longer recoverable
-        # and the finding cannot be located, by the suite or by a live auditor
+    if r2(work_base + additions + row["Болнични (работодател)"]) \
+            > regime["max_insurable"] - 1.0:
+        # the correct figure touches the cap: the composition is no longer
+        # recoverable and the finding cannot be located, by the suite or by a
+        # live auditor
         return None
+    insurable = r2(work_base + additions)
+    if abs(insurable - row["Осигурителен доход"]) < 1.0:
+        return None                      # too small to tell from rounding
     return _recompute_downstream(row, inp, regime, tzpb, policy, insurable=insurable), \
-        {"F9_sick_pay_in_insurable"}
+        {"F9_sick_pay_out_of_insurable"}
 
 
-def m_sick_pay_out_of_taxable(row, inp, regime, tzpb, policy, rnd):
-    """The first-days sick pay is taken out of the taxable base."""
+def m_sick_pay_in_taxable(row, inp, regime, tzpb, policy, rnd):
+    """The first-days sick pay is left inside the taxable base.
+
+    чл. 24, ал. 2, т. 14 ЗДДФЛ keeps it out, so leaving it in overtaxes the person
+    by 10% of the sick pay.
+    """
     if not row["Болнични (работодател)"]:
         return None
     row = dict(row)
@@ -368,15 +381,15 @@ def m_sick_pay_out_of_taxable(row, inp, regime, tzpb, policy, rnd):
     additions = 0.0 if work_base <= 0 else (
         (in_kind if policy["in_kind_in_bases"] else 0.0)
         + (excess if policy["excess_in_bases"] else 0.0))
-    before = r2(row["БРУТО"] - row["Болнични (работодател)"] + additions
-                - row["Лични вноски общо"])
+    # the correct base subtracts the sick pay here; this one does not
+    before = r2(row["БРУТО"] + additions - row["Лични вноски общо"])
     limit = r2(before * M.RELIEF_LIMIT)
     deduction = row["Удръжка доброволно осиг. (лична)"]
     relief = r2(min(deduction, limit)) if deduction else 0.0
     return _recompute_downstream(row, inp, regime, tzpb, policy,
                                  insurable=row["Осигурителен доход"],
                                  taxable=r2(before - relief)), \
-        {"F9_sick_pay_out_of_taxable"}
+        {"F9_sick_pay_in_taxable"}
 
 
 def m_sick_pay_from_agreed(row, inp, regime, tzpb, policy, rnd):
@@ -439,9 +452,11 @@ def _asymmetry(row, inp, regime, tzpb, policy, element, ident, usable=99):
                    + row["Платен отпуск"])
     if work_base <= 0:
         return None
+    sick_pay = row["Болнични (работодател)"]
     # if the cap is reached, the composition of the insurable income is not
-    # recognisable and the defect cannot be located
-    if r2(work_base + in_kind + excess) > regime["max_insurable"] - 1.0:
+    # recognisable and the defect cannot be located. The sick pay counts towards
+    # the cap too - without it a row that is in fact unusable looks usable.
+    if r2(work_base + sick_pay + in_kind + excess) > regime["max_insurable"] - 1.0:
         return None
     included = policy["in_kind_in_bases"] if element == "in_kind" \
         else policy["excess_in_bases"]
@@ -450,7 +465,7 @@ def _asymmetry(row, inp, regime, tzpb, policy, element, ident, usable=99):
              + (in_kind if element == "excess" and policy["in_kind_in_bases"] else 0.0))
     if included:
         # removed from the insurable income only
-        insurable = r2(min(regime["max_insurable"], r2(work_base + other)))
+        insurable = r2(min(regime["max_insurable"], r2(work_base + sick_pay + other)))
         row = _recompute_downstream(row, inp, regime, tzpb, policy, insurable=insurable)
     else:
         # added to the taxable base only; the relief is limited against that same
@@ -459,7 +474,7 @@ def _asymmetry(row, inp, regime, tzpb, policy, element, ident, usable=99):
         insurable = row["Осигурителен доход"]
         additions_tax = r2(other + value)
         employee_total = r2(sum(r2(insurable * M.EMPLOYEE[k] / 100.0) for k in M.EMPLOYEE))
-        before = r2(row["БРУТО"] + additions_tax - employee_total)
+        before = r2(row["БРУТО"] + additions_tax - sick_pay - employee_total)
         limit = r2(before * M.RELIEF_LIMIT)
         deduction = row["Удръжка доброволно осиг. (лична)"]
         relief = r2(min(deduction, limit)) if deduction else 0.0
@@ -490,7 +505,8 @@ def m_relief_over_limit(row, inp, regime, tzpb, policy, rnd):
         return None
     additions = ((in_kind if policy["in_kind_in_bases"] else 0.0)
                  + (excess if policy["excess_in_bases"] else 0.0))
-    before = r2(row["БРУТО"] + additions - row["Лични вноски общо"])
+    before = r2(row["БРУТО"] + additions - row["Болнични (работодател)"]
+                - row["Лични вноски общо"])
     contribution = r2(before * M.RELIEF_LIMIT + rnd.uniform(30, 150))
     row["Удръжка доброволно осиг. (лична)"] = contribution
     row["Данъчна основа"] = r2(before - contribution)
@@ -553,8 +569,8 @@ ROW_MUTATIONS = [
     ("K4_control_column_blind", m_control_column_blind),
     ("K6_unrounded_accrual", m_unrounded_accrual),
     ("K7_cost_from_net", m_cost_from_net),
-    ("F9_sick_pay_in_insurable", m_sick_pay_in_insurable),
-    ("F9_sick_pay_out_of_taxable", m_sick_pay_out_of_taxable),
+    ("F9_sick_pay_out_of_insurable", m_sick_pay_out_of_insurable),
+    ("F9_sick_pay_in_taxable", m_sick_pay_in_taxable),
     ("F9_sick_pay_amount", m_sick_pay_from_agreed),
     ("F9_missing_health_on_sick", m_missing_health_on_sick),
     ("F10_in_kind_asymmetry", m_in_kind_asymmetry),
@@ -566,11 +582,11 @@ ROW_MUTATIONS = [
 ]
 
 # Defects whose localisation goes through the file's practice for the benefits.
-NEEDS_PRACTICE = ("F9_sick_pay_in_insurable", "F10_in_kind_asymmetry",
-                  "F10_excess_asymmetry", "F9_sick_pay_out_of_taxable",
+NEEDS_PRACTICE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
+                  "F10_excess_asymmetry", "F9_sick_pay_in_taxable",
                   "F7_relief_over_limit")
 # Of those, only these spoil the sample the practice is inferred from.
-SPOILS_SAMPLE = ("F9_sick_pay_in_insurable", "F10_in_kind_asymmetry",
+SPOILS_SAMPLE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
                  "F10_excess_asymmetry")
 
 
