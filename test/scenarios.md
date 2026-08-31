@@ -64,8 +64,8 @@ The groups match `references/proverki.md`.
 | `K5_total_not_sum` | K5 | A hand-typed total in the ОБЩО row | The total ≠ the sum of the cells in its column |
 | `K6_unrounded_accrual` | K6 | An accrual with more than two decimals | The value ≠ itself rounded to two decimals |
 | `K7_cost_from_net` | K7 | Cost of labour computed from net after deductions | Cost ≠ gross + employer contributions + benefits; short by exactly what was withheld |
-| `F9_sick_pay_in_insurable` | F9 | The чл. 40, ал. 5 КСО payment is inside the insurable income | Solving the composition: the element sits in a base on which no contributions are due |
-| `F9_sick_pay_out_of_taxable` | F9 | The same payment is removed from the taxable base | Solving the composition of the taxable base |
+| `F9_sick_pay_out_of_insurable` | F9 | The чл. 40, ал. 5 КСО payment is left out of the insurable income | Solving the composition: чл. 3, ал. 1 НЕВДПОВ puts the element inside, and the stated figure is short by it |
+| `F9_sick_pay_in_taxable` | F9 | The same payment is left inside the taxable base | Solving the composition of the taxable base: чл. 24, ал. 2, т. 14 ЗДДФЛ keeps it out |
 | `F9_sick_pay_amount` | F9 | Sick pay computed from the agreed daily rate when the month's average daily gross is higher | The two measures of чл. 40, ал. 5 КСО are computed separately and the larger is owed; the base is rebuilt from the contract so a defect elsewhere on the row is not counted twice |
 | `F9_missing_health_on_sick` | F9 | No health contribution under чл. 40, ал. 1, т. 5 ЗЗО for days of incapacity | 4.8% × the self-employed minimum × days / norm |
 | `F10_in_kind_asymmetry` | F10 | The benefit in kind is in one base but not the other | The composition of the two bases is solved separately and compared |
