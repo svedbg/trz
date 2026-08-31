@@ -2,7 +2,8 @@
 
 `vedomost_05_2026.xlsx` is entirely invented. It holds 10 people for May 2026 —
 nine with deliberately injected defects and one wholly correct row, which serves
-as the control against false positives.
+as the control against false positives. Row 11 carries a second control of a
+different kind: a treatment that *looks* inconsistent and is correct — see below.
 
 The period is chosen on purpose: May 2026 falls in the 01.01–31.07.2026 regime,
 and its norm is 18 working days / 144 hours (21 weekdays minus 1, 6 and 25 May,
@@ -27,6 +28,30 @@ because 24 May is a Sunday — чл. 154, ал. 2 КТ).
 | Row | Person | What is special |
 | --- | --- | --- |
 | 13 | Стефка Ангелова | Part time, 4 hours, salary 310.10 = half the minimum wage. Everything correct. Must produce no finding. |
+
+## The second control: the sick-pay asymmetry on row 11
+
+The injected defect on row 11 is the third employer-paid sick day (F9). The
+**treatment** of the sum is correct, and it is a control in its own right:
+
+| Base | Row 11 | Rule | Source |
+| --- | --- | --- | --- |
+| Осиг. доход | 836.56 — the whole gross, sick pay included | inside | чл. 3, ал. 1 НЕВДПОВ |
+| Данъчна основа | 618.55 = 836.56 − 102.73 − 115.28 | outside | чл. 24, ал. 2, т. 14 ЗДДФЛ |
+
+The same sum is inside one base and outside the other, and **both are right**: the
+asymmetry is prescribed by statute, not a defect in the file. Reporting it — under
+F1, F6, F9 or the internal-consistency rule — is a false positive and fails the suite
+exactly as a finding on row 13 does.
+
+Until 31.08.2026 the fixture carried the inverted treatment: an insurable income of
+733.83, the gross minus the sick pay, and the sick pay left inside the taxable base.
+That was never one of the injected defects — it was simply wrong, and it survived
+because this suite checked only the *number* of employer-paid sick days and never the
+composition of the two bases. `checks_test.py` now checks both: **F1**, that the
+insurable income is the whole gross up to the ceiling, and **F6**, that the taxable
+base subtracts the sick pay. Both were confirmed to go red against the old fixture
+before it was corrected.
 
 ## Consequential findings
 
