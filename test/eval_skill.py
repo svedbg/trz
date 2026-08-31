@@ -250,8 +250,13 @@ def invoke(d, model=None, timeout=1800):
                     if FORBIDDEN.search(text):
                         trace["touched"].append(f"{c.get('name')}: {text[:120]}")
         elif event.get("type") == "result":
+            # `result` carries the reason when is_error is set - a spend cap, a rate
+            # limit, a refusal. Without it a session killed mid-run is indistinguishable
+            # from a skill that simply never wrote its answer, and the money is already
+            # spent by the time anyone digs through stream.jsonl to tell them apart.
             trace.update(turns=event.get("num_turns"), cost=event.get("total_cost_usd"),
-                         error=event.get("is_error"))
+                         error=event.get("is_error"),
+                         result_text=str(event.get("result") or "").strip())
     if "turns" not in trace:
         trace.update(error=True, stderr=(p.stderr or "")[-500:])
     return trace
@@ -573,8 +578,18 @@ def run_seed(seed, model, dry, timeout, refusal=False):
 
     findings, error = read_findings(d)
     if findings is None:
-        print(f"  RUN NOT GRADABLE: {error}")
+        # Say WHY. A session that was cut off did not fail the skill, and reporting it
+        # as „findings.json was not written" blames the wrong thing.
+        if trace.get("error"):
+            print(f"  RUN NOT GRADABLE: the session ended in an error, so {error[0].lower()}{error[1:]}")
+            if trace.get("result_text"):
+                print(f"      session said: {trace['result_text'][:300]}")
+            print("      Nothing here measures the skill. Re-run this seed once the "
+                  "cause is cleared.")
+        else:
+            print(f"  RUN NOT GRADABLE: {error}")
         return dict(seed=seed, cost=trace.get("cost") or 0, gradable=False,
+                    session_error=bool(trace.get("error")),
                     result=[], unattributed=[])
 
     if refusal:
@@ -759,8 +774,16 @@ def main():
 
     print(f"\n{'=' * 78}\nSUMMARY over {len(runs)} seeds · USD {cost:.2f}")
     if not_gradable:
+        cut_off = sum(1 for r in runs if r and not r.get("gradable")
+                      and r.get("session_error"))
         print(f"non-gradable runs: {not_gradable} (tainted, or findings.json missing "
               f"or invalid)")
+        if cut_off:
+            # Money spent, nothing measured, and not the skill's fault. Say so where it
+            # will be read, not only next to the individual seed.
+            print(f"  of those, {cut_off} ended in a session error - cut off, not a "
+                  f"failure of the skill. Re-run those seeds; the scores below are "
+                  f"over the rest.")
     print(f"{'scenario':30} {'identified':>11} {'located':>9} {'missed':>8}")
     identified = located = missed = 0
     for ident in M.SCENARIOS:
