@@ -513,6 +513,42 @@ def m_relief_over_limit(row, inp, regime, tzpb, policy, rnd):
     return row, {"F7_relief_over_limit"}
 
 
+def m_relief_not_applied(row, inp, regime, tzpb, policy, rnd):
+    """A personal contribution is withheld, but it reduces no taxable base.
+
+    чл. 19, ал. 2 във вр. с чл. 42, ал. 3 ЗДДФЛ reduces the monthly base by personal
+    premiums the employer withholds. Withholding them and then taxing as though they
+    had not been withheld overtaxes the person every month.
+
+    This one is the opposite of most defects in the suite: it leaves the file perfectly
+    self-consistent. The base is exactly „облагаем доход − лични вноски“, every row is
+    treated the same way and no control column moves. Nothing contradicts anything -
+    which is why it survives in real payrolls and why the checker has to know the
+    relief was due rather than infer it from an inconsistency.
+    """
+    deduction = row["Удръжка доброволно осиг. (лична)"]
+    if not deduction:
+        return None
+    row = dict(row)
+    in_kind = row["Карта (за сметка на работодателя)"]
+    premium = row["Доброволно здравно осигуряване (премия)"]
+    excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
+    work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
+                   + row["Платен отпуск"])
+    if work_base <= 0:
+        return None
+    _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
+    before = r2(row["БРУТО"] + add_taxable - row["Болнични (работодател)"]
+                - row["Лични вноски общо"])
+    applied = r2(min(deduction, r2(before * M.RELIEF_LIMIT)))
+    if applied < 1.0:
+        return None                      # too small to tell from rounding
+    return _recompute_downstream(row, inp, regime, tzpb, policy,
+                                 insurable=row["Осигурителен доход"],
+                                 taxable=before), \
+        {"F7_relief_not_applied"}
+
+
 def m_seniority_on_gross(row, inp, regime, tzpb, policy, rnd):
     """The seniority supplement is computed on a wider base than the salary."""
     pct = inp["seniority_pct"]
@@ -571,6 +607,7 @@ ROW_MUTATIONS = [
     ("F10_in_kind_asymmetry", m_in_kind_asymmetry),
     ("F10_excess_asymmetry", m_excess_asymmetry),
     ("F7_relief_over_limit", m_relief_over_limit),
+    ("F7_relief_not_applied", m_relief_not_applied),
     ("C2_seniority_on_gross", m_seniority_on_gross),
     ("E3_leave_without_seniority", m_leave_without_seniority),
     ("I5_days_do_not_reconcile", m_days_do_not_reconcile),
@@ -579,7 +616,7 @@ ROW_MUTATIONS = [
 # Defects whose localisation goes through the file's practice for the benefits.
 NEEDS_PRACTICE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
                   "F10_excess_asymmetry", "F9_sick_pay_in_taxable",
-                  "F7_relief_over_limit")
+                  "F7_relief_over_limit", "F7_relief_not_applied")
 # Of those, only these spoil the sample the practice is inferred from.
 SPOILS_SAMPLE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
                  "F10_excess_asymmetry")
