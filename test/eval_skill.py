@@ -90,6 +90,8 @@ KEYWORDS = {
     "F10_in_kind_asymmetry":      [r"натура|карт"],
     "F10_excess_asymmetry":       [r"превишен|праг|застрахов|доброволн|30\.?6|60 лв"],
     "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19|чл\.? ?42"],
+    "F7_relief_combined_limit":   [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19",
+                                   r"две|two|отделн|поотделно|група|груп|общо|20 ?%"],
     "F7_relief_not_applied":      [r"облекчен|приспадн|намал|чл\.? ?19|чл\.? ?42",
                                    r"не е|липсв|без|нула|0"],
     "F5_tzpb_below_due":          [r"ТЗПБ|трудова злополука"],
@@ -410,10 +412,16 @@ def selftest():
     hdr = man["hdr"]
     assert not man["rates_known"], "the fixture must be dated outside RATES_KNOWN_YEARS"
 
-    detected = [dict(kade=f"ред {hdr + 1 + idx}", red=hdr + 1 + idx, tezhest="дефект",
-                     kratko=SAMPLE_TEXT[ident], nachisleno=1.0, dalzhimo=2.0)
+    # File-level defects count too. K5 is injected against the ОБЩО row, not a person,
+    # and a stand-in that can only speak in row numbers silently under-reports it - which
+    # made this self-test fail for whichever seeds happened to carry one, and blame the
+    # grader rather than the stand-in.
+    detected = [dict(kade=(f"ред {hdr + 1 + idx}" if where == "row" else "файл"),
+                     red=(hdr + 1 + idx if where == "row" else None),
+                     tezhest="дефект", kratko=SAMPLE_TEXT[ident],
+                     nachisleno=1.0, dalzhimo=2.0)
                 for where, idx, ident in man["expected"]
-                if where == "row" and ident in SAMPLE_TEXT]
+                if ident in SAMPLE_TEXT]
     refuses_text = dict(
         kade="файл", red=None, tezhest="за проверка",
         kratko="За 2027 г. липсват публикувани МРЗ и максимален осигурителен доход в "

@@ -99,6 +99,7 @@ def check(xlsx, manifest, quiet=False):
         insurable, taxable, tax = (v["Осигурителен доход"], v["Данъчна основа"],
                                    v["ДДФЛ"])
         deduction = v["Удръжка доброволно осиг. (лична)"]
+        deduction_life = v["Удръжка застраховка Живот (лична)"]
         card_deduction = v["Удръжка карта (лична част)"]
         net_before, net = v["НЕТО преди удръжки"], v["НЕТО за изплащане"]
         paid, control = v["Изплатено"], v["Разлика"]
@@ -175,10 +176,11 @@ def check(xlsx, manifest, quiet=False):
             F.add("I1_vertical", r,
                   "net before deductions is not gross minus contributions minus tax",
                   net_before, r2(gross - employee_total - tax))
-        if abs(net - r2(net_before - deduction - card_deduction)) > M.TOL:
+        withheld = r2(deduction + deduction_life + card_deduction)
+        if abs(net - r2(net_before - withheld)) > M.TOL:
             F.add("I1_vertical", r,
                   "net payable is not net before deductions minus the deductions",
-                  net, r2(net_before - deduction - card_deduction))
+                  net, r2(net_before - withheld))
         if abs(tax - r2(taxable * M.TAX_RATE)) > M.TOL:
             F.add("F6_tax_amount", r,
                   f"tax is not {M.TAX_RATE:.0%} of the taxable base",
@@ -299,8 +301,7 @@ def check(xlsx, manifest, quiet=False):
             t_matches = []
             for mask, subset_sum in _subsets([("in_kind", in_kind), ("excess", excess)]):
                 before = r2(gross + subset_sum - sick_pay - employee_total)
-                applied = r2(min(deduction, r2(before * M.RELIEF_LIMIT))) \
-                    if deduction else 0.0
+                applied = M.relief_for(before, deduction, deduction_life)
                 if abs(r2(before - applied) - taxable) <= M.TOL:
                     t_matches.append(mask)
             if len(t_matches) == 1:
@@ -311,7 +312,8 @@ def check(xlsx, manifest, quiet=False):
                          at_cap=at_cap, no_work=no_work,
                          insurable=insurable, sick_pay=sick_pay, in_kind=in_kind,
                          excess=excess, gross=gross, employee_total=employee_total,
-                         taxable=taxable, deduction=deduction, er_social=er_social))
+                         taxable=taxable, deduction=deduction,
+                         deduction_life=deduction_life, er_social=er_social))
 
     # ------------------------- the file's practice for the two benefits
     # Whether the benefit in kind and the threshold excess enter the bases is a
@@ -431,11 +433,15 @@ def check(xlsx, manifest, quiet=False):
             # (чл. 24, ал. 2, т. 14 ЗДДФЛ), so it comes back out here.
             before = r2(d["gross"] + allowed_tax_sum - d["sick_pay"] + delta
                         - d["employee_total"])
+            pension, life = d["deduction"], d["deduction_life"]
             if relief_mode == "limit":
-                applied = r2(min(d["deduction"], r2(before * M.RELIEF_LIMIT))) \
-                    if d["deduction"] else 0.0
+                # correct: one 10% per group of чл. 19, ал. 2
+                applied = M.relief_for(before, pension, life)
             elif relief_mode == "full":
-                applied = d["deduction"]
+                applied = r2(pension + life)
+            elif relief_mode == "combined":
+                # both groups squeezed under a single shared 10%
+                applied = r2(min(r2(pension + life), r2(before * M.RELIEF_LIMIT)))
             else:
                 applied = 0.0
             return r2(before - applied), applied, before
@@ -444,7 +450,7 @@ def check(xlsx, manifest, quiet=False):
         if abs(d["taxable"] - hypothesis) > M.TOL:
             candidates = [(0.0, "full", "F7_relief_over_limit",
                            "the whole withheld amount was deducted, without the limit")]
-            if d["deduction"]:
+            if d["deduction"] or d["deduction_life"]:
                 # The relief was due and none of it was given. Without this candidate
                 # the row falls through to F6_taxable_unexplained, which says the base
                 # does not follow from the gross - true, but it does not name the
@@ -453,6 +459,13 @@ def check(xlsx, manifest, quiet=False):
                                    "the withheld personal contribution reduced the "
                                    "taxable base by nothing (чл. 19, ал. 2 във вр. с "
                                    "чл. 42, ал. 3 ЗДДФЛ)"))
+            if d["deduction"] and d["deduction_life"]:
+                # Only distinguishable when the row carries both groups: with one
+                # instrument a shared cap and a per-group cap are the same number.
+                candidates.append((0.0, "combined", "F7_relief_combined_limit",
+                                   "both groups of the чл. 19, ал. 2 relief were "
+                                   "capped against one shared 10% - each has its own, "
+                                   "against the same base"))
             if d["sick_pay"]:
                 candidates.append((d["sick_pay"], "limit", "F9_sick_pay_in_taxable",
                                    "the чл. 40, ал. 5 КСО sick pay is inside the "
