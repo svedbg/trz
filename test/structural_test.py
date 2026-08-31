@@ -444,6 +444,15 @@ def check(xlsx, manifest, quiet=False):
         if abs(d["taxable"] - hypothesis) > M.TOL:
             candidates = [(0.0, "full", "F7_relief_over_limit",
                            "the whole withheld amount was deducted, without the limit")]
+            if d["deduction"]:
+                # The relief was due and none of it was given. Without this candidate
+                # the row falls through to F6_taxable_unexplained, which says the base
+                # does not follow from the gross - true, but it does not name the
+                # reason, and the reason is money the person overpaid.
+                candidates.append((0.0, "none", "F7_relief_not_applied",
+                                   "the withheld personal contribution reduced the "
+                                   "taxable base by nothing (чл. 19, ал. 2 във вр. с "
+                                   "чл. 42, ал. 3 ЗДДФЛ)"))
             if d["sick_pay"]:
                 candidates.append((d["sick_pay"], "limit", "F9_sick_pay_in_taxable",
                                    "the чл. 40, ал. 5 КСО sick pay is inside the "

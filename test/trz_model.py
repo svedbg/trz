@@ -65,7 +65,13 @@ SENIORITY_RATE = 0.6                      # ПМС № 147 - % per year of servi
 SICK_DAYS_EMPLOYER = 2                    # чл. 40, ал. 5 КСО, from 01.01.2024
 SICK_RATE = 0.70                          # чл. 40, ал. 5 КСО
 HEALTH_ON_INCAPACITY = 4.80               # чл. 40, ал. 1, т. 5 ЗЗО - employer's cost
-RELIEF_LIMIT = 0.10                       # чл. 42, ал. 3 във вр. с чл. 19 ЗДДФЛ
+# чл. 19, ал. 2 във вр. с чл. 42, ал. 3 ЗДДФЛ. Note this is the limit for ONE group of
+# instruments: the statute gives two independent 10% allowances - one for допълнително
+# доброволно осигуряване, one for доброволно здравно осигуряване plus застраховки
+# „Живот“ - so a person carrying both can reduce the base by up to 20%. The fixture
+# models a single deduction column, i.e. one group, so one limit applies here. A file
+# with both instruments is not representable yet; see stavki.md.
+RELIEF_LIMIT = 0.10
 
 # Premiums for specific working-time regimes. The model does not compute with these -
 # suite 1 does - but they live here because this file is the one Python copy of the
@@ -400,6 +406,7 @@ SCENARIOS = {
     "F10_in_kind_asymmetry":      ("F10", "income in kind in one base but not the other"),
     "F10_excess_asymmetry":       ("F10", "threshold excess in one base but not the other"),
     "F7_relief_over_limit":       ("F7", "tax relief above the monthly percentage limit"),
+    "F7_relief_not_applied":      ("F7", "a withheld personal contribution reduces no taxable base"),
     "F5_tzpb_below_due":          ("F5", "employer contributions carry an accident rate below the applicable one"),
     "B4_cap_from_wrong_period":   ("B4", "maximum insurable income taken from the other half-year"),
     "C2_seniority_on_gross":      ("C2", "length-of-service supplement computed on a wider base"),
