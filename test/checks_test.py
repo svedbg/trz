@@ -18,6 +18,7 @@ import re
 import openpyxl
 
 import trz_model as M
+from trz_model import r2
 
 # --- rates -------------------------------------------------------------------
 # Read from trz_model.py, which rates_test.py cross-checks against stavki.md line by
@@ -67,7 +68,7 @@ def report(severity, row, person, check, basis, stated, due, action):
     findings.append(dict(
         severity=severity, row=row, person=person, check=check, basis=basis,
         stated=stated, due=due,
-        difference=(None if stated is None or due is None else round(due - stated, 2)),
+        difference=(None if stated is None or due is None else r2(due - stated)),
         action=action))
 
 
@@ -105,7 +106,7 @@ for r in rows:
     # contracted monthly salary, so the threshold is pro-rated the same way. Comparing
     # an accrued amount against a whole month's minimum reports a phantom violation for
     # anyone on the minimum who worked part of the month.
-    due_min = round(MIN_WAGE * part_time * days_worked / WORK_DAYS, 2)
+    due_min = r2(MIN_WAGE * part_time * days_worked / WORK_DAYS)
     if base_pay + 1e-9 < due_min - TOL:
         report("нарушение", r, name, "B1 base pay below the minimum wage",
                "чл.244 т.1 КТ; ПМС №243 от 13.11.2025, ДВ бр.98/2025",
@@ -124,16 +125,16 @@ for r in rows:
 
     # --- C1/C2 length-of-service supplement ---
     if years and years >= 1:
-        due_pct = round(years * SENIORITY_MIN * 100, 2)
+        due_pct = r2(years * SENIORITY_MIN * 100)
         if seniority_pct + 1e-9 < due_pct:
             report("нарушение", r, name,
                    f"C1 supplement: {seniority_pct}% applied for {years} years of service",
                    "ПМС №147 от 29.06.2007, ДВ бр.56/2007; чл.12 ал.1 НСОРЗ",
-                   round(base_pay * seniority_pct / 100, 2),
-                   round(base_pay * due_pct / 100, 2),
+                   r2(base_pay * seniority_pct / 100),
+                   r2(base_pay * due_pct / 100),
                    f"Accrue at least {due_pct}% on the base salary.")
         else:
-            expected = round(base_pay * seniority_pct / 100, 2)
+            expected = r2(base_pay * seniority_pct / 100)
             if abs(seniority_sum - expected) > TOL:
                 report("нарушение", r, name,
                        "C2 supplement: the amount does not match the stated percentage",
@@ -142,7 +143,7 @@ for r in rows:
 
     # --- D4 overtime ---
     if overtime_hours:
-        due = round(hourly * overtime_hours * (1 + OVERTIME_WORKDAY), 2)
+        due = r2(hourly * overtime_hours * (1 + OVERTIME_WORKDAY))
         if overtime_premium + TOL < due:
             report("нарушение", r, name,
                    f"D4 {overtime_hours} overtime hours on working days without the premium",
@@ -151,7 +152,7 @@ for r in rows:
 
     # --- D6 night work ---
     if night_hours:
-        due = round(NIGHT_HOUR * night_hours, 2)
+        due = r2(NIGHT_HOUR * night_hours)
         if night_premium + TOL < due:
             report("нарушение", r, name,
                    f"D6 {night_hours} night hours without the supplement",
@@ -160,7 +161,7 @@ for r in rows:
 
     # --- D7 work on a public holiday ---
     if holiday_hours:
-        due = round(hourly * holiday_hours * HOLIDAY_MULTIPLIER, 2)
+        due = r2(hourly * holiday_hours * HOLIDAY_MULTIPLIER)
         if holiday_premium + TOL < due:
             report("нарушение", r, name,
                    f"D7 {holiday_hours} hours on a public holiday below the double rate",
@@ -168,11 +169,11 @@ for r in rows:
 
     # --- F9 sick days ---
     if sick_days > SICK_DAYS_EMPLOYER:
-        per_day = round(sick_pay / sick_days, 2) if sick_days else 0
+        per_day = r2(sick_pay / sick_days) if sick_days else 0
         report("нарушение", r, name,
                f"F9 the employer pays {sick_days} sick days instead of {SICK_DAYS_EMPLOYER}",
                "чл.40 ал.5 КСО, изм. ДВ бр.106/2023, в сила от 01.01.2024",
-               sick_pay, round(per_day * SICK_DAYS_EMPLOYER, 2),
+               sick_pay, r2(per_day * SICK_DAYS_EMPLOYER),
                "The first 2 working days are at the employer's expense; the rest "
                "are paid by the state fund.")
 
@@ -184,10 +185,10 @@ for r in rows:
     # ал. 8 НЕВДПОВ, so the base is the whole gross, capped. A stated base ABOVE the
     # ceiling is B4's finding, not this one - reporting both would count one defect
     # twice.
-    expected_insurable = round(min(gross, MAX_INSURABLE), 2)
+    expected_insurable = r2(min(gross, MAX_INSURABLE))
     if insurable <= MAX_INSURABLE + TOL and abs(insurable - expected_insurable) > TOL:
         why = (" - the sick pay for the first days is left out of it" if sick_pay
-               and abs(insurable - round(gross - sick_pay, 2)) <= TOL else "")
+               and abs(insurable - r2(gross - sick_pay)) <= TOL else "")
         report("нарушение", r, name,
                f"F1 the insurable income is not the whole gross{why}",
                "чл.3 ал.1 НЕВДПОВ; чл.6 ал.2 КСО", insurable, expected_insurable,
@@ -195,7 +196,7 @@ for r in rows:
                "contributions and Декларация обр. 1 (т. 21).")
 
     # --- F2 employee contributions ---
-    expected = round(min(insurable, MAX_INSURABLE) * EMPLOYEE_TOTAL, 2)
+    expected = r2(min(insurable, MAX_INSURABLE) * EMPLOYEE_TOTAL)
     if abs(employee_contributions - expected) > 0.05:
         report("нарушение", r, name,
                "F2 employee contributions are not 13.78% of the insurable income "
@@ -209,30 +210,30 @@ for r in rows:
     # exempts the benefits under part one of the КСО, and the справка по чл. 73,
     # ал. 6 reports it under код 107. This is the mirror of F1 above - the same sum is
     # inside one base and outside the other, and both are correct.
-    expected_base = round(gross - sick_pay - employee_contributions, 2)
+    expected_base = r2(gross - sick_pay - employee_contributions)
     if abs(taxable - expected_base) > TOL:
         why = (" - the sick pay for the first days is left inside it" if sick_pay
-               and abs(taxable - round(gross - employee_contributions, 2)) <= TOL else "")
+               and abs(taxable - r2(gross - employee_contributions)) <= TOL else "")
         report("нарушение", r, name,
                f"F6 taxable base is not the taxable income minus the employee "
                f"contributions{why}",
                "чл.42 ал.2 във вр. с чл.24 ал.2 т.14 ЗДДФЛ",
                taxable, expected_base, "Correct the taxable base.")
-    expected_tax = round(taxable * TAX_RATE, 2)
+    expected_tax = r2(taxable * TAX_RATE)
     if abs(tax - expected_tax) > TOL:
         report("нарушение", r, name, "F6 tax is not 10% of the taxable base",
                "чл.42 ал.4 ЗДДФЛ", tax, expected_tax, "Correct the tax.")
 
     # --- I2 the accruals add up to the gross ---
-    accrual_sum = round(base_pay + seniority_sum + overtime_premium + holiday_premium
-                        + night_premium + sick_pay, 2)
+    accrual_sum = r2(base_pay + seniority_sum + overtime_premium + holiday_premium
+                     + night_premium + sick_pay)
     if abs(gross - accrual_sum) > TOL:
         report("нарушение", r, name, "I2 the accruals do not add up to the gross",
                "arithmetic consistency", gross, accrual_sum,
                "Check the accruals by type.")
 
     # --- I1 vertical reconciliation ---
-    expected_net = round(gross - employee_contributions - tax - deductions, 2)
+    expected_net = r2(gross - employee_contributions - tax - deductions)
     if abs(net - expected_net) > TOL:
         report("нарушение", r, name,
                "I1 net is not gross minus contributions minus tax minus deductions",
@@ -243,7 +244,7 @@ for r in rows:
     if deductions > 0:
         report("за проверка", r, name,
                f"G2 deduction of {deductions:.2f} EUR against a net before deductions "
-               f"of {round(gross - employee_contributions - tax, 2):.2f} EUR",
+               f"of {r2(gross - employee_contributions - tax):.2f} EUR",
                "чл.446 ГПК - the thresholds are NOT in references/stavki.md",
                deductions, None,
                "Enter the чл.446 ГПК thresholds and the number of dependants, then "
