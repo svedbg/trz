@@ -109,6 +109,28 @@ EXCESS_READINGS = {
 }
 
 
+def relief_for(taxable_before, contribution_pension, contribution_life):
+    """The чл. 19, ал. 2 ЗДДФЛ relief — TWO independent allowances, not one.
+
+    The statute reduces the monthly base by personal contributions for допълнително
+    доброволно осигуряване „в общ размер до 10 на сто", **както и** by those for
+    доброволно здравно осигуряване and премии по договори за застраховки „Живот" —
+    again „в общ размер до 10 на сто". Each group is capped against the same чл. 42,
+    ал. 2 base, so someone holding both can reduce it by up to 20%.
+
+    Treating the two as a single 10% understates the relief and manufactures a false
+    „over the limit" finding. The reference file said „до общо 10%" until 31.08.2026;
+    this is the corrected rule.
+    """
+    limit = r2(taxable_before * RELIEF_LIMIT)
+    applied = 0.0
+    if contribution_pension:
+        applied += min(contribution_pension, limit)
+    if contribution_life:
+        applied += min(contribution_life, limit)
+    return r2(applied)
+
+
 def additions_for(policy, in_kind, excess, work_base):
     """What the benefits add to each base, as (insurable, taxable).
 
@@ -220,7 +242,8 @@ COLUMNS = [
     "ДОО пенсии", "ДОО ОЗМ", "ДОО безработица", "ЗО лична", "ДЗПО-УПФ лична",
     "Лични вноски общо",
     "Осигурителен доход", "Данъчна основа", "ДДФЛ",
-    "Удръжка доброволно осиг. (лична)", "Удръжка карта (лична част)",
+    "Удръжка доброволно осиг. (лична)", "Удръжка застраховка Живот (лична)",
+    "Удръжка карта (лична част)",
     "НЕТО преди удръжки", "НЕТО за изплащане", "Изплатено", "Разлика",
     "Вноски работодател ДОО+ТЗПБ", "ДЗПО-УПФ работодател", "ЗО работодател",
     "ЗО при болничен/майчинство", "Вноски работодател общо",
@@ -288,7 +311,8 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
     """Compute one correct row from its inputs.
 
     inp: monthly_salary, seniority_pct, days_*, bonus, compensation_224,
-         card_employer, card_employee, premium, personal_contribution
+         card_employer, card_employee, premium, personal_contribution,
+         life_premium_personal
     policy: in_kind_in_bases, excess_in_insurable, excess_in_taxable (bool) -
             one flag per base, because reading В is asymmetric; see the docstring
     Returns dict: column name -> value.
@@ -346,14 +370,14 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
     # benefits under part one of the КСО, and the справка по чл. 73, ал. 6 reports
     # it under код 107. It sits inside `gross`, so it is subtracted back out here.
     taxable_before = r2(gross + add_taxable - sick_pay - employee_total)
-    limit = r2(taxable_before * RELIEF_LIMIT)
-    relief = r2(min(inp["personal_contribution"], limit)) \
-        if inp["personal_contribution"] else 0.0
+    relief = relief_for(taxable_before, inp["personal_contribution"],
+                        inp["life_premium_personal"])
     taxable = r2(taxable_before - relief)
     tax = r2(taxable * TAX_RATE)
 
     net_before = r2(gross - employee_total - tax)
-    net = r2(net_before - inp["personal_contribution"] - inp["card_employee"])
+    net = r2(net_before - inp["personal_contribution"]
+             - inp["life_premium_personal"] - inp["card_employee"])
 
     # --- employer contributions -------------------------------------------
     er_social = r2(insurable * (EMPLOYER_SOCIAL + tzpb) / 100.0)
@@ -377,6 +401,7 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
         "Лични вноски общо": employee_total,
         "Осигурителен доход": insurable, "Данъчна основа": taxable, "ДДФЛ": tax,
         "Удръжка доброволно осиг. (лична)": r2(inp["personal_contribution"]),
+        "Удръжка застраховка Живот (лична)": r2(inp["life_premium_personal"]),
         "Удръжка карта (лична част)": r2(inp["card_employee"]),
         "НЕТО преди удръжки": net_before, "НЕТО за изплащане": net,
         "Изплатено": net, "Разлика": 0.0,
@@ -407,6 +432,7 @@ SCENARIOS = {
     "F10_excess_asymmetry":       ("F10", "threshold excess in one base but not the other"),
     "F7_relief_over_limit":       ("F7", "tax relief above the monthly percentage limit"),
     "F7_relief_not_applied":      ("F7", "a withheld personal contribution reduces no taxable base"),
+    "F7_relief_combined_limit":   ("F7", "both relief groups capped against one shared 10% limit"),
     "F5_tzpb_below_due":          ("F5", "employer contributions carry an accident rate below the applicable one"),
     "B4_cap_from_wrong_period":   ("B4", "maximum insurable income taken from the other half-year"),
     "C2_seniority_on_gross":      ("C2", "length-of-service supplement computed on a wider base"),

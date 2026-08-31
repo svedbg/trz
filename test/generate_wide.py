@@ -143,6 +143,8 @@ def random_inputs(rnd, norm, regime):
 
     has_card = rnd.random() < 0.6
     has_premium = rnd.random() < 0.8
+    has_pension = rnd.random() < 0.20
+    has_life = rnd.random() < (0.55 if has_pension else 0.22)
     return dict(
         monthly_salary=salary, seniority_pct=pct,
         days_worked=worked, days_leave=leave, days_sick=sick, days_maternity=0,
@@ -151,7 +153,13 @@ def random_inputs(rnd, norm, regime):
         card_employer=r2(rnd.uniform(38, 72)) if has_card else 0.0,
         card_employee=r2(rnd.uniform(3, 12)) if has_card else 0.0,
         premium=r2(rnd.uniform(32.9, 44.5)) if has_premium else 0.0,
-        personal_contribution=r2(rnd.uniform(20, 120)) if rnd.random() < 0.15 else 0.0,
+        personal_contribution=r2(rnd.uniform(20, 120)) if has_pension else 0.0,
+        # Group two of чл. 19, ал. 2: доброволно здравно осигуряване and застраховки
+        # „Живот“. Its own 10%, independent of the group above. Correlated with the
+        # first on purpose: a row carrying BOTH is the only one where a single shared
+        # 10% differs from two separate ones, so the fixture has to produce them often
+        # enough for the scenario to have teeth.
+        life_premium_personal=r2(rnd.uniform(40, 220)) if has_life else 0.0,
     )
 
 
@@ -210,16 +218,16 @@ def _recompute_downstream(row, inp, regime, tzpb, policy, *,
     if taxable is None:
         # the sick pay is inside the gross and outside the taxable base
         before = r2(gross + add_taxable - sick_pay - employee_total)
-        limit = r2(before * M.RELIEF_LIMIT)
-        deduction = row["Удръжка доброволно осиг. (лична)"]
-        relief = r2(min(deduction, limit)) if deduction else 0.0
-        taxable = r2(before - relief)
+        taxable = r2(before - M.relief_for(before,
+                                           row["Удръжка доброволно осиг. (лична)"],
+                                           row["Удръжка застраховка Живот (лична)"]))
     row["Данъчна основа"] = taxable
     row["ДДФЛ"] = r2(taxable * M.TAX_RATE)
 
     row["НЕТО преди удръжки"] = r2(gross - employee_total - row["ДДФЛ"])
     row["НЕТО за изплащане"] = r2(row["НЕТО преди удръжки"]
                                   - row["Удръжка доброволно осиг. (лична)"]
+                                  - row["Удръжка застраховка Живот (лична)"]
                                   - row["Удръжка карта (лична част)"])
     row["Изплатено"] = row["НЕТО за изплащане"]
     row["Разлика"] = 0.0
@@ -281,14 +289,14 @@ def m_stale_contributions(row, inp, regime, tzpb, policy, rnd):
     _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
     before = r2(row["БРУТО"] + add_taxable - row["Болнични (работодател)"]
                 - employee_total)
-    limit = r2(before * M.RELIEF_LIMIT)
-    deduction = row["Удръжка доброволно осиг. (лична)"]
-    relief = r2(min(deduction, limit)) if deduction else 0.0
+    relief = M.relief_for(before, row["Удръжка доброволно осиг. (лична)"],
+                          row["Удръжка застраховка Живот (лична)"])
     row["Данъчна основа"] = r2(before - relief)
     row["ДДФЛ"] = r2(row["Данъчна основа"] * M.TAX_RATE)
     row["НЕТО преди удръжки"] = r2(row["БРУТО"] - employee_total - row["ДДФЛ"])
     row["НЕТО за изплащане"] = r2(row["НЕТО преди удръжки"]
                                   - row["Удръжка доброволно осиг. (лична)"]
+                                  - row["Удръжка застраховка Живот (лична)"]
                                   - row["Удръжка карта (лична част)"])
     row["Изплатено"] = row["НЕТО за изплащане"]
     return row, {"K3_stale_contributions"}
@@ -323,6 +331,7 @@ def m_unrounded_accrual(row, inp, regime, tzpb, policy, rnd):
 def m_cost_from_net(row, inp, regime, tzpb, policy, rnd):
     """The cost of labour is computed from net after deductions."""
     deductions = r2(row["Удръжка доброволно осиг. (лична)"]
+                    + row["Удръжка застраховка Живот (лична)"]
                     + row["Удръжка карта (лична част)"])
     if deductions < 1.0:
         return None
@@ -376,9 +385,8 @@ def m_sick_pay_in_taxable(row, inp, regime, tzpb, policy, rnd):
     _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
     # the correct base subtracts the sick pay here; this one does not
     before = r2(row["БРУТО"] + add_taxable - row["Лични вноски общо"])
-    limit = r2(before * M.RELIEF_LIMIT)
-    deduction = row["Удръжка доброволно осиг. (лична)"]
-    relief = r2(min(deduction, limit)) if deduction else 0.0
+    relief = M.relief_for(before, row["Удръжка доброволно осиг. (лична)"],
+                          row["Удръжка застраховка Живот (лична)"])
     return _recompute_downstream(row, inp, regime, tzpb, policy,
                                  insurable=row["Осигурителен доход"],
                                  taxable=r2(before - relief)), \
@@ -471,9 +479,8 @@ def _asymmetry(row, inp, regime, tzpb, policy, element, ident, usable=99):
         insurable = row["Осигурителен доход"]
         employee_total = r2(sum(r2(insurable * M.EMPLOYEE[k] / 100.0) for k in M.EMPLOYEE))
         before = r2(row["БРУТО"] + add_taxable + value - sick_pay - employee_total)
-        limit = r2(before * M.RELIEF_LIMIT)
-        deduction = row["Удръжка доброволно осиг. (лична)"]
-        relief = r2(min(deduction, limit)) if deduction else 0.0
+        relief = M.relief_for(before, row["Удръжка доброволно осиг. (лична)"],
+                              row["Удръжка застраховка Живот (лична)"])
         row = _recompute_downstream(row, inp, regime, tzpb, policy,
                                     insurable=insurable, taxable=r2(before - relief))
     return row, {ident}
@@ -502,12 +509,16 @@ def m_relief_over_limit(row, inp, regime, tzpb, policy, rnd):
     _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
     before = r2(row["БРУТО"] + add_taxable - row["Болнични (работодател)"]
                 - row["Лични вноски общо"])
+    # The limit is ignored altogether: every withheld amount is deducted in full,
+    # whichever group it belongs to. That is the defect - not the two-group split.
     contribution = r2(before * M.RELIEF_LIMIT + rnd.uniform(30, 150))
     row["Удръжка доброволно осиг. (лична)"] = contribution
-    row["Данъчна основа"] = r2(before - contribution)
+    life = row["Удръжка застраховка Живот (лична)"]
+    applied = r2(contribution + life)
+    row["Данъчна основа"] = r2(before - applied)
     row["ДДФЛ"] = r2(row["Данъчна основа"] * M.TAX_RATE)
     row["НЕТО преди удръжки"] = r2(row["БРУТО"] - row["Лични вноски общо"] - row["ДДФЛ"])
-    row["НЕТО за изплащане"] = r2(row["НЕТО преди удръжки"] - contribution
+    row["НЕТО за изплащане"] = r2(row["НЕТО преди удръжки"] - contribution - life
                                   - row["Удръжка карта (лична част)"])
     row["Изплатено"] = row["НЕТО за изплащане"]
     return row, {"F7_relief_over_limit"}
@@ -526,7 +537,8 @@ def m_relief_not_applied(row, inp, regime, tzpb, policy, rnd):
     which is why it survives in real payrolls and why the checker has to know the
     relief was due rather than infer it from an inconsistency.
     """
-    deduction = row["Удръжка доброволно осиг. (лична)"]
+    deduction = r2(row["Удръжка доброволно осиг. (лична)"]
+                   + row["Удръжка застраховка Живот (лична)"])
     if not deduction:
         return None
     row = dict(row)
@@ -540,13 +552,51 @@ def m_relief_not_applied(row, inp, regime, tzpb, policy, rnd):
     _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
     before = r2(row["БРУТО"] + add_taxable - row["Болнични (работодател)"]
                 - row["Лични вноски общо"])
-    applied = r2(min(deduction, r2(before * M.RELIEF_LIMIT)))
+    applied = M.relief_for(before, row["Удръжка доброволно осиг. (лична)"],
+                           row["Удръжка застраховка Живот (лична)"])
     if applied < 1.0:
         return None                      # too small to tell from rounding
     return _recompute_downstream(row, inp, regime, tzpb, policy,
                                  insurable=row["Осигурителен доход"],
                                  taxable=before), \
         {"F7_relief_not_applied"}
+
+
+def m_relief_combined_limit(row, inp, regime, tzpb, policy, rnd):
+    """Both groups of the чл. 19 relief capped against ONE shared 10%.
+
+    Чл. 19, ал. 2 ЗДДФЛ gives two independent allowances - one for допълнително
+    доброволно осигуряване, one for доброволно здравно осигуряване and премии по
+    договори за застраховки „Живот“ - each up to 10% of the same чл. 42, ал. 2 base.
+    A payroll that adds the two together and caps the total at a single 10% relieves
+    less than it should and overtaxes the person.
+
+    This is the error the reference file itself carried until 31.08.2026, which is why
+    it is worth a scenario: it is the shape a reader arrives at from „до общо 10%“.
+    """
+    pension = row["Удръжка доброволно осиг. (лична)"]
+    life = row["Удръжка застраховка Живот (лична)"]
+    if not pension or not life:
+        return None                      # needs both groups to be distinguishable
+    row = dict(row)
+    in_kind = row["Карта (за сметка на работодателя)"]
+    premium = row["Доброволно здравно осигуряване (премия)"]
+    excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
+    work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
+                   + row["Платен отпуск"])
+    if work_base <= 0:
+        return None
+    _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
+    before = r2(row["БРУТО"] + add_taxable - row["Болнични (работодател)"]
+                - row["Лични вноски общо"])
+    due = M.relief_for(before, pension, life)
+    combined = r2(min(r2(pension + life), r2(before * M.RELIEF_LIMIT)))
+    if due - combined < 1.0:
+        return None                      # the shared cap does not bind - nothing to see
+    return _recompute_downstream(row, inp, regime, tzpb, policy,
+                                 insurable=row["Осигурителен доход"],
+                                 taxable=r2(before - combined)), \
+        {"F7_relief_combined_limit"}
 
 
 def m_seniority_on_gross(row, inp, regime, tzpb, policy, rnd):
@@ -608,6 +658,7 @@ ROW_MUTATIONS = [
     ("F10_excess_asymmetry", m_excess_asymmetry),
     ("F7_relief_over_limit", m_relief_over_limit),
     ("F7_relief_not_applied", m_relief_not_applied),
+    ("F7_relief_combined_limit", m_relief_combined_limit),
     ("C2_seniority_on_gross", m_seniority_on_gross),
     ("E3_leave_without_seniority", m_leave_without_seniority),
     ("I5_days_do_not_reconcile", m_days_do_not_reconcile),
@@ -616,7 +667,8 @@ ROW_MUTATIONS = [
 # Defects whose localisation goes through the file's practice for the benefits.
 NEEDS_PRACTICE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
                   "F10_excess_asymmetry", "F9_sick_pay_in_taxable",
-                  "F7_relief_over_limit", "F7_relief_not_applied")
+                  "F7_relief_over_limit", "F7_relief_not_applied",
+                  "F7_relief_combined_limit")
 # Of those, only these spoil the sample the practice is inferred from.
 SPOILS_SAMPLE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
                  "F10_excess_asymmetry")
@@ -679,7 +731,7 @@ def generate(seed, month=None, year=2026):
                    days_worked=0, days_leave=0, days_sick=0, days_maternity=norm,
                    bonus=0.0, compensation_224=0.0, card_employer=0.0,
                    card_employee=0.0, premium=r2(rnd.uniform(32.9, 44.5)),
-                   personal_contribution=0.0)
+                   personal_contribution=0.0, life_premium_personal=0.0)
         row = M.clean_row(inp, regime_effective, tzpb_effective, policy, norm)
         row["_norm"] = norm
         people.append(dict(name=_name(rnd, used), department=rnd.choice(DEPARTMENTS),
