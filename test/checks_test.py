@@ -176,6 +176,24 @@ for r in rows:
                "The first 2 working days are at the employer's expense; the rest "
                "are paid by the state fund.")
 
+    # --- F1 composition of the insurable income ---
+    # Every accrual in this file is insurable income, the чл. 40, ал. 5 КСО sick pay
+    # included: чл. 3, ал. 1 НЕВДПОВ names „възнагражденията по чл. 40, ал. 5 от
+    # КСО“ among the incomes the base covers, and т. 21 of Декларация обр. 1 declares
+    # it inside. Nothing accrued here is on the exhaustive exclusion list of чл. 1,
+    # ал. 8 НЕВДПОВ, so the base is the whole gross, capped. A stated base ABOVE the
+    # ceiling is B4's finding, not this one - reporting both would count one defect
+    # twice.
+    expected_insurable = round(min(gross, MAX_INSURABLE), 2)
+    if insurable <= MAX_INSURABLE + TOL and abs(insurable - expected_insurable) > TOL:
+        why = (" - the sick pay for the first days is left out of it" if sick_pay
+               and abs(insurable - round(gross - sick_pay, 2)) <= TOL else "")
+        report("нарушение", r, name,
+               f"F1 the insurable income is not the whole gross{why}",
+               "чл.3 ал.1 НЕВДПОВ; чл.6 ал.2 КСО", insurable, expected_insurable,
+               "Include every accrual in the insurable income, then recompute the "
+               "contributions and Декларация обр. 1 (т. 21).")
+
     # --- F2 employee contributions ---
     expected = round(min(insurable, MAX_INSURABLE) * EMPLOYEE_TOTAL, 2)
     if abs(employee_contributions - expected) > 0.05:
@@ -185,15 +203,25 @@ for r in rows:
                "Recompute the contributions.")
 
     # --- F6 taxable base and tax ---
-    expected_base = round(gross - employee_contributions, 2)
+    # The base is the taxable income of чл. 24 ЗДДФЛ minus the personal contributions
+    # (чл. 42, ал. 2 ЗДДФЛ) - not the whole gross. The чл. 40, ал. 5 КСО sick pay sits
+    # inside the gross and outside the taxable income: чл. 24, ал. 2, т. 14 ЗДДФЛ
+    # exempts the benefits under part one of the КСО, and the справка по чл. 73,
+    # ал. 6 reports it under код 107. This is the mirror of F1 above - the same sum is
+    # inside one base and outside the other, and both are correct.
+    expected_base = round(gross - sick_pay - employee_contributions, 2)
     if abs(taxable - expected_base) > TOL:
+        why = (" - the sick pay for the first days is left inside it" if sick_pay
+               and abs(taxable - round(gross - employee_contributions, 2)) <= TOL else "")
         report("нарушение", r, name,
-               "F6 taxable base is not gross minus employee contributions", "ЗДДФЛ",
+               f"F6 taxable base is not the taxable income minus the employee "
+               f"contributions{why}",
+               "чл.42 ал.2 във вр. с чл.24 ал.2 т.14 ЗДДФЛ",
                taxable, expected_base, "Correct the taxable base.")
     expected_tax = round(taxable * TAX_RATE, 2)
     if abs(tax - expected_tax) > TOL:
-        report("нарушение", r, name, "F6 tax is not 10% of the taxable base", "ЗДДФЛ",
-               tax, expected_tax, "Correct the tax.")
+        report("нарушение", r, name, "F6 tax is not 10% of the taxable base",
+               "чл.42 ал.4 ЗДДФЛ", tax, expected_tax, "Correct the tax.")
 
     # --- I2 the accruals add up to the gross ---
     accrual_sum = round(base_pay + seniority_sum + overtime_premium + holiday_premium
