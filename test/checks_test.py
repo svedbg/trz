@@ -47,7 +47,10 @@ SICK_RATE = M.SICK_RATE
 EMPLOYEE_TOTAL = M.EMPLOYEE_TOTAL / 100.0
 TAX_RATE = M.TAX_RATE
 
-WORK_DAYS, NORM_HOURS, FULL_DAY = 18, 144, 8
+# May 2026 per the calendar the model computes and run_tests' selftest pins at 18
+# - a literal here went stale the day the calendar code changed.
+WORK_DAYS = M.working_days(2026, 5)
+NORM_HOURS, FULL_DAY = WORK_DAYS * 8, 8
 TOL = 0.02
 
 HERE = os.path.dirname(os.path.abspath(__file__))

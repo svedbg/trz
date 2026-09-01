@@ -54,19 +54,7 @@ TOL = 0.02
 SALARY_TOL = 1.00        # a month's rounding moves an implied salary by a few cents
 
 
-class Findings:
-    def __init__(self):
-        self.items = []
-        self._seen = set()
-
-    def add(self, ident, where, text, stated=None, due=None):
-        if (where, ident) in self._seen:
-            return
-        self._seen.add((where, ident))
-        self.items.append(dict(id=ident, where=where, text=text, stated=stated, due=due))
-
-    def keys(self):
-        return {(f["where"], f["id"]) for f in self.items}
+from findings import Findings
 
 
 def read_sheet(ws):
