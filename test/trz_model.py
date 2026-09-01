@@ -35,16 +35,32 @@ def r2(x):
 
 
 # --------------------------------------------------------------------- rates
-# references/stavki.md, verified 21.08.2026. 2026 is split into two regimes
+# The dates and statuses live in references/stavki.md and only there - a date copied
+# into a comment goes stale silently (this one had). 2026 is split into two regimes
 # because the budget was adopted late: the thresholds change on 01.08.2026.
 # Every figure here is cross-checked against the reference file by rates_test.py.
 
 REGIMES = {
-    "H1": dict(period="01.01-31.07.2026", max_insurable=2111.64,
+    "H1": dict(year=2026, period="01.01-31.07.2026", max_insurable=2111.64,
                min_insurable_self=550.66, min_wage=620.20, min_wage_hour=3.74),
-    "H2": dict(period="01.08-31.12.2026", max_insurable=2300.00,
+    "H2": dict(year=2026, period="01.08-31.12.2026", max_insurable=2300.00,
                min_insurable_self=620.20, min_wage=620.20, min_wage_hour=3.74),
 }
+
+
+def other_regime_id(regime_id):
+    """The other half of the same year — the regime B4's wrong cap comes from.
+
+    Derived, not hardcoded as "the other of the two": the routine annual addition of
+    next year's regimes must not silently change what "the other period" means, so a
+    year with anything but exactly two regimes refuses instead of picking one.
+    """
+    year = REGIMES[regime_id]["year"]
+    others = [k for k, v in REGIMES.items() if v["year"] == year and k != regime_id]
+    if len(others) != 1:
+        raise ValueError(f"{year} has {len(others) + 1} regimes; 'the other period' "
+                         f"needs exactly two")
+    return others[0]
 
 EMPLOYEE = {                  # чл. 6, ал. 1 и ал. 3 КСО; ЗЗО - third labour category
     "pension": 6.58,          # fund "Pensions", born after 31.12.1959
@@ -55,7 +71,12 @@ EMPLOYEE = {                  # чл. 6, ал. 1 и ал. 3 КСО; ЗЗО - thi
 }
 EMPLOYEE_TOTAL = 13.78        # the control sum that always holds
 
-EMPLOYER_SOCIAL = 8.22 + 2.10 + 0.60      # 10.92, excluding the accident rate
+EMPLOYER = {                  # the employer's shares of the same funds
+    "pension": 8.22,
+    "sickness": 2.10,
+    "unemployment": 0.60,
+}
+EMPLOYER_SOCIAL = r2(sum(EMPLOYER.values()))    # 10.92, excluding the accident rate
 EMPLOYER_UPF = 2.80
 EMPLOYER_HEALTH = 4.80
 TZPB_RANGE = (0.40, 1.10)                 # чл. 6, ал. 1, т. 5 КСО; exact % per КИД
@@ -122,7 +143,10 @@ def relief_for(taxable_before, contribution_pension, contribution_life):
     „over the limit" finding. The reference file said „до общо 10%" until 31.08.2026;
     this is the corrected rule.
     """
-    limit = r2(taxable_before * RELIEF_LIMIT)
+    # A negative base yields no relief rather than a negative one: unclamped, the
+    # "relief" would RAISE the base, and a zero-work month with sick days and a
+    # withheld contribution produced a definitionally-correct row with negative tax.
+    limit = max(0.0, r2(taxable_before * RELIEF_LIMIT))
     applied = 0.0
     if contribution_pension:
         applied += min(contribution_pension, limit)
@@ -156,15 +180,26 @@ TOL_STRICT = 0.005  # totals and control columns
 
 
 def regime_for(year, month):
-    return "H1" if (year, month) <= (2026, 7) else "H2"
+    """The regime id for a month the model has rates for, else None.
+
+    The guard is the point. (2025, m) <= (2026, 7) is true for every month, so before
+    it a 2025 payroll silently got the 2026 EUR thresholds while being marked
+    rates-known - bypassing the refusal machinery that exists for exactly that case.
+    """
+    if year != 2026:
+        return None
+    return "H1" if month <= 7 else "H2"
 
 
-# The years references/stavki.md carries thresholds for. A payroll dated outside them is
-# the case the skill's first rule exists for: no rate from memory, so a conclusion that
+# The years THIS MODEL carries thresholds for - which is narrower than what
+# references/stavki.md carries. The reference has 2025 too, in лв; the model holds only
+# the 2026 EUR regimes, so for the model 2025 is a year it cannot compute and must flow
+# through the refusal path like any other. A payroll dated outside these years is the
+# case the skill's first rule exists for: no rate from memory, so a conclusion that
 # rests on one it does not have must be downgraded rather than guessed. Nothing in the
 # Python suites can test that - refusal is a behaviour of the skill, not of the rules -
 # so it is `eval_skill.py --refusal` that uses it.
-RATES_KNOWN_YEARS = frozenset({2025, 2026})
+RATES_KNOWN_YEARS = frozenset({2026})
 
 
 # --------------------------------------------------------------- working days
@@ -193,24 +228,32 @@ _DAYS_OFF = {}
 
 
 def days_off(year):
-    """The days actually taken off in `year`, holidays and substitutions together."""
+    """The days actually taken off in `year`, holidays and substitutions together.
+
+    чл. 154, ал. 2 КТ: a fixed holiday falling on a weekend hands its day off to the
+    first working day after it that is not itself a holiday or already somebody's
+    substitute. The Easter block (Good Friday through Easter Monday) is exempt from
+    substitution but still counts as ground a substitute cannot land on - in 2027,
+    1 May is Holy Saturday and its substitute must clear Easter Monday too.
+
+    Every holiday is collected in FULL before any substitute is assigned. Assigning
+    while collecting was a bug: 24.12.2028 is a Sunday and its substitute was computed
+    as Monday 25.12 before the loop had seen that 25.12 and 26.12 are themselves
+    holidays - December 2028 came out one working day too long, and every daily rate,
+    base and norm reconciliation for that month with it.
+    """
     if year not in _DAYS_OFF:
-        days = set()
-        # Good Friday through Easter Monday. These four never move: the substitution
-        # rule applies to the fixed holidays, so the two that fall on a weekend by
-        # definition yield no day off in lieu. They are placed first so that a fixed
-        # holiday shifting onto one of them keeps shifting - as happens in 2027, where
-        # 1 May is Holy Saturday and 3 May is Easter Monday.
         easter = orthodox_easter(year)
-        for offset in (-2, -1, 0, 1):
-            days.add(easter + datetime.timedelta(days=offset))
-        for m, d in HOLIDAYS_FIXED:
-            dt = datetime.date(year, m, d)
-            if dt.weekday() >= 5:                 # falls on a weekend
-                while dt.weekday() >= 5 or dt in days:
-                    dt += datetime.timedelta(days=1)
-            days.add(dt)
-        _DAYS_OFF[year] = days
+        taken = {easter + datetime.timedelta(days=o) for o in (-2, -1, 0, 1)}
+        fixed = sorted(datetime.date(year, m, d) for m, d in HOLIDAYS_FIXED)
+        taken.update(fixed)
+        for dt in fixed:                          # chronological, so December's
+            if dt.weekday() >= 5:                 # queue of substitutes stays fair
+                sub = dt
+                while sub.weekday() >= 5 or sub in taken:
+                    sub += datetime.timedelta(days=1)
+                taken.add(sub)
+        _DAYS_OFF[year] = taken
     return _DAYS_OFF[year]
 
 

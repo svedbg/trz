@@ -76,8 +76,9 @@ def check(xlsx, manifest, quiet=False):
     max_insurable = man["max_insurable"]
     min_insurable_self = man["min_insurable_self"]
     tzpb_due = man["tzpb_due"]
-    other_cap = [v["max_insurable"] for v in M.REGIMES.values()
-                 if v["max_insurable"] != max_insurable][0]
+    # From the manifest, not from "whichever other cap the table holds": the yearly
+    # addition of new regimes must not change what "the other period" means here.
+    other_cap = man["other_max_insurable"]
 
     col = {ws.cell(row=HDR, column=c).value: c for c in range(1, ws.max_column + 1)}
 
@@ -199,7 +200,7 @@ def check(xlsx, manifest, quiet=False):
         # --- K7: the cost of labour -------------------------------------
         due_cost = r2(gross + er_total + in_kind + premium)
         if abs(cost - due_cost) > M.TOL:
-            withheld = r2(deduction + card_deduction)
+            withheld = r2(deduction + deduction_life + card_deduction)
             why = " - short by exactly what was withheld from the employee" \
                 if withheld and abs(r2(due_cost - withheld) - cost) <= M.TOL else ""
             F.add("K7_cost_from_net", r,
@@ -286,7 +287,11 @@ def check(xlsx, manifest, quiet=False):
         # The composition is solvable exactly when the row does NOT sit at a cap:
         # then the insurable income is the sum itself and the gap against the work
         # base points at the element.
-        at_cap = any(abs(insurable - c) <= M.TOL for c in (max_insurable, other_cap))
+        # To the exact cent, not within the two-cent arithmetic tolerance: proximity
+        # to a cap is not evidence of having been capped at it, and a mutated figure
+        # landing two cents from the OTHER period's cap used to be absorbed as capped
+        # - its own injected defect skipped, and a false file-level B4 raised.
+        at_cap = any(abs(insurable - c) < 0.005 for c in (max_insurable, other_cap))
         # A person with no accruals for work (a full month of maternity or unpaid
         # leave): the benefits alone do not create insurable income, because there
         # is no income from labour activity to attach them to (чл. 6, ал. 2 КСО).
@@ -403,7 +408,7 @@ def check(xlsx, manifest, quiet=False):
 
         if d["at_cap"]:
             # only whether the cap is the right one for the period
-            if abs(d["insurable"] - other_cap) <= M.TOL and other_cap < max_insurable \
+            if abs(d["insurable"] - other_cap) < 0.005 and other_cap < max_insurable \
                     and expected_insurable > other_cap + M.TOL:
                 F.add("B4_cap_from_wrong_period", "file",
                       f"the insurable income is capped at {other_cap:.2f} - the cap "

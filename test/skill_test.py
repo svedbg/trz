@@ -269,11 +269,12 @@ if plugin and marketplace:
         fail("marketplace.json has no owner.name")
 
 # ------------------------------------- the rates-verification date, everywhere
-# `references/stavki.md` is the source of truth for the date, and six other places
-# advertise a copy of it: two manifest/frontmatter fields, the compatibility line, and
-# a badge and a sentence in each README. A copy that is not updated with the reference
-# file promises a freshness the rates do not have - and the badge is the first thing a
-# visitor reads. Checking one pair caught none of the other five.
+# `references/stavki.md` is the source of truth for the date, and seven other places
+# advertise a copy of it: two manifest/frontmatter fields, the compatibility line, a
+# badge and a sentence in each README, and the social-preview image every visitor to
+# the repository page sees. A copy that is not updated with the reference file
+# promises a freshness the rates do not have. The social preview was added after it
+# was found two updates behind - the previous "seven places" check could not see it.
 MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July",
              "August", "September", "October", "November", "December"]
 MONTHS_BG = ["януари", "февруари", "март", "април", "май", "юни", "юли",
@@ -311,7 +312,10 @@ else:
             ("README.bg.md badge", os.path.join(ROOT, "README.bg.md"),
              rf"-{year}--{month}--{day}-"),
             ("README.bg.md body", os.path.join(ROOT, "README.bg.md"),
-             rf"\b{int(day)} {MONTHS_BG[int(month) - 1]} {year}")):
+             rf"\b{int(day)} {MONTHS_BG[int(month) - 1]} {year}"),
+            (".github/social-preview.html", os.path.join(ROOT, ".github",
+                                                         "social-preview.html"),
+             rf"ставки: {re.escape(dotted)}")):
         if not os.path.exists(path):
             fail(f"{path} is missing, so {label} cannot be checked")
         elif not re.search(pattern, read(path)):
@@ -320,10 +324,10 @@ else:
     if stale:
         for s in stale:
             fail(f"rates-verification date out of step: {s}")
-        fail("the date is advertised in seven places and they must move together; "
+        fail("the date is advertised in eight places and they must move together; "
              "references/stavki.md is the one that leads")
     else:
-        note(f"rates verification date {dotted} agrees in all seven places")
+        note(f"rates verification date {dotted} agrees in all eight places")
 
 # ------------------------------------------------------------------ licences
 # The repository is dual-licensed - CC BY 4.0 for the skill prose, MIT for the Python
