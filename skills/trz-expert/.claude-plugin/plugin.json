@@ -2,7 +2,7 @@
   "name": "trz-expert",
   "displayName": "ТРЗ експерт (Bulgarian payroll audit)",
   "description": "Audits Bulgarian payroll documents against the Labour Code, the Social Security Code, the income tax act and the wage-structure ordinance. Never applies a rate from memory: every figure comes from a dated reference file with a verification status, and a missing rate downgrades the finding instead of being guessed.",
-  "version": "2.5.2",
+  "version": "2.5.3",
   "author": {
     "name": "Svetoslav Rankov",
     "url": "https://github.com/svedbg"
@@ -31,7 +31,7 @@
   },
   "metadata": {
     "jurisdiction": "BG",
-    "rates_verified": "2026-08-30",
+    "rates_verified": "2026-09-01",
     "language": "bg"
   }
 }

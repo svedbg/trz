@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![licence: MIT + CC BY 4.0](https://img.shields.io/badge/licence-MIT%20%2B%20CC--BY--4.0-blue)](#licence)
-[![rates verified](https://img.shields.io/badge/rates%20verified-2026--08--30-green)](skills/trz-expert/references/stavki.md)
+[![rates verified](https://img.shields.io/badge/rates%20verified-2026--09--01-green)](skills/trz-expert/references/stavki.md)
 
 A [Claude Code](https://claude.com/claude-code) skill that turns Claude into a senior payroll
 specialist for Bulgaria — ТРЗ, as the payroll-and-wages function is called there. Give it a
@@ -11,7 +11,7 @@ it checks the numbers against the Labour Code (КТ), the Social Security Code (
 Personal Income Taxes Act (ЗДДФЛ) and the Ordinance on the Structure and Organisation of Wages
 (НСОРЗ).
 
-**Read this first:** the rates shipped here are current as of **30 August 2026**. The minimum
+**Read this first:** the rates shipped here are current as of **1 September 2026**. The minimum
 wage, the social-security thresholds and the contribution rates change every year — and in
 2025 and 2026 they changed *mid-year*, because both budgets were adopted late. Check
 [`skills/trz-expert/references/stavki.md`](skills/trz-expert/references/stavki.md) before
