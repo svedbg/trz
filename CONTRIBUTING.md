@@ -79,7 +79,7 @@ red. A check that has never failed has not been tested.
 python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt
 git config core.hooksPath .githooks     # once
 
-python test/run_tests.py                # all four suites, 50 seeds
+python test/run_tests.py                # all five suites, 50 seeds
 python test/rates_test.py               # rates only, no dependencies
 python test/skill_test.py               # packaging: frontmatter, manifests, licences
 python test/eval_skill.py --dry         # what the skill eval would send, free
@@ -90,7 +90,7 @@ What runs when:
 | Trigger | Runs |
 | --- | --- |
 | every commit (hook) | the rates cross-check |
-| commit touching `test/*.py` | plus both payroll suites, 25 seeds |
+| commit touching `test/*.py` | plus the payroll and formula suites, 25 seeds |
 | push and pull request (CI) | packaging, leak guard, both suites at 300 seeds on Python 3.10–3.13 |
 | by hand | `eval_skill.py` — it calls Claude and costs about USD 2.4 per seed |
 
@@ -115,7 +115,7 @@ python test/generate_wide.py --seed 12345
 `main` is protected by a ruleset, so nobody pushes to it directly — not outside
 contributors and not the maintainer. Every change goes through a pull request,
 and the pull request cannot merge until CI is green: the packaging check, the
-personal-data guard, and both payroll suites on Python 3.10 through 3.13.
+personal-data guard, and the payroll and formula suites on Python 3.10 through 3.13.
 
 Approvals are not required, so a solo maintainer is not deadlocked, but the
 status checks are. Linear history is enforced, so rebase rather than merge when

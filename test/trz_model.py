@@ -566,6 +566,19 @@ SCENARIOS = {
     "I5_days_do_not_reconcile":   ("I5", "day counts do not add up to the month's norm"),
 }
 
+# Suite 4's scenarios: defects that live in the FORMULAS, invisible in any value
+# export. Every one of them was observed in the first real audit this skill ran.
+FORMULA_SCENARIOS = {
+    "KF1_sum_omits_column":  ("K1", "the gross formula skips an accrual column"),
+    "KF2_days_in_money_sum": ("K2", "a day-count cell added into a money formula"),
+    "KF3_hard_value_in_formula_column":
+                             ("K", "a typed value inside a column of formulas"),
+    "KF4_tautological_control":
+                             ("K4", "a control column that is algebraically always zero"),
+    "KF5_constant_in_formula":
+                             ("K", "a parameter inlined as a literal on one row"),
+}
+
 # Scenarios that need two months in one file. They live in the pair fixture
 # (`generate_pair.py`, checked by `pair_test.py`), because none of them is
 # visible in a single sheet: a stale threshold looks like the threshold, an unexplained
