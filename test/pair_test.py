@@ -183,7 +183,14 @@ def check(xlsx, manifest, quiet=False):
         other = applicable[early_name if name == late_name else late_name]
         if other == due:
             continue
-        capped = [r for r in rows if abs(r["Осигурителен доход"] - other) <= TOL]
+        # Two guards against reading coincidence as staleness. The cent must be
+        # exact, and the row's own gross must exceed the stated insurable income -
+        # a genuinely capped row had something cut off, a clean row that merely SUMS
+        # to a number near the other period's cap has nothing cut off and its
+        # insurable sits at or above its gross (the benefits add in).
+        capped = [r for r in rows
+                  if abs(r["Осигурителен доход"] - other) < 0.005
+                  and r["БРУТО"] > r["Осигурителен доход"] + TOL]
         if capped:
             F.add("K8_stale_thresholds", "file",
                   f"in sheet „{name}“ {len(capped)} row(s) are capped at {other:.2f} - "

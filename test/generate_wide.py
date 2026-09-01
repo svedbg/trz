@@ -735,7 +735,7 @@ def generate(seed, month=None, year=2026, bonus_in_base=None):
     # year to be wrong about. With no rates there is nothing to be wrong against, and
     # the finding the skill owes is that it cannot tell - not a violation.
     if rates_known and rnd.random() < 0.35:
-        cap_effective = M.REGIMES["H2" if regime_id == "H1" else "H1"]["max_insurable"]
+        cap_effective = M.REGIMES[M.other_regime_id(regime_id)]["max_insurable"]
         file_defects.append("B4_cap_from_wrong_period")
     regime_effective = dict(regime, max_insurable=cap_effective)
 
@@ -770,6 +770,7 @@ def generate(seed, month=None, year=2026, bonus_in_base=None):
             file_defects.remove("B4_cap_from_wrong_period")
 
     # --- per-row defects ----------------------------------------------------
+    pristine = {i: dict(p["row"]) for i, p in enumerate(people)}
     expected = []
     free = list(range(len(people)))
     rnd.shuffle(free)
@@ -816,6 +817,30 @@ def generate(seed, month=None, year=2026, bonus_in_base=None):
             expected += [["row", idx, i] for i in sorted(ids)]
             injected += 1
             break
+
+    # A later mutation can pull the only row that made the wrong cap visible back
+    # under the applicable cap - the file then shows B4 nowhere while the manifest
+    # still expects it, and the seed fails as a MISSED B4 on whoever runs it: a latent
+    # flake that blames an innocent change. The visibility gate above ran over CLEAN
+    # rows; re-check over the mutated ones and, if visibility is gone, give it back by
+    # reverting mutations (the file-level defect was decided first; the row defects
+    # have every other seed to live in).
+    if "B4_cap_from_wrong_period" in file_defects:
+        def b4_visible():
+            return any(
+                p["row"]["Осигурителен доход"] > regime["max_insurable"] + M.TOL
+                or (abs(p["row"]["Осигурителен доход"] - cap_effective) < M.TOL
+                    and cap_effective < regime["max_insurable"])
+                for p in people)
+        mutated = [i for i, p in enumerate(people) if p.get("defects")]
+        while not b4_visible() and mutated:
+            i = mutated.pop()
+            people[i]["row"] = dict(pristine[i], _norm=norm)
+            people[i]["defects"] = []
+            expected = [e for e in expected if not (e[0] == "row" and e[1] == i)]
+        # Reverting every mutation returns the exact rows the first gate approved,
+        # so visibility cannot still be missing here.
+        assert b4_visible(), "B4 visibility lost even on pristine rows"
 
     # --- write --------------------------------------------------------------
     os.makedirs(TMP, exist_ok=True)
@@ -875,6 +900,10 @@ def generate(seed, month=None, year=2026, bonus_in_base=None):
         year=year, month=month, norm_days=norm, regime=regime_id,
         rates_known=rates_known,
         max_insurable=regime["max_insurable"],
+        # The applicable rates an auditor legitimately has include both halves of the
+        # year - the checker needs the other cap to recognise B4 without assuming the
+        # regime table holds exactly two entries forever.
+        other_max_insurable=M.REGIMES[M.other_regime_id(regime_id)]["max_insurable"],
         min_insurable_self=regime["min_insurable_self"],
         tzpb_due=tzpb, policy=policy, hdr=HDR, total_row=total_row,
         people=[dict(row=HDR + 1 + i, name=p["name"], inputs=p["inputs"],
@@ -901,8 +930,9 @@ if __name__ == "__main__":
           f"{man['norm_days']} working days · {len(man['people'])} people · "
           f"accident rate {man['tzpb_due']}%")
     if not man["rates_known"]:
-        print(f"rates: NONE published for {man['year']} in references/stavki.md - the "
-              f"file carries the {man['regime']} thresholds rolled forward")
+        print(f"rates: none the model can compute with for {man['year']} (the "
+              f"reference may carry them in another denomination) - the file carries "
+              f"the {man['regime']} thresholds rolled forward")
     print(f"policy: {man['policy']}")
     print(f"injected defects ({len(man['expected'])}):")
     for where, idx, ident in man["expected"]:

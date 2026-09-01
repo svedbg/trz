@@ -54,9 +54,10 @@ A false positive fails exactly like a miss.
   one SKILL.md. `skill_test.py` fails if `source` stops being `./skills/trz-expert`.
 - **Two READMEs.** `README.md` and `README.bg.md` are the same document. A change to
   one that skips the other is a defect; the figures in them must agree.
-- **The verification date is in seven places** (stavki.md, SKILL.md `compatibility`
-  and `metadata`, plugin.json, and a badge plus a sentence in each README).
-  `skill_test.py` checks all seven — let it, rather than updating by hand and hoping.
+- **The verification date is in eight places** (stavki.md, SKILL.md `compatibility`
+  and `metadata`, plugin.json, a badge plus a sentence in each README, and
+  `.github/social-preview.html`). `skill_test.py` checks all eight — let it, rather
+  than updating by hand and hoping.
 - **The suite-1 fixture is generated.** If `test/generate_narrow.py` changes, rerun it
   to rebuild `test/vedomost_05_2026.xlsx`, and keep `test/expected_findings.md` in
   step — `checks_test.py` asserts that key exactly.

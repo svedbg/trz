@@ -154,7 +154,7 @@ Answer key: [`test/expected_findings.md`](test/expected_findings.md).
 **Suite 2 — file construction and base composition.** Payrolls in a wide layout, generated
 from a seed. Every seed changes the company, the people, the salaries, the month, the rate
 regime, the occupational-accident insurance rate (ТЗПБ) and which defects are injected —
-nineteen scenarios drawn from real audits: the sick-pay compensation sitting in the
+twenty-one scenarios drawn from real audits: the sick-pay compensation sitting in the
 social-security base and outside the tax base at the same time, an amount typed into a day
 column, a control column that reads zero while money is missing, a total typed by hand, the
 cost of labour computed from net after deductions, the cap from the wrong half of the year, a

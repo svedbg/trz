@@ -94,11 +94,42 @@ def suite_static():
     return True
 
 
+def selftest_model():
+    """Facts the seeds cannot check, because both sides of the round trip share them.
+
+    The calendar: чл. 154, ал. 2 substitution, pinned on the months where the December
+    cluster interacts with a weekend - the old algorithm assigned a substitute before
+    it had collected all the holidays and gave December 2028, 2033 and 2034 one
+    working day too many. May 2026 = 18 is the anchor the static fixture documents;
+    May 2027 exercises a fixed holiday falling ON an Easter day. The other two lines
+    pin the regime-year guard (a 2025 payroll must not silently get 2026 thresholds)
+    and the relief clamp (a negative base earns zero relief, not a negative one).
+    """
+    for (y, m), want in {(2026, 5): 18, (2026, 8): 21, (2027, 5): 17,
+                         (2028, 12): 18, (2033, 12): 19, (2034, 12): 18}.items():
+        got = M.working_days(y, m)
+        if got != want:
+            raise AssertionError(f"working_days({y}, {m}) = {got}, expected {want}")
+    if M.regime_for(2025, 6) is not None:
+        raise AssertionError("regime_for(2025, ...) must be None - the model has no "
+                             "2025 thresholds and must not borrow 2026's")
+    if M.relief_for(-100.0, 50.0, 0.0) != 0.0:
+        raise AssertionError("relief_for on a negative base must be 0.0, not negative")
+    return 6 + 2
+
+
 def suite_structural(start, count, quiet=True):
     print()
     print("=" * 78)
     print(f"SUITE 2 - generated payrolls, seeds {start}..{start + count - 1}")
     print("=" * 78)
+    try:
+        cases = selftest_model()
+        print(f"  calendar, regime guard and relief clamp, {cases} facts pinned "
+              f"against arithmetic: ok")
+    except AssertionError as exc:
+        print(f"  model selftest: FAILED - {exc}")
+        return False
     coverage = collections.Counter()
     months = collections.Counter()
     readings = collections.Counter()
