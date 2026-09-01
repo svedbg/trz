@@ -139,6 +139,15 @@ def selftest_leave_base():
                     f"чл. 18 НСОРЗ: base month {base_norm} days ({worked} worked), "
                     f"leave month {leave_norm} days - corrected daily {got:.4f}, "
                     f"contracted daily of the leave month {want:.4f}")
+    # чл. 18, ал. 1, изр. второ: the agreed fallback divides by the year's average
+    # monthly working days. 2026: 21+20+21+20+18+22+23+21+20+22+21+20 = 249 days,
+    # average 20.75 - the same table the static fixture's May = 18 anchors.
+    cases += 1
+    got = M.leave_daily_base_agreed(salary, pct, 2026)
+    want = salary * uplift / 20.75
+    if abs(got - want) > 0.005:
+        raise AssertionError(f"чл. 18, ал. 1, изр. второ: agreed daily {got:.4f}, "
+                             f"expected {want:.4f} over the 2026 average of 20.75")
     return cases
 
 
@@ -221,26 +230,43 @@ def check(xlsx, manifest, quiet=False):
         if not days_leave:
             continue
         worked_before = before["Отраб. дни"]
-        if worked_before < 10:
-            continue          # чл. 18, ал. 1 looks further back; the fixture never does
         permanent_before = M.permanent_pay_of(before, bonus_in_base)
-        due_daily = M.leave_daily_base(permanent_before, worked_before,
-                                       early_norm, late_norm)
+        if worked_before >= 10:
+            due_daily = M.leave_daily_base(permanent_before, worked_before,
+                                           early_norm, late_norm)
+        else:
+            # чл. 18, ал. 1, изр. второ: no usable base month, so the agreed salary
+            # over the year's average monthly working days. The contract is implied
+            # from the LEAVE month's own row - its salary-for-days-worked is clean by
+            # A6 for exactly this comparison.
+            worked_after = after["Отраб. дни"]
+            if not worked_after:
+                continue
+            salary = implied_salary(after, late_norm)
+            due_daily = M.leave_daily_base_agreed(salary, after["Клас %"], late_year)
         due = r2(due_daily * days_leave)
         stated = after["Платен отпуск"]
         if abs(stated - due) <= TOL:
             continue
-        other = M.leave_daily_base(
-            r2(permanent_before + (-before["Бонус"] if bonus_in_base
-                                   else before["Бонус"])),
-            worked_before, early_norm, late_norm)
-        why = ((f" - on a base carrying the bonus of „{early_name}“, which is in none "
-                f"of the seven points of чл. 17, ал. 1 НСОРЗ"
-                if not bonus_in_base else
-                f" - on a base without the bonus of „{early_name}“, which this file "
-                f"pays under a wage system (чл. 17, ал. 1, т. 2 НСОРЗ)")
-               if before["Бонус"] and abs(stated - r2(other * days_leave)) <= TOL
-               else "")
+        why = ""
+        if worked_before < 10:
+            misapplied = M.leave_daily_base(permanent_before, worked_before,
+                                            early_norm, late_norm)
+            if abs(stated - r2(misapplied * days_leave)) <= TOL:
+                why = (f" - from „{early_name}“'s {worked_before:g} worked days, when "
+                       f"чл. 18, ал. 1, изр. второ sends a month under 10 days to the "
+                       f"agreed salary over the year's average monthly working days")
+        elif before["Бонус"]:
+            other = M.leave_daily_base(
+                r2(permanent_before + (-before["Бонус"] if bonus_in_base
+                                       else before["Бонус"])),
+                worked_before, early_norm, late_norm)
+            if abs(stated - r2(other * days_leave)) <= TOL:
+                why = (f" - on a base carrying the bonus of „{early_name}“, which is "
+                       f"in none of the seven points of чл. 17, ал. 1 НСОРЗ"
+                       if not bonus_in_base else
+                       f" - on a base without the bonus of „{early_name}“, which this "
+                       f"file pays under a wage system (чл. 17, ал. 1, т. 2 НСОРЗ)")
         F.add("E3_leave_base", row_no,
               f"paid leave for {days_leave:g} days{why}; чл. 177 КТ measures it "
               f"against the average daily gross of „{early_name}“ ({due_daily:.4f})",

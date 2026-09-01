@@ -64,6 +64,40 @@ class Findings:
         return {(f["where"], f["id"]) for f in self.items}
 
 
+def statutory_misplacements(work_base, insurable, el, tol=None):
+    """Which statute-settled elements sit on the unlawful side of the insurable income.
+
+    Callable without a file on purpose. The generator's NEEDS_PRACTICE gate refuses to
+    inject these defects onto rows whose contested elements would make the practice
+    unestablishable - which is exactly the only state in which this code runs - so no
+    number of seeds can exercise it. Seed 1162 reached the sick-pay half by racing the
+    gate; the чл. 224 half gets its proof from run_tests' selftest pinning this
+    function directly.
+
+    The sick pay belongs inside (чл. 3, ал. 1 НЕВДПОВ names it), the чл. 224
+    compensation outside (чл. 1, ал. 8, т. 7 - an exhaustive list, and чл. 224 is in
+    it). Enumerate every placement of the statutory pair times every subset of the
+    contested elements; an element is reported only when EVERY combination reaching
+    the declared figure puts it on the unlawful side.
+    """
+    tol = M.TOL if tol is None else tol
+    sums = [s for _, s in _subsets([("in_kind", el["in_kind"]),
+                                    ("excess", el["excess"])])]
+    matches = []
+    for sick_in in ((True, False) if el["sick_pay"] else (True,)):
+        for comp_in in ((False, True) if el["comp_224"] else (False,)):
+            base = r2(work_base + (el["sick_pay"] if sick_in else 0.0)
+                      + (el["comp_224"] if comp_in else 0.0))
+            if any(abs(r2(base + s) - insurable) <= tol for s in sums):
+                matches.append((sick_in, comp_in))
+    out = set()
+    if matches and el["sick_pay"] and all(not si for si, _ in matches):
+        out.add("sick_pay")
+    if matches and el["comp_224"] and all(ci for _, ci in matches):
+        out.add("comp_224")
+    return out
+
+
 def check(xlsx, manifest, quiet=False):
     man = json.load(open(manifest, encoding="utf8"))
     # The configured reading of чл. 17, ал. 1 for an uncharacterised bonus column.
@@ -449,31 +483,35 @@ def check(xlsx, manifest, quiet=False):
                       f"allows ({expected_insurable:.2f}); candidates for the "
                       f"difference: {candidates}", d["insurable"], expected_insurable)
 
-        elif el["sick_pay"]:
+        elif el["sick_pay"] or el["comp_224"]:
             # The practice could not be inferred, so the composition as a whole is
-            # not decidable - but the sick pay's place in it is not the contested
-            # part. чл. 3, ал. 1 НЕВДПОВ names it, so ask a question that does not
-            # need the practice: does ANY combination of the contested elements
-            # reach the declared figure with the sick pay inside, and does one reach
-            # it without? If only the second holds, the sick pay is out whatever the
-            # practice turns out to be.
+            # not decidable - but the STATUTORY elements are not the contested part.
+            # The sick pay belongs inside (чл. 3, ал. 1 НЕВДПОВ names it), the чл. 224
+            # compensation outside (чл. 1, ал. 8, т. 7 - an exhaustive list, and
+            # чл. 224 is in it). So enumerate: every placement of the statutory pair,
+            # times every subset of the contested elements, and see which combinations
+            # reach the declared figure. An element is reported only when EVERY
+            # matching combination puts it on the unlawful side - a verdict that holds
+            # whatever the practice turns out to be.
             #
-            # Without this the check went silent on every row of a file whose
-            # practice was unestablishable, and an injected defect went unfound for
-            # 3000 seeds while the suite stayed green at 300.
-            sums = [s for _, s in _subsets([("in_kind", el["in_kind"]),
-                                            ("excess", el["excess"])])]
-            with_sick = any(abs(r2(d["work_base"] + el["sick_pay"] + s)
-                                - d["insurable"]) <= M.TOL for s in sums)
-            without_sick = any(abs(r2(d["work_base"] + s) - d["insurable"]) <= M.TOL
-                               for s in sums)
-            if without_sick and not with_sick:
+            # The sick-pay half of this closed the seed-1162 silence; the чл. 224 half
+            # was recorded in scenarios.md as knowingly missing until its mutation
+            # existed. It does now.
+            wrong_side = statutory_misplacements(d["work_base"], d["insurable"], el)
+            if "sick_pay" in wrong_side:
                 F.add("F9_sick_pay_out_of_insurable", r,
                       f"{NAMES['sick_pay']} ({el['sick_pay']:.2f}) is outside the "
                       f"insurable income - no combination of the contested elements "
                       f"reaches {d['insurable']:.2f} with it inside, and one reaches "
                       f"it without (чл. 3, ал. 1 НЕВДПОВ)",
                       d["insurable"], r2(d["insurable"] + el["sick_pay"]))
+            if "comp_224" in wrong_side:
+                F.add("F1_compensation_in_insurable", r,
+                      f"{NAMES['comp_224']} ({el['comp_224']:.2f}) is inside the "
+                      f"insurable income - no combination of the contested elements "
+                      f"reaches {d['insurable']:.2f} without it (чл. 1, ал. 8, т. 7 "
+                      f"НЕВДПОВ owes no contributions on it)",
+                      d["insurable"], r2(d["insurable"] - el["comp_224"]))
 
         if d["insurable"] > max_insurable + M.TOL:
             F.add("B4_cap_from_wrong_period", "file",

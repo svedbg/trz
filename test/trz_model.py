@@ -351,6 +351,24 @@ def permanent_pay_of(row, bonus_in_base):
                               row["Бонус"] if bonus_in_base else 0.0)
 
 
+def average_monthly_working_days(year):
+    """чл. 18, ал. 1, изр. второ НСОРЗ: the divisor of the agreed-salary fallback."""
+    return sum(working_days(year, m) for m in range(1, 13)) / 12.0
+
+
+def leave_daily_base_agreed(monthly_salary, seniority_pct, year):
+    """The daily figure for leave when no usable base month exists — чл. 177, ал. 2 КТ.
+
+    чл. 18, ал. 1, изр. второ НСОРЗ: when the preceding month has fewer than 10 days
+    worked (and чл. 177, ал. 1 has nothing to look back to), the base is the agreed
+    basic salary plus the permanent supplements, over the AVERAGE monthly working days
+    of the calendar year. Note what does NOT apply here: the ал. 2 coefficient — it
+    corrects "установеното по ал. 1, изречение първо" and no more, so this figure is
+    used as it comes.
+    """
+    return monthly_salary * (1 + seniority_pct / 100.0) / average_monthly_working_days(year)
+
+
 def sick_daily_base(monthly_salary, seniority_pct, norm_days,
                     permanent_pay, worked_days):
     """The daily figure the чл. 40, ал. 5 КСО payment is computed on.
@@ -544,6 +562,7 @@ SCENARIOS = {
     "B4_cap_from_wrong_period":   ("B4", "maximum insurable income taken from the other half-year"),
     "C2_seniority_on_gross":      ("C2", "length-of-service supplement computed on a wider base"),
     "E3_leave_without_seniority": ("E3", "paid leave computed without the supplement"),
+    "F1_compensation_in_insurable": ("F1", "the чл. 224 КТ compensation inside the insurable income"),
     "I5_days_do_not_reconcile":   ("I5", "day counts do not add up to the month's norm"),
 }
 

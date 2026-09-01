@@ -115,7 +115,26 @@ def selftest_model():
                              "2025 thresholds and must not borrow 2026's")
     if M.relief_for(-100.0, 50.0, 0.0) != 0.0:
         raise AssertionError("relief_for on a negative base must be 0.0, not negative")
-    return 6 + 2
+    # The statutory-placement hatch, pinned directly: the generator cannot produce the
+    # only state it runs in (NEEDS_PRACTICE refuses that combination), so seeds prove
+    # nothing about it. Three hand-built rows with an in_kind whose practice is
+    # unknown: sick pay left out; the чл. 224 compensation pulled in; and a figure two
+    # placements explain, where the honest answer is silence.
+    from structural_test import statutory_misplacements
+    el = dict(in_kind=50.0, excess=0.0, sick_pay=80.0, comp_224=300.0)
+    for insurable, want in ((1000.0 + 50.0, {"sick_pay"}),          # sick missing
+                            (1000.0 + 80.0 + 50.0 + 300.0, {"comp_224"}),
+                            (1000.0 + 80.0 + 50.0, set())):         # lawful exactly
+        got = statutory_misplacements(1000.0, insurable, el)
+        if got != want:
+            raise AssertionError(f"statutory_misplacements at {insurable}: "
+                                 f"{got} != {want}")
+    ambiguous = dict(in_kind=300.0, excess=0.0, sick_pay=80.0, comp_224=300.0)
+    got = statutory_misplacements(1000.0, 1000.0 + 80.0 + 300.0, ambiguous)
+    if got != set():
+        raise AssertionError(f"a figure two placements explain must stay silent, "
+                             f"got {got}")
+    return 6 + 2 + 4
 
 
 def suite_structural(start, count, quiet=True):

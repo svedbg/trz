@@ -77,6 +77,7 @@ The groups match `references/proverki.md`.
 | `B4_cap_from_wrong_period` | B4 | The cap of the other half-year is applied | Capped rows sit at a threshold other than the applicable one |
 | `C2_seniority_on_gross` | C2 | The supplement is computed on a wider base than the salary | Supplement ≠ the stated percentage × the base salary |
 | `E3_leave_without_seniority` | E3 | Paid leave computed without the supplement | Leave ≠ daily base × (1 + supplement) × days |
+| `F1_compensation_in_insurable` | F1 | The чл. 224 КТ compensation inside the insurable income | чл. 1, ал. 8, т. 7 НЕВДПОВ is an exhaustive list of the sums no contributions are due on, and чл. 224 is in it — the statute-settled mirror of the sick pay. Guarded even when the file's practice cannot be inferred, via `statutory_misplacements()` |
 | `I5_days_do_not_reconcile` | I5 | The day counts do not reconcile with the month's norm | Sum of days ≠ working days in the month |
 
 `K2_amount_in_day_column` produces two findings, not one: the amount in the day
@@ -125,7 +126,7 @@ August's leave to be measured against it.
 | --- | --- | --- | --- |
 | `K8_stale_thresholds` | K8 | The later sheet keeps the earlier sheet's norm and thresholds | Two independent signs: the day sums reconcile to the other month's norm, and rows sit on the other period's cap |
 | `I7_unexplained_jump` | I7 | Someone's pay jumps between adjacent months | The **implied monthly salary** — base pay ÷ days worked × the sheet's norm — changes with no annex in the file |
-| `E3_leave_base` | E3 | Paid leave computed on the bonus's other side of чл. 17, ал. 1 НСОРЗ | чл. 18: the preceding month's чл. 17, ал. 1 pay over its **worked** days, corrected by the ratio of the two months' norms (ал. 2). Same two readings and same both-polarity mutation as `F9_sick_pay_amount`. Paying the leave from the contract is **not** a defect — with the ал. 2 coefficient the norms cancel and the correct base lands on the leave month's contracted daily rate |
+| `E3_leave_base` | E3 | Paid leave computed on the bonus's other side of чл. 17, ал. 1 НСОРЗ | чл. 18: the preceding month's чл. 17, ал. 1 pay over its **worked** days, corrected by the ratio of the two months' norms (ал. 2). Same two readings and same both-polarity mutation as `F9_sick_pay_amount`. Paying the leave from the contract is **not** a defect — with the ал. 2 coefficient the norms cancel and the correct base lands on the leave month's contracted daily rate. A third shape on a July under 10 worked days: изр. първо misapplied where изр. второ sends the base to the agreed salary over the year's average monthly working days |
 
 **The sheet's norm is not the month's norm**, and the distinction carries the suite. When
 a sheet is copied forward, the first stops following the second, and every row then
@@ -203,13 +204,19 @@ for the taxable base it enumerates the placements the unknown element could have
 the verdict the arithmetic singles out. An element being enumerated is not offered as its own
 deviation, or the unknown itself turns into an asymmetry finding.
 
-One element is still missing from that treatment, knowingly. The чл. 224 КТ compensation's
-place in the insurable income is as settled as the sick pay's — `clean_row` cites чл. 1,
-ал. 8, т. 7 НЕВДПОВ as an exhaustive list with чл. 224 on it — so `F1_compensation_in_insurable`
-deserves the same escape hatch and does not have one: on a file whose practice cannot be
-inferred it still goes silent. It was left out because no generator writes that defect, and
-a check with no scenario cannot be shown to have teeth. Adding the mutation first is the
-order the contributing guide asks for.
+That debt is paid. `F1_compensation_in_insurable` has its mutation (a leaver's
+compensation pulled into the insurable income — one row in ten now carries a real чл. 224
+amount), the statutory escape hatch covers both settled elements symmetrically, and the
+placement logic lives in `statutory_misplacements()`, pinned directly by `run_tests`'
+selftest — directly, because the generator's own NEEDS_PRACTICE gate refuses to build the
+only state the hatch runs in, so seeds prove nothing about it.
+
+Still parked, with the reason on record: чл. 17, ал. 2 НСОРЗ (a periodic or annual payment
+made after the leave obliges recalculation of leave already paid) is stated in the skill's
+E3 but tested by nothing — a faithful fixture needs a correction column the layout does not
+have, and adding one touches every fixture and answer key. чл. 18, ал. 1, изр. второ is NOT
+parked: the pair fixture now gives one July in eight fewer than 10 worked days, the clean
+rows use the agreed-salary fallback, and the mutation misapplies изр. първо to them.
 
 Both scenarios now inject the opposite error — and, since the plugin asks at install time
 which of the two lawful readings to apply, they inject it in **both** polarities. Each seed
