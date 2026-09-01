@@ -124,6 +124,28 @@ KEYWORDS = {
     "I5_days_do_not_reconcile":   [r"дни|ден", r"норма|не се връзва|не отговарят|сбор"],
 }
 
+# The pair fixture's scenarios live in their own keyword universe. grade() only ever
+# competes identifiers from ONE manifest, so discrimination is enforced within each
+# dict separately - folding these into KEYWORDS would fail the selftest the moment two
+# leave-scenarios coexist (E3_leave_without_seniority matches on „отпуск" alone).
+PAIR_KEYWORDS = {
+    "K8_stale_thresholds":  [r"копира|пренесен|стар|предходн|друг[а-я]* (месец|период)",
+                             r"праг|норма|таван|максимал"],
+    "I7_unexplained_jump":  [r"заплата|възнаграждение|бруто",
+                             r"скок|разлика|промяна|различн|мени се",
+                             r"споразумение|обяснение|основание|документ"],
+    "E3_leave_base":        [r"отпуск",
+                             r"чл\.? ?1[78]|бонус|предходн|среднодневн|изречение|"
+                             r"изр\.|10 (отработени )?дни|средномесечн|уговорен"],
+}
+
+PAIR_SAMPLE_TEXT = {
+    "K8_stale_thresholds": "листът за август е сметнат по нормата и максималния осигурителен доход на юли - копиран е напред със старите прагове",
+    "I7_unexplained_jump": "подразбиращата се месечна заплата скача между юли и август без допълнително споразумение във файла, което да обясни промяната",
+    "E3_leave_base": "платеният отпуск през август носи и бонуса от юли, а той не е в нито една от седемте точки на чл. 17, ал. 1 НСОРЗ",
+}
+
+
 # --------------------------------------------------------------- refusal mode
 # The skill's first rule is that no rate comes from memory: a figure the reference file
 # does not carry downgrades the finding to `за проверка` instead of being guessed. That
@@ -245,6 +267,63 @@ def prepare(seed, year=2026):
     return d, man, prompt
 
 
+def prepare_pair(seed):
+    """Generate a two-month payroll and place it alone in an isolated directory.
+
+    The wide fixture cannot hold the cross-month material - the чл. 177/чл. 18 leave
+    base, a sheet copied forward with last period's thresholds, a jump with no annex -
+    and until this existed, three scenarios and the whole 2.4.0 correction had never
+    faced a live session. The manifest handed back carries the PAIR keyword universe,
+    so grade() competes only the identifiers this fixture can contain.
+    """
+    import generate_pair as P
+    xlsx, _, man = P.generate(seed, bonus_in_base=False)   # pinned; see prepare()
+    d = os.path.join(WORKDIR, f"pair-{seed}")
+    shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(d)
+    shutil.copy(xlsx, os.path.join(d, "vedomost.xlsx"))
+    early, late = man["sheets"]
+    with open(os.path.join(d, "dogovori.csv"), "w", newline="", encoding="utf8") as f:
+        w = csv.writer(f)
+        w.writerow(["Име", "Основна месечна заплата по договор", "Клас %"])
+        for p_ in early["people"]:
+            w.writerow([p_["name"], f"{p_['inputs']['monthly_salary']:.2f}",
+                        p_["inputs"]["seniority_pct"]])
+
+    prompt = f"""Направи ТРЗ проверка на ведомостта ./vedomost.xlsx. Ползвай скила trz-expert.
+
+Файлът носи ДВА листа - {early['sheet']} и {late['sheet']} - един и същи състав. Провери
+всеки месец поотделно И двата един срещу друг: базата за платения отпуск, праговете и
+нормата на всеки лист, движението на заплатите между месеците.
+
+Какво имаш от дружеството:
+- ./dogovori.csv - договорените основни месечни заплати и процентът клас по трудов договор
+- приложимият процент ТЗПБ по КИД на дружеството е {man['sheets'][0]['tzpb_due']}%
+- валутата е EUR
+
+Работи само в тази директория. За Python ползвай {VENV}/bin/python - има openpyxl.
+
+Освен обичайния отчет, запиши накрая и findings.json в тази директория: масив, по един
+обект за всяка находка, само това и нищо друго във файла. За находка по конкретно лице
+посочи реда му в листа {late['sheet']}; за находка за целия файл или за цял лист пиши
+"файл".
+
+[{{"kade": "ред 12" или "файл", "red": 12 или null,
+  "tezhest": "нарушение|риск|за проверка|дефект|бележка",
+  "kratko": "едно изречение какво е сбъркано",
+  "nachisleno": число или null, "dalzhimo": число или null}}]
+"""
+    with open(os.path.join(d, "prompt.txt"), "w", encoding="utf8") as f:
+        f.write(prompt)
+
+    graded = dict(seed=seed, sheet=f"{early['sheet']}+{late['sheet']}",
+                  year=man["year"], regime=late["regime"], rates_known=True,
+                  tzpb_due=late["tzpb_due"], hdr=late["hdr"],
+                  total_row=late["total_row"], people=late["people"],
+                  expected=man["cross_expected"], keywords=PAIR_KEYWORDS)
+    return d, graded, prompt
+
+
 def invoke(d, model=None, timeout=1800):
     """Run the session with streaming, so that what it touched stays visible."""
     cmd = ["claude", "-p", open(os.path.join(d, "prompt.txt"), encoding="utf8").read(),
@@ -341,9 +420,10 @@ def grade(man, findings):
     aspects in one sentence should not be penalised for being concise.
     """
     HDR, TOTAL = man["hdr"], man["total_row"]
+    keywords = man.get("keywords") or KEYWORDS
     expected = [("file" if where == "file" else HDR + 1 + idx, ident)
                 for where, idx, ident in man["expected"]]
-    expected.sort(key=lambda x: -len(KEYWORDS.get(x[1], [])))
+    expected.sort(key=lambda x: -len(keywords.get(x[1], [])))
 
     places = defaultdict(list)
     for i, f in enumerate(findings):
@@ -358,9 +438,9 @@ def grade(man, findings):
         # KEYWORDS was scored identified by ANY finding at the right location. main()
         # refuses to start a paid run in that state; this raise is the belt to that
         # suspenders, for callers that reach grade() some other way.
-        if ident not in KEYWORDS:
+        if ident not in keywords:
             raise KeyError(f"no KEYWORDS entry for {ident} - the run cannot be graded")
-        patterns = KEYWORDS[ident]
+        patterns = keywords[ident]
         hit = None
         for i in here:
             text = str(findings[i].get("kratko", ""))
@@ -512,6 +592,15 @@ def check_keywords():
         can be credited for a description of a different defect.
     """
     problems = []
+    universes = ((KEYWORDS, SAMPLE_TEXT, M.SCENARIOS, "wide"),
+                 (PAIR_KEYWORDS, PAIR_SAMPLE_TEXT, M.PAIR_SCENARIOS, "pair"))
+    for KW, SAMPLES, UNIVERSE, label in universes:
+        problems += _check_universe(KW, SAMPLES, UNIVERSE, label)
+    return problems
+
+
+def _check_universe(KEYWORDS, SAMPLE_TEXT, SCENARIOS, label):
+    problems = []
     for ident, text in sorted(SAMPLE_TEXT.items()):
         patterns = KEYWORDS.get(ident)
         if not patterns:
@@ -526,7 +615,10 @@ def check_keywords():
                 problems.append(f"{ident}: its sample also matches {other} - that "
                                 f"pattern is too loose and would take credit for this "
                                 f"description")
-    for ident, texts in sorted(OBSERVED.items()):
+    # The observed corpus holds phrasings from real WIDE runs; judging the pair
+    # universe against it would report every one of them as lost recall.
+    observed = OBSERVED if label == "wide" else {}
+    for ident, texts in sorted(observed.items()):
         for text in texts:
             matched = [o for o, p in sorted(KEYWORDS.items())
                        if all(re.search(x, text, re.I) for x in p)]
@@ -540,9 +632,10 @@ def check_keywords():
     graded = [i for i in KEYWORDS if i not in SAMPLE_TEXT]
     for ident in sorted(graded):
         problems.append(f"{ident}: graded by KEYWORDS but has no sample to check it")
-    for ident in sorted(set(M.SCENARIOS) - set(KEYWORDS)):
-        problems.append(f"{ident}: in SCENARIOS but has no KEYWORDS entry - a paid run "
-                        f"would score it identified on any finding at the right row")
+    for ident in sorted(set(SCENARIOS) - set(KEYWORDS)):
+        problems.append(f"{ident}: in the {label} scenario set but has no KEYWORDS "
+                        f"entry - a paid run would score it identified on any finding "
+                        f"at the right row")
     return problems
 
 
@@ -630,8 +723,11 @@ def selftest():
     return 0
 
 
-def run_seed(seed, model, dry, timeout, refusal=False):
-    d, man, prompt = prepare(seed, year=2027 if refusal else 2026)
+def run_seed(seed, model, dry, timeout, refusal=False, pair=False):
+    if pair:
+        d, man, prompt = prepare_pair(seed)
+    else:
+        d, man, prompt = prepare(seed, year=2027 if refusal else 2026)
     print(f"\n{'=' * 78}\nseed {seed} · sheet {man['sheet']} · {len(man['people'])} people"
           f" · accident rate {man['tzpb_due']}% · {len(man['expected'])} defects injected")
     print(f"directory: {d}")
@@ -794,6 +890,15 @@ def main():
     ap.add_argument("--selftest", action="store_true",
                     help="check that the refusal grading separates a refusal from a "
                          "guess, using synthetic findings; free, starts no session")
+    ap.add_argument("--pair", action="store_true",
+                    help="run the two-month fixture: the cross-month scenarios the "
+                         "wide fixture cannot hold (E3_leave_base, K8, I7)")
+    ap.add_argument("--covering", default=None, metavar="ID,ID",
+                    help="FREE: scan seeds from --from and print a minimal set whose "
+                         "fixtures inject the named scenarios, then exit - spend "
+                         "nothing, choose seeds first")
+    ap.add_argument("--seeds-list", dest="seeds_list", default=None, metavar="N,N",
+                    help="run exactly these seeds (paid), e.g. after --covering")
     ap.add_argument("--refusal", action="store_true",
                     help="date the payroll outside the years references/stavki.md "
                          "covers and grade whether the skill refuses instead of guessing")
@@ -812,12 +917,48 @@ def main():
 
     ensure_venv()
     os.makedirs(WORKDIR, exist_ok=True)
-    seeds = [a.seed] if a.seed is not None else list(range(a.start, a.start + a.seeds))
+    if a.covering:
+        wanted = {x.strip() for x in a.covering.split(",") if x.strip()}
+        universe = set(M.PAIR_SCENARIOS) if a.pair else set(M.SCENARIOS)
+        unknown = wanted - universe
+        if unknown:
+            print(f"unknown scenarios for this fixture: {', '.join(sorted(unknown))}")
+            return 1
+        chosen, still = [], set(wanted)
+        for seed in range(a.start, a.start + 2000):
+            if not still:
+                break
+            if a.pair:
+                import generate_pair as P
+                _, _, m = P.generate(seed, bonus_in_base=False)
+                got = {i for _, _, i in m["cross_expected"]}
+            else:
+                _, _, m = G.generate(seed, bonus_in_base=False)
+                got = {i for _, _, i in m["expected"]}
+            hit = got & still
+            if hit:
+                chosen.append((seed, sorted(hit)))
+                still -= hit
+        for seed, ids in chosen:
+            print(f"seed {seed}: {', '.join(ids)}")
+        if still:
+            print(f"not found in 2000 seeds: {', '.join(sorted(still))}")
+            return 1
+        print(f"\n--seeds-list \"{','.join(str(s_) for s_, _ in chosen)}\" runs them.")
+        return 0
+
+    if a.seeds_list:
+        seeds = [int(x) for x in a.seeds_list.split(",") if x.strip()]
+    elif a.seed is not None:
+        seeds = [a.seed]
+    else:
+        seeds = list(range(a.start, a.start + a.seeds))
 
     # Refuse to spend money on a run the grader cannot score. Complete today; this
     # exists for the day a scenario is added without its KEYWORDS entry - the checklist
     # step easiest to forget, and the one whose absence used to score as a pass.
-    ungradable = sorted(set(M.SCENARIOS) - set(KEYWORDS))
+    ungradable = (sorted(set(M.PAIR_SCENARIOS) - set(PAIR_KEYWORDS)) if a.pair
+                  else sorted(set(M.SCENARIOS) - set(KEYWORDS)))
     if ungradable and not a.dry:
         print("refusing to run: scenarios with no KEYWORDS entry, so their findings "
               "cannot be graded: " + ", ".join(ungradable))
@@ -827,7 +968,7 @@ def main():
         print(f"About to run {len(seeds)} Claude sessions. That costs money and takes "
               f"minutes per seed.")
 
-    runs = [r for r in (run_seed(s, a.model, a.dry, a.timeout, a.refusal)
+    runs = [r for r in (run_seed(s, a.model, a.dry, a.timeout, a.refusal, a.pair)
                         for s in seeds) if r]
     if not runs:
         return 0
@@ -878,7 +1019,7 @@ def main():
                   f"over the rest.")
     print(f"{'scenario':30} {'identified':>11} {'located':>9} {'missed':>8}")
     identified = located = missed = 0
-    for ident in M.SCENARIOS:
+    for ident in (M.PAIR_SCENARIOS if a.pair else M.SCENARIOS):
         a_, b_, c_ = per_scenario.get(ident, [0, 0, 0])
         if a_ + b_ + c_ == 0:
             continue

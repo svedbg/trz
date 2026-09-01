@@ -39,7 +39,10 @@ python test/run_tests.py --seeds 300      # what CI runs
 **Never run `test/eval_skill.py` unprompted.** It starts real Claude sessions and
 costs about USD 2.4 per seed. It is the only test that exercises the *guidance* in
 `SKILL.md` rather than the rules, so mention it when that guidance changes — and let
-the user decide. `--dry` is free and shows what would be sent.
+the user decide. Free modes: `--dry` shows what would be sent, `--selftest` proves the
+grader discriminates, `--covering "id,id"` picks the cheapest seeds that inject the
+scenarios you want measured. `--pair` runs the two-month fixture (the чл. 177/чл. 18
+material no single sheet can hold); `--seeds-list "6,7,32"` runs exactly those seeds.
 
 Suites pass only when every injected defect is found and **nothing else is raised**.
 A false positive fails exactly like a miss.
