@@ -203,6 +203,14 @@ for the taxable base it enumerates the placements the unknown element could have
 the verdict the arithmetic singles out. An element being enumerated is not offered as its own
 deviation, or the unknown itself turns into an asymmetry finding.
 
+One element is still missing from that treatment, knowingly. The чл. 224 КТ compensation's
+place in the insurable income is as settled as the sick pay's — `clean_row` cites чл. 1,
+ал. 8, т. 7 НЕВДПОВ as an exhaustive list with чл. 224 on it — so `F1_compensation_in_insurable`
+deserves the same escape hatch and does not have one: on a file whose practice cannot be
+inferred it still goes silent. It was left out because no generator writes that defect, and
+a check with no scenario cannot be shown to have teeth. Adding the mutation first is the
+order the contributing guide asks for.
+
 Both scenarios now inject the opposite error — and, since the plugin asks at install time
 which of the two lawful readings to apply, they inject it in **both** polarities. Each seed
 draws `policy["bonus_in_base"]`, the fixture is built consistently under it, the checker is

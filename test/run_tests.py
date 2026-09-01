@@ -162,10 +162,10 @@ def suite_pair(start, count, quiet=True):
     # чл. 18, ал. 2 coefficient is there. See the docstring in pair_test.
     try:
         cases = selftest_leave_base()
-        print(f"  чл. 18 НСОРЗ, {cases} norm pairs asserted against arithmetic: ok")
+        print(f"  чл. 18 НСОРЗ, {cases} cases asserted against arithmetic: ok")
     except AssertionError as exc:
         print(f"  чл. 18 НСОРЗ: FAILED - {exc}")
-        failures.append(("selftest", str(exc)))
+        failures.append(("selftest", {"missed": [str(exc)], "extra": []}))
     injected = found = 0
     for seed in range(start, start + count):
         xlsx, _, man = P.generate(seed)

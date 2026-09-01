@@ -195,6 +195,44 @@ if plugin:
             fail(f"SKILL.md reads ${{user_config.{ref}}}, which plugin.json does not "
                  f"declare - it reaches the reader as literal text")
 
+    # The default is not only declared, it is *described* - in SKILL.md, in both
+    # READMEs and, as its mirror image, in the eval fixture. Flip it in the manifest
+    # alone and every test stays green while five other places describe the opposite
+    # reading. That is the drift class this file already guards for the verification
+    # date, which is why that one is checked in all seven of its places.
+    for key, spec in user_config.items():
+        if not isinstance(spec, dict) or "default" not in spec:
+            continue
+        canonical = f"Стойност по подразбиране: `{json.dumps(spec['default'])}`"
+        if canonical not in text:
+            fail(f"SKILL.md does not carry the line {canonical!r} for "
+                 f"userConfig.{key} - without it the manifest default and the skill's "
+                 f"own account of it drift apart unnoticed")
+
+    spec = user_config.get("bonus_outside_base")
+    if isinstance(spec, dict) and "default" in spec:
+        outside = bool(spec["default"])
+        for label, path, phrase in (
+                ("README.md", os.path.join(ROOT, "README.md"),
+                 "The default is **outside**" if outside
+                 else "The default is **inside**"),
+                ("README.bg.md", os.path.join(ROOT, "README.bg.md"),
+                 "По подразбиране е **вън**" if outside
+                 else "По подразбиране е **вътре**")):
+            # Both READMEs are hard-wrapped, so any phrase can arrive with a
+            # newline in the middle of it. Compare on collapsed whitespace.
+            if " ".join(phrase.split()) not in " ".join(read(path).split()):
+                fail(f"{label} does not say {phrase!r}, but plugin.json declares "
+                     f"bonus_outside_base default {spec['default']!r}")
+        # The eval pins the fixture to the reading a cloned skill actually applies,
+        # which is the mirror of this default. Out of step, it grades the skill
+        # against a configuration it does not have.
+        pin = f"bonus_in_base={not outside}"
+        if pin not in read(os.path.join(ROOT, "test", "eval_skill.py")):
+            fail(f"eval_skill.py does not pin its fixture to {pin}, which is what the "
+                 f"declared default implies - the eval would grade the skill against "
+                 f"the other reading")
+
 if plugin and marketplace:
     entries = marketplace.get("plugins") or []
     if not entries:

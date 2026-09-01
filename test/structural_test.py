@@ -235,14 +235,15 @@ def check(xlsx, manifest, quiet=False):
                 # (the plugin's install-time question), not a property of the payroll.
                 permanent_due = M.permanent_work_pay(
                     base_due, r2(base_due * pct / 100.0),
-                    bonus if bonus_in_base else 0.0)
+                    c["bonus"] if bonus_in_base else 0.0)
                 due = r2(M.sick_daily_base(c["monthly_salary"], pct, norm,
                                            permanent_due, wd)
                          * employer_days * M.SICK_RATE)
                 if abs(sick_pay - due) > M.TOL:
                     other = r2(M.sick_daily_base(
                         c["monthly_salary"], pct, norm,
-                        r2(permanent_due + (-bonus if bonus_in_base else bonus)), wd)
+                        r2(permanent_due + (-c["bonus"] if bonus_in_base
+                                            else c["bonus"])), wd)
                         * employer_days * M.SICK_RATE) if wd else 0.0
                     why = (" - on a base carrying the month's bonus, which is in none "
                            "of the seven points of чл. 17, ал. 1 НСОРЗ"
@@ -380,15 +381,14 @@ def check(xlsx, manifest, quiet=False):
         # An unestablishable practice only stops conclusions about the composition
         # of the insurable income. The checks that do not depend on it - the cap,
         # the taxable base, the relief limit - carry on.
-        # One gate per base, not one for both. An element whose place in the TAXABLE
-        # base cannot be inferred says nothing about the insurable one, and folding
-        # them together silenced every insurable check on a file where only the
-        # taxable sample was too small - seed 165 lost four findings that way, three
-        # of which had nothing to do with the unknown.
+        # Gates the INSURABLE side only. An element whose place in the taxable base
+        # cannot be inferred says nothing about the insurable one, and folding the two
+        # together silenced every insurable check on a file where only the taxable
+        # sample was too small - seed 165 lost four findings that way, three of which
+        # had nothing to do with the unknown. The taxable side has no gate at all any
+        # more: it enumerates the placements instead. See below.
         practice_clear = not any(el[k] and practice[k] is None
                                  for k in ("in_kind", "excess"))
-        practice_clear_tax = not any(el[k] and practice_tax[k] is None
-                                     for k in ("in_kind", "excess"))
         allowed = {k for k in ("in_kind", "excess") if practice[k] and el[k]}
         allowed_sum = r2(sum(el[k] for k in allowed))
         # What the file's practice puts in the TAXABLE base, which need not be the
@@ -433,7 +433,7 @@ def check(xlsx, manifest, quiet=False):
                       f"allows ({expected_insurable:.2f}); candidates for the "
                       f"difference: {candidates}", d["insurable"], expected_insurable)
 
-        elif el["sick_pay"] and not d["at_cap"]:
+        elif el["sick_pay"]:
             # The practice could not be inferred, so the composition as a whole is
             # not decidable - but the sick pay's place in it is not the contested
             # part. чл. 3, ал. 1 НЕВДПОВ names it, so ask a question that does not
@@ -578,16 +578,33 @@ def check(xlsx, manifest, quiet=False):
         # arithmetic singles out survives.
         verdicts = [resolve_taxable(allowed_tax | set(mask), r2(allowed_tax_sum + extra))
                     for mask, extra in _subsets([(k, el[k]) for k in unknown_tax])]
-        named = {v[0]: v for v in verdicts if v and v[0] != "F6_taxable_unexplained"}
+        if any(v is None for v in verdicts):
+            # An admissible composition reproduces the stated base to the cent. This
+            # is tested FIRST and it outranks any named verdict from a different
+            # placement: raising that one would be a finding against a row that is
+            # explained, produced by the placement we happened to assume. A false
+            # positive fails this suite exactly like a miss.
+            continue
+        named = {v[0]: v for v in verdicts if v[0] != "F6_taxable_unexplained"}
         if len(named) == 1:
             ident, text, stated, expected = next(iter(named.values()))
             F.add(ident, r, text, stated, expected)
-        elif not named and any(v is None for v in verdicts):
-            pass                # some admissible composition explains the row exactly
         else:
-            fallback = next(v for v in verdicts
-                            if v and v[0] == "F6_taxable_unexplained")
-            F.add(fallback[0], r, fallback[1], fallback[2], fallback[3])
+            # Either no known deviation fits any placement, or the placements name
+            # different ones and the file cannot settle which. Both are "the base does
+            # not follow"; the second has no F6 verdict to borrow wording from, so it
+            # says what it actually found.
+            fallback = next((v for v in verdicts
+                             if v[0] == "F6_taxable_unexplained"), None)
+            if fallback is not None:
+                F.add(fallback[0], r, fallback[1], fallback[2], fallback[3])
+            else:
+                F.add("F6_taxable_unexplained", r,
+                      f"the taxable base {d['taxable']:.2f} is explained by a "
+                      f"different single deviation under each admissible placement of "
+                      f"the elements the file does not settle "
+                      f"({', '.join(sorted(named))}) - which one is right cannot be "
+                      f"told from the file", d["taxable"])
 
     # --- F5: the accident rate implied by the employer contributions -----
     implied = [r2(d["er_social"] / d["insurable"] * 100.0 - M.EMPLOYER_SOCIAL)

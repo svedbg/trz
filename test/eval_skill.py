@@ -87,9 +87,15 @@ KEYWORDS = {
                                    r"осигурителн"],
     "F9_sick_pay_in_taxable":     [r"болничен|болнични|неработоспособ|чл\.? ?40",
                                    r"данъчн|данък|облага"],
+    # The second pattern must require the CORRECTED reading, not merely allow it.
+    # „среднодневното брутно е по-високо, защото месецът носеше бонус" is the story this
+    # scenario was inverted to refute, and it matches „среднодневн", „уговорен", „база"
+    # and „бонус" alike - so those cannot be the discriminator. What only the right
+    # answer carries is the direction (paid too much) or the reason (a one-off is not
+    # in чл. 17, ал. 1).
     "F9_sick_pay_amount":         [r"болничен|болнични|неработоспособ|чл\.? ?40",
-                                   r"среднодневн|бонус|уговорен|база|постоянен характер|"
-                                   r"в повече|завишен"],
+                                   r"в повече|завишен|надплатен|надвзет|"
+                                   r"постоянен характер|еднократ|чл\.? ?17"],
     "F9_missing_health_on_sick":  [r"здравн|ЗЗО", r"болничен|майчинств|неработоспособ"],
     "F10_in_kind_asymmetry":      [r"натура|карт"],
     "F10_excess_asymmetry":       [r"превишен|праг|застрахов|доброволн|30\.?6|60 лв"],
