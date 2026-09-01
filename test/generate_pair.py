@@ -112,7 +112,11 @@ def _write_sheet(wb, title, header, people, tzpb, rnd, first):
     return ws, hdr, total_row
 
 
-def generate(seed):
+def generate(seed, bonus_in_base=None):
+    """Build one two-month payroll. `bonus_in_base` pins the configured reading of
+    чл. 17, ал. 1 instead of drawing it from the seed - the skill eval needs the pin,
+    because a cloned skill has no plugin setting and applies the documented default;
+    grading it against a fixture built under the other reading would be unfair."""
     rnd = random.Random(seed)
     norm_july = M.working_days(YEAR, MONTH_EARLY)
     norm_august = M.working_days(YEAR, MONTH_LATE)
@@ -120,7 +124,8 @@ def generate(seed):
     regime_august = M.REGIMES["H2"]
     tzpb = rnd.choice([0.4, 0.5, 0.7, 1.1])
     reading = rnd.choice(list(M.EXCESS_READINGS))
-    policy = dict(bonus_in_base=rnd.random() < 0.5,
+    policy = dict(bonus_in_base=(rnd.random() < 0.5 if bonus_in_base is None
+                                 else bool(bonus_in_base)),
                   in_kind_in_bases=rnd.random() < 0.5,
                   excess_in_insurable=M.EXCESS_READINGS[reading]["insurable"],
                   excess_in_taxable=M.EXCESS_READINGS[reading]["taxable"],
