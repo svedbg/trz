@@ -74,7 +74,7 @@ REPO_SKILL = os.path.join(HERE, "..", "skills", "trz-expert")
 # --- a correct finding as a miss because it was worded differently. ---
 KEYWORDS = {
     "K1_sum_omits_column":        [r"сбор|включ|извън|липсва|обхват|формула",
-                                   r"колон|брутo|бруто|БРУТО"],
+                                   r"колон|бруто|БРУТО"],
     "K2_amount_in_day_column":    [r"сума|стойност|размер", r"дни|ден"],
     "K3_stale_contributions":     [r"вноск", r"процент|13\.?78|не отговар|твърд|изостан"],
     "K4_control_column_blind":    [r"изплат|разлика|контрол"],
@@ -183,7 +183,8 @@ def names_a_stale_rate(text, year):
 # Paths this run has no business touching: the answers and the independent
 # implementation of every check live there.
 FORBIDDEN = re.compile(r"_manifest\.json|structural_test|checks_test|trz_model|"
-                       r"generate_wide|generate_narrow|eval_skill|rates_test|"
+                       r"generate_wide|generate_narrow|generate_pair|pair_test|"
+                       r"run_tests|skill_test|eval_skill|rates_test|"
                        r"expected_findings|scenarios\.md")
 
 
@@ -250,10 +251,21 @@ def invoke(d, model=None, timeout=1800):
     if model:
         cmd += ["--model", model]
     started = time.time()
+    timed_out = False
     with open(os.path.join(d, "stream.jsonl"), "w", encoding="utf8") as f:
-        p = subprocess.run(cmd, cwd=d, stdout=f, stderr=subprocess.PIPE,
-                           text=True, timeout=timeout)
-    trace = dict(exit=p.returncode, seconds=round(time.time() - started),
+        try:
+            p = subprocess.run(cmd, cwd=d, stdout=f, stderr=subprocess.PIPE,
+                               text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # One slow seed must not take the batch down with it. The seeds already
+            # paid for keep their results; this one is reported below as ended in an
+            # error, which run_seed prints as not gradable and not the skill's fault.
+            # The partial stream is still parsed - a session can taint itself before
+            # it times out, and that must not go unreported.
+            p = None
+            timed_out = True
+    trace = dict(exit=p.returncode if p is not None else None,
+                 seconds=round(time.time() - started),
                  tool_calls=0, touched=[])
     for line in open(os.path.join(d, "stream.jsonl"), encoding="utf8"):
         try:
@@ -275,7 +287,11 @@ def invoke(d, model=None, timeout=1800):
             trace.update(turns=event.get("num_turns"), cost=event.get("total_cost_usd"),
                          error=event.get("is_error"),
                          result_text=str(event.get("result") or "").strip())
-    if "turns" not in trace:
+    if timed_out:
+        trace.update(error=True,
+                     result_text=f"killed after {timeout} s (--timeout); nothing the "
+                                 f"session did after that point exists to grade")
+    elif "turns" not in trace:
         trace.update(error=True, stderr=(p.stderr or "")[-500:])
     return trace
 
@@ -333,7 +349,14 @@ def grade(man, findings):
     result = []
     for where, ident in expected:
         here = places.get(where, [])
-        patterns = KEYWORDS.get(ident, [])
+        # No patterns must mean "cannot grade", never "matches everything": all() over
+        # an empty list is True, and with the .get default a scenario missing from
+        # KEYWORDS was scored identified by ANY finding at the right location. main()
+        # refuses to start a paid run in that state; this raise is the belt to that
+        # suspenders, for callers that reach grade() some other way.
+        if ident not in KEYWORDS:
+            raise KeyError(f"no KEYWORDS entry for {ident} - the run cannot be graded")
+        patterns = KEYWORDS[ident]
         hit = None
         for i in here:
             text = str(findings[i].get("kratko", ""))
@@ -512,6 +535,9 @@ def check_keywords():
     graded = [i for i in KEYWORDS if i not in SAMPLE_TEXT]
     for ident in sorted(graded):
         problems.append(f"{ident}: graded by KEYWORDS but has no sample to check it")
+    for ident in sorted(set(M.SCENARIOS) - set(KEYWORDS)):
+        problems.append(f"{ident}: in SCENARIOS but has no KEYWORDS entry - a paid run "
+                        f"would score it identified on any finding at the right row")
     return problems
 
 
@@ -781,7 +807,16 @@ def main():
 
     ensure_venv()
     os.makedirs(WORKDIR, exist_ok=True)
-    seeds = [a.seed] if a.seed else list(range(a.start, a.start + a.seeds))
+    seeds = [a.seed] if a.seed is not None else list(range(a.start, a.start + a.seeds))
+
+    # Refuse to spend money on a run the grader cannot score. Complete today; this
+    # exists for the day a scenario is added without its KEYWORDS entry - the checklist
+    # step easiest to forget, and the one whose absence used to score as a pass.
+    ungradable = sorted(set(M.SCENARIOS) - set(KEYWORDS))
+    if ungradable and not a.dry:
+        print("refusing to run: scenarios with no KEYWORDS entry, so their findings "
+              "cannot be graded: " + ", ".join(ungradable))
+        return 1
 
     if not a.dry:
         print(f"About to run {len(seeds)} Claude sessions. That costs money and takes "
@@ -854,7 +889,13 @@ def main():
               f"missed: {missed / total:.0%}")
         extra = sum(len(r["unattributed"]) for r in runs)
         print(f"unattributed findings: {extra} - review them; some may be correct")
-    if a.threshold is not None and total:
+    if a.threshold is not None:
+        if not total:
+            # Money was spent and nothing was measured. Passing here would record the
+            # guidance as clearing a bar it never faced.
+            print(f"threshold {a.threshold:.0%}: FAILED - no gradable run, the bar "
+                  f"was never faced")
+            return 1
         ok = identified / total >= a.threshold
         print(f"threshold {a.threshold:.0%}: {'OK' if ok else 'FAILED'}")
         return 0 if ok else 1
