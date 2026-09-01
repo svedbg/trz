@@ -149,7 +149,10 @@ def random_inputs(rnd, norm, regime):
         monthly_salary=salary, seniority_pct=pct,
         days_worked=worked, days_leave=leave, days_sick=sick, days_maternity=0,
         bonus=r2(rnd.uniform(50, 400)) if rnd.random() < 0.18 else 0.0,
-        compensation_224=0.0,
+        # A leaver with compensation for unused leave. Rare but real - and without any
+        # row carrying one, F1_compensation_in_insurable was a detection with no
+        # generator: a check that had never once been allowed to fail.
+        compensation_224=r2(rnd.uniform(150, 800)) if rnd.random() < 0.10 else 0.0,
         card_employer=r2(rnd.uniform(38, 72)) if has_card else 0.0,
         card_employee=r2(rnd.uniform(3, 12)) if has_card else 0.0,
         premium=r2(rnd.uniform(32.9, 44.5)) if has_premium else 0.0,
@@ -435,6 +438,33 @@ def m_sick_pay_base_wrong_side(row, inp, regime, tzpb, policy, rnd):
         {"F9_sick_pay_amount"}
 
 
+def m_compensation_in_insurable(row, inp, regime, tzpb, policy, rnd):
+    """The чл. 224 КТ compensation pulled into the insurable income.
+
+    чл. 1, ал. 8, т. 7 НЕВДПОВ is an exhaustive list of the sums no contributions are
+    due on, and чл. 224 is in it — the same statute-settled footing as the sick pay,
+    opposite direction. A file that makes this mistake overcharges both sides'
+    contributions and misreports т. 21 of Декларация обр. 1. The scenario existed as
+    a detection with no generator since the beginning, which is exactly the state
+    CONTRIBUTING warns about: a check that has never failed has not been tested.
+    """
+    comp = row["Обезщетение чл. 224"]
+    if not comp:
+        return None
+    if not _separable(_elements(row)):
+        return None                      # comp collides with another element's value
+    insurable = r2(row["Осигурителен доход"] + comp)
+    # Strictly below EVERY cap of the year, not merely the applicable one: a pull
+    # that lands on a cap is pinned there by min() and the checker rightly refuses
+    # to solve the composition of a capped row - the defect becomes invisible and
+    # the seed fails as a miss.
+    if insurable >= min(v["max_insurable"] for v in M.REGIMES.values()) - 1.0:
+        return None
+    return _recompute_downstream(row, inp, regime, tzpb, policy,
+                                 insurable=insurable), \
+        {"F1_compensation_in_insurable"}
+
+
 def m_health_on_sick_days(row, inp, regime, tzpb, policy, rnd):
     """The чл. 40, ал. 1, т. 5 ЗЗО contribution computed on the wrong days.
 
@@ -691,6 +721,7 @@ ROW_MUTATIONS = [
     ("F9_sick_pay_in_taxable", m_sick_pay_in_taxable),
     ("F9_sick_pay_amount", m_sick_pay_base_wrong_side),
     ("F9_health_on_sick_days", m_health_on_sick_days),
+    ("F1_compensation_in_insurable", m_compensation_in_insurable),
     ("F10_in_kind_asymmetry", m_in_kind_asymmetry),
     ("F10_excess_asymmetry", m_excess_asymmetry),
     ("F7_relief_over_limit", m_relief_over_limit),
@@ -702,12 +733,14 @@ ROW_MUTATIONS = [
 ]
 
 # Defects whose localisation goes through the file's practice for the benefits.
-NEEDS_PRACTICE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
+NEEDS_PRACTICE = ("F9_sick_pay_out_of_insurable", "F1_compensation_in_insurable",
+                  "F10_in_kind_asymmetry",
                   "F10_excess_asymmetry", "F9_sick_pay_in_taxable",
                   "F7_relief_over_limit", "F7_relief_not_applied",
                   "F7_relief_combined_limit")
 # Of those, only these spoil the sample the practice is inferred from.
-SPOILS_SAMPLE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
+SPOILS_SAMPLE = ("F9_sick_pay_out_of_insurable", "F1_compensation_in_insurable",
+                 "F10_in_kind_asymmetry",
                  "F10_excess_asymmetry")
 
 

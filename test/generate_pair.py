@@ -48,9 +48,17 @@ YEAR = 2026
 
 
 def _inputs_july(rnd, norm, regime):
-    """A person's July: work, possibly sick days, never paid leave."""
+    """A person's July: work, possibly sick days, never paid leave.
+
+    One person in eight gets a July too sick to serve as a base month: fewer than 10
+    days worked, which sends the August leave to чл. 18, ал. 1, изр. второ - the
+    agreed salary over the year's average monthly working days. Without such rows the
+    fallback existed in the statute and nowhere in the fixtures.
+    """
     inp = G.random_inputs(rnd, norm, regime)
     inp["days_leave"] = 0
+    if rnd.random() < 0.12:
+        inp["days_sick"] = norm - rnd.choice([6, 8])
     inp["days_worked"] = norm - inp["days_sick"]
     return inp
 
@@ -134,10 +142,18 @@ def generate(seed):
 
         august_inp = _inputs_august(rnd, norm_for_august, july_inp)
         # чл. 177: August's leave is measured against July's average daily gross.
-        # чл. 18 НСОРЗ: July's permanent pay over July's worked days, then corrected
-        # by the ratio of the two months' norms (ал. 2).
-        base = M.leave_daily_base(M.permanent_pay_of(july_row, policy.get("bonus_in_base")),
-                                  july_inp["days_worked"], norm_july, norm_for_august)
+        # чл. 18 НСОРЗ: July's permanent pay over July's worked days, corrected by
+        # the ratio of the two months' norms (ал. 2) - unless July has fewer than 10
+        # days worked, in which case ал. 1, изр. второ sends the base to the agreed
+        # salary over the year's average monthly working days, uncorrected (ал. 2
+        # names sentence one and no more).
+        if july_inp["days_worked"] >= 10:
+            base = M.leave_daily_base(
+                M.permanent_pay_of(july_row, policy.get("bonus_in_base")),
+                july_inp["days_worked"], norm_july, norm_for_august)
+        else:
+            base = M.leave_daily_base_agreed(july_inp["monthly_salary"],
+                                             july_inp["seniority_pct"], YEAR)
         august_row = M.clean_row(august_inp, regime_for_august, tzpb, policy,
                                  norm_for_august, leave_daily=base)
         august_row["_norm"] = norm_for_august
@@ -151,23 +167,34 @@ def generate(seed):
     if stale:
         cross.append(["file", None, "K8_stale_thresholds"])
 
-    # --- paid leave computed on the bonus's other side of чл. 17, ал. 1 --------
-    # Whichever reading the file applies, the defect is the base built the other way:
-    # July's bonus carried into August's leave days when it should stay out, or left
-    # out when the company pays it under a wage system (т. 2). Paying the leave from
-    # the contract is NOT the defect it looks like - with the чл. 18, ал. 2 coefficient
-    # the two norms cancel and the correct base lands on the leave month's contracted
-    # daily rate.
+    # --- paid leave computed on the wrong base ---------------------------------
+    # Two shapes, one id. On an ordinary July: the bonus's other side of чл. 17,
+    # ал. 1 - carried into August's leave days when it should stay out, or left out
+    # when the company pays under a wage system (т. 2). On a July with fewer than 10
+    # days worked: чл. 18, ал. 1, изр. първо misapplied to a month the statute sends
+    # to изр. второ - the sick-month's daily rate is not the base, the agreed salary
+    # over the year's average monthly working days is. Paying the leave from the
+    # contract is NOT the defect it looks like - with the ал. 2 coefficient the two
+    # norms cancel and the correct base lands on the contracted daily rate.
     for idx, p in enumerate(people):
         if not p["august"]["inputs"]["days_leave"]:
             continue
         inp = p["august"]["inputs"]
         july_row, july_inp = p["july"]["row"], p["july"]["inputs"]
-        if not july_row["Бонус"] or not july_inp["days_worked"]:
+        if not july_inp["days_worked"]:
             continue
-        other = dict(policy, bonus_in_base=not policy.get("bonus_in_base"))
-        wrong = M.leave_daily_base(M.permanent_pay_of(july_row, other.get("bonus_in_base")),
-                                   july_inp["days_worked"], norm_july, norm_for_august)
+        if july_inp["days_worked"] < 10:
+            # изр. първо applied where изр. второ governs
+            wrong = M.leave_daily_base(
+                M.permanent_pay_of(july_row, policy.get("bonus_in_base")),
+                july_inp["days_worked"], norm_july, norm_for_august)
+        elif july_row["Бонус"]:
+            other = dict(policy, bonus_in_base=not policy.get("bonus_in_base"))
+            wrong = M.leave_daily_base(
+                M.permanent_pay_of(july_row, other.get("bonus_in_base")),
+                july_inp["days_worked"], norm_july, norm_for_august)
+        else:
+            continue
         if abs(wrong - p["leave_daily_due"]) * inp["days_leave"] < 1.0:
             continue                     # the two bases coincide; nothing to see
         broken = M.clean_row(inp, regime_for_august, tzpb, policy, norm_for_august,
