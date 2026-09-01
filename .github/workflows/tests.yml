@@ -7,9 +7,14 @@ on:
   workflow_dispatch:
   schedule:
     # Once a month, on the 1st. Not because the code changes by itself but
-    # because the rates do: the reference file carries a verification date and
-    # this run is the reminder that it goes stale.
+    # because the rates do: the reference file carries a verification date, and
+    # the freshness job below FAILS the scheduled run when it has gone stale -
+    # a reminder that cannot fail is not a reminder.
     - cron: "0 6 1 * *"
+    # Once a week, on Monday: the two generated suites at the 3000 seeds the
+    # README claims, so the claim stays continuously true instead of manually
+    # re-proven after every model change.
+    - cron: "0 6 * * 1"
 
 # Least privilege: nothing here writes to the repository.
 permissions:
@@ -113,3 +118,43 @@ jobs:
       # test/eval_skill.py is deliberately not run here. It calls Claude, so it
       # needs authentication and costs real money per run - a measured seed is
       # about USD 2.4. Run it by hand when the guidance in SKILL.md changes.
+
+  # Scheduled runs only. The monthly firing checks that the rates have been
+  # re-verified within the quarter - the one thing the ordinary jobs cannot fail
+  # on, since a stale-but-consistent reference passes every cross-check. The
+  # weekly firing runs the suites at the depth the README advertises.
+  freshness:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 6 1 * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Rates verified within the last 92 days
+        run: |
+          date=$(grep -oP 'Последна сверка на ставките: \*\*\K[0-9.]+(?=\*\*)' \
+                 skills/trz-expert/references/stavki.md)
+          [ -n "$date" ] || { echo "no verification date found"; exit 1; }
+          verified=$(date -d "$(echo "$date" | awk -F. '{print $3"-"$2"-"$1}')" +%s)
+          age=$(( ( $(date +%s) - verified ) / 86400 ))
+          echo "rates verified $date - $age days ago"
+          if [ "$age" -gt 92 ]; then
+            echo "::error::references/stavki.md was last verified $age days ago -"
+            echo "::error::re-verify the rates (or consciously re-date the check-in)."
+            exit 1
+          fi
+
+  deep-suites:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: test/requirements.txt
+      - name: Install dependencies
+        run: pip install -r test/requirements.txt
+      - name: Both generated suites at the depth the README claims
+        run: python test/run_tests.py --seeds 3000
