@@ -20,10 +20,16 @@ scanner, and the value had already entered the structure being printed. So it is
 computed into the finding. The suite scores on identity and location, which is all it ever
 used; a case is reproduced from its seed.
 
-Everything here is derived from the two sheets, never from the manifest. The manifest is
-opened once, at the end, to score the run. That is not fastidiousness: the checks are
-meant to be the ones a person could perform with the file alone, and a check that quietly
-reads the answer key proves nothing about the file.
+Every *finding* here is derived from the two sheets, never from the manifest, and the
+manifest is read to score the run. That is not fastidiousness: the checks are meant to be
+the ones a person could perform with the file alone, and a check that quietly reads the
+answer key proves nothing about the file.
+
+One value is read from the manifest before the sheets, and it is not a finding:
+`policy.bonus_in_base`, the configured reading of чл. 17, ал. 1 for a bonus column the
+file does not characterise. That is the auditor's own setting - the plugin asks it at
+install time - so a checker that did not know it would be auditing against a rule nobody
+chose. Nothing else may join it: if a future value is a property of the file, infer it.
 
 Two of the three checks turn on a distinction worth stating. The norm of a sheet - how
 many days it was built on - is not the same as the norm of its month. When a sheet is
@@ -100,16 +106,6 @@ def implied_salary(row, sheet_norm):
     return None if not worked else row["Основна за отработеното"] / worked * sheet_norm
 
 
-def permanent_pay(row, bonus_in_base):
-    """The row's remuneration of permanent character — the base чл. 177 КТ measures.
-
-    The bonus column is in or out by the configured reading of чл. 17, ал. 1: out as a
-    one-off, in as т. 2 pay determined by an applied wage system.
-    """
-    return M.permanent_work_pay(row["Основна за отработеното"], row["Клас сума"],
-                                row["Бонус"] if bonus_in_base else 0.0)
-
-
 def selftest_leave_base():
     """Pin чл. 18 НСОРЗ against arithmetic, not against the generator.
 
@@ -128,12 +124,14 @@ def selftest_leave_base():
     """
     salary, pct = 1740.0, 7.2
     uplift = 1 + pct / 100.0
+    cases = 0
     for base_norm, leave_norm in ((23, 21), (21, 23), (20, 20)):
         for sick in (0, 3):
+            cases += 1
             worked = base_norm - sick
             daily = salary / base_norm
             permanent = M.permanent_work_pay(r2(daily * worked),
-                                             r2(r2(daily * worked) * pct / 100.0))
+                                             r2(r2(daily * worked) * pct / 100.0), 0.0)
             got = M.leave_daily_base(permanent, worked, base_norm, leave_norm)
             want = salary * uplift / leave_norm
             if abs(got - want) > 0.005:
@@ -141,12 +139,15 @@ def selftest_leave_base():
                     f"чл. 18 НСОРЗ: base month {base_norm} days ({worked} worked), "
                     f"leave month {leave_norm} days - corrected daily {got:.4f}, "
                     f"contracted daily of the leave month {want:.4f}")
-    return 3 * 2
+    return cases
 
 
 def check(xlsx, manifest, quiet=False):
-    cfg = manifest if isinstance(manifest, dict) else json.load(
-        open(manifest, encoding="utf8"))
+    if isinstance(manifest, dict):
+        cfg = manifest
+    else:
+        with open(manifest, encoding="utf8") as fh:
+            cfg = json.load(fh)
     # Told, not inferred - see the note in structural_test.check.
     bonus_in_base = bool((cfg.get("policy") or {}).get("bonus_in_base"))
     wb = openpyxl.load_workbook(xlsx, data_only=True)
@@ -215,7 +216,7 @@ def check(xlsx, manifest, quiet=False):
         worked_before = before["Отраб. дни"]
         if worked_before < 10:
             continue          # чл. 18, ал. 1 looks further back; the fixture never does
-        permanent_before = permanent_pay(before, bonus_in_base)
+        permanent_before = M.permanent_pay_of(before, bonus_in_base)
         due_daily = M.leave_daily_base(permanent_before, worked_before,
                                        early_norm, late_norm)
         due = r2(due_daily * days_leave)
@@ -239,8 +240,7 @@ def check(xlsx, manifest, quiet=False):
               stated, due)
 
     # ----------------------------------------------------------------- scoring
-    man = manifest if isinstance(manifest, dict) else json.load(
-        open(manifest, encoding="utf8"))
+    man = cfg
     expected = {("file" if where == "file" else late_hdr + 1 + idx, ident)
                 for where, idx, ident in man["cross_expected"]}
     found = F.keys()

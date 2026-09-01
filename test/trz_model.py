@@ -265,7 +265,7 @@ EMPLOYEE_COLUMNS = (("ДОО пенсии", "pension"), ("ДОО ОЗМ", "sickn
 
 # ---------------------------------------------------------- the clean payroll
 
-def permanent_work_pay(base, seniority, wage_system_pay=0.0):
+def permanent_work_pay(base, seniority, wage_system_pay):
     """The month's remuneration of permanent character for the time actually worked.
 
     The numerator of the base both чл. 177 КТ and чл. 40, ал. 5 КСО measure against.
@@ -276,7 +276,9 @@ def permanent_work_pay(base, seniority, wage_system_pay=0.0):
     is the other half of the same rule: a supplement that belongs in the base is one
     the contract names.
 
-    `wage_system_pay` is т. 2 - "възнаграждението над основната работна заплата,
+    `wage_system_pay` is required, not defaulted, for the same reason the two norms of
+    leave_daily_base are: a caller that has not decided what the bonus column is has
+    not finished the question, and a silent 0.0 is one of the two answers. It is т. 2 - "възнаграждението над основната работна заплата,
     определено според прилаганите системи за заплащане на труда". That one IS in the
     base however much it looks like a bonus, and the difference is whether a system
     determines it, not what the column is called. A file that characterises its bonus
@@ -292,6 +294,18 @@ def permanent_work_pay(base, seniority, wage_system_pay=0.0):
     compensation, which is not remuneration for labour.
     """
     return r2(base + seniority + wage_system_pay)
+
+
+def permanent_pay_of(row, bonus_in_base):
+    """permanent_work_pay for a payroll ROW, by the configured reading of чл. 17, ал. 1.
+
+    Both the pair fixture and the pair checker need this, and they had a copy each with
+    different signatures. A change to how a row's permanent pay is read then has to be
+    made twice; miss one and the generator and the checker disagree in silence, which
+    is the failure this whole area keeps producing. One helper, one calling convention.
+    """
+    return permanent_work_pay(row["Основна за отработеното"], row["Клас сума"],
+                              row["Бонус"] if bonus_in_base else 0.0)
 
 
 def sick_daily_base(monthly_salary, seniority_pct, norm_days,
@@ -315,7 +329,7 @@ def sick_daily_base(monthly_salary, seniority_pct, norm_days,
 
 
 def leave_daily_base(previous_permanent_pay, previous_worked_days,
-                     base_norm=None, leave_norm=None):
+                     base_norm, leave_norm):
     """The daily figure paid leave is computed on — чл. 177, ал. 1 КТ, чл. 18 НСОРЗ.
 
     чл. 18, ал. 1: the gross accrued in the last calendar month before the leave in
@@ -323,7 +337,8 @@ def leave_daily_base(previous_permanent_pay, previous_worked_days,
     month. What counts as gross is чл. 17, ал. 1 - see permanent_work_pay.
 
     чл. 18, ал. 2 then corrects the figure by the ratio of the working days of the
-    base month to those of the month the leave falls in. That correction is the reason
+    base month to those of the month the leave falls in - always, which is why both
+    norms are required arguments. That correction is the reason
     a payroll paying leave from the contract is usually right rather than short: on an
     unchanged contract the two norms cancel and the corrected daily lands exactly on
     the leave month's contracted daily rate. Skip the coefficient and every pair of
@@ -336,10 +351,11 @@ def leave_daily_base(previous_permanent_pay, previous_worked_days,
     """
     if not previous_worked_days:
         return 0.0
-    daily = previous_permanent_pay / previous_worked_days
-    if base_norm and leave_norm:
-        daily *= base_norm / leave_norm          # чл. 18, ал. 2 НСОРЗ
-    return daily
+    # The norms are required, and the coefficient is applied unconditionally. They were
+    # optional once, which left the two-argument call - the one that produced the false
+    # findings this model was corrected for - valid and silent. A caller that cannot
+    # supply them has not decided which months it is talking about.
+    return (previous_permanent_pay / previous_worked_days) * (base_norm / leave_norm)
 
 
 def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):

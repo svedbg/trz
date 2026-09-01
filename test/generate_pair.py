@@ -65,17 +65,6 @@ def _inputs_august(rnd, norm, july):
                 bonus=r2(rnd.uniform(80, 500)) if rnd.random() < 0.35 else 0.0)
 
 
-def _permanent_pay(row, policy):
-    """The row's remuneration of permanent character — the base чл. 177 КТ measures.
-
-    The bonus column is in or out according to the configured reading of чл. 17, ал. 1:
-    out as a one-off (in none of the seven points), in as т. 2 pay determined by an
-    applied wage system. See permanent_work_pay.
-    """
-    return M.permanent_work_pay(row["Основна за отработеното"], row["Клас сума"],
-                                row["Бонус"] if policy.get("bonus_in_base") else 0.0)
-
-
 def _write_sheet(wb, title, header, people, tzpb, rnd, first):
     ws = wb.create_sheet(title) if not first else wb.active
     if first:
@@ -147,7 +136,7 @@ def generate(seed):
         # чл. 177: August's leave is measured against July's average daily gross.
         # чл. 18 НСОРЗ: July's permanent pay over July's worked days, then corrected
         # by the ratio of the two months' norms (ал. 2).
-        base = M.leave_daily_base(_permanent_pay(july_row, policy),
+        base = M.leave_daily_base(M.permanent_pay_of(july_row, policy.get("bonus_in_base")),
                                   july_inp["days_worked"], norm_july, norm_for_august)
         august_row = M.clean_row(august_inp, regime_for_august, tzpb, policy,
                                  norm_for_august, leave_daily=base)
@@ -177,7 +166,7 @@ def generate(seed):
         if not july_row["Бонус"] or not july_inp["days_worked"]:
             continue
         other = dict(policy, bonus_in_base=not policy.get("bonus_in_base"))
-        wrong = M.leave_daily_base(_permanent_pay(july_row, other),
+        wrong = M.leave_daily_base(M.permanent_pay_of(july_row, other.get("bonus_in_base")),
                                    july_inp["days_worked"], norm_july, norm_for_august)
         if abs(wrong - p["leave_daily_due"]) * inp["days_leave"] < 1.0:
             continue                     # the two bases coincide; nothing to see
