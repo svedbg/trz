@@ -109,14 +109,14 @@ KEYWORDS = {
     "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19|чл\.? ?42",
                                    r"над|превиш|надвиш|повече от|без да е спазен"
                                    r"|не е спазен|пълния размер|целия размер"
-                                   r"|без ограничен"],
+                                   r"|без ограничен|цял"],
     "F7_relief_combined_limit":   [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19",
-                                   r"два|две|отделн|поотделно|груп|общ|20 ?%|вместо|по-малк"],
+                                   r"два|две|отделн|поотделно|груп|\bобщ|20 ?%|вместо|по-малк"],
     # A bare `0` matched any text containing a zero digit, i.e. almost everything;
     # `0\.00` was no better - it matches the tail of „250.00".
     "F7_relief_not_applied":      [r"облекчен|приспадн|намал|чл\.? ?19|чл\.? ?42",
-                                   r"не е приложен|не е ползван|не е намален"
-                                   r"|липсв|без облекчен|нула|не намал"],
+                                   r"не е приложен|не е ползван|не е намал"
+                                   r"|не е приспадн|липсв|без облекчен|нула|не намал"],
     "F5_tzpb_below_due":          [r"ТЗПБ|трудова злополука"],
     "B4_cap_from_wrong_period":   [r"таван|максимал"],
     "C2_seniority_on_gross":      [r"клас", r"база|бруто|основна"],
@@ -129,14 +129,34 @@ KEYWORDS = {
 # dict separately - folding these into KEYWORDS would fail the selftest the moment two
 # leave-scenarios coexist (E3_leave_without_seniority matches on „отпуск" alone).
 PAIR_KEYWORDS = {
-    "K8_stale_thresholds":  [r"копира|пренесен|стар|предходн|друг[а-я]* (месец|период)",
+    "K8_stale_thresholds":  [r"копира|пренесен|стар|предходн|друг[а-я]* (месец|период)|"
+                             r"режима 01|нормата на юли|от юли|вместо",
                              r"праг|норма|таван|максимал"],
     "I7_unexplained_jump":  [r"заплата|възнаграждение|бруто",
-                             r"скок|разлика|промяна|различн|мени се",
+                             r"скок|скач|разлика|промяна|различн|мени се|повече|"
+                             r"спрямо|при договорен",
                              r"споразумение|обяснение|основание|документ"],
     "E3_leave_base":        [r"отпуск",
                              r"чл\.? ?1[78]|бонус|предходн|среднодневн|изречение|"
                              r"изр\.|10 (отработени )?дни|средномесечн|уговорен"],
+}
+
+# Phrasings from the first live pair run (01-02.09.2026), kept as regression cases:
+# every one was a correct identification that the launch patterns under-scored.
+PAIR_OBSERVED = {
+    "K8_stale_thresholds": [
+        "лист 08-2026 прилага максималния осигурителен доход 2111.64 EUR от режима "
+        "01.01–31.07.2026 вместо 2300.00 EUR, с което при шест лица на тавана са "
+        "невнесени общо 369.48 EUR",
+        "лист 08-2026 е сметнат изцяло на нормата на юли — шапката обявява 23 работни "
+        "дни, а август 2026 има 21",
+    ],
+    "I7_unexplained_jump": [
+        "основната за отработеното през август е 7983.53 EUR срещу договорени 5622.37 "
+        "EUR — с 2361.16 EUR (+42%) повече без документ, а брутото скача без обяснение",
+        "основната заплата за август е 6243.78 EUR при договорена 3824.98 EUR (+63.2% "
+        "спрямо юли) без представено допълнително споразумение",
+    ],
 }
 
 PAIR_SAMPLE_TEXT = {
@@ -557,6 +577,18 @@ SAMPLE_TEXT = {
 # which is how the tightening in the previous commit turned a correct finding into
 # „located only" and cost a seed's worth of signal.
 OBSERVED = {
+    # From the 01-02.09.2026 targeted run - correct identifications the launch
+    # patterns under-scored, kept so the recall cannot regress:
+    "F7_relief_not_applied": [
+        "удържаната лична вноска 65.66 EUR не е приспадната от месечната данъчна "
+        "основа",
+        "удържаната премия (129.00) не е намалила данъчната основа - облекчението "
+        "не е приложено",
+    ],
+    "F7_relief_over_limit": [
+        "данъчната основа е намалена с цялата удръжка за доброволно осигуряване "
+        "238.61 EUR при лимит 10%",
+    ],
     "F7_relief_over_limit": [
         "Облекчението по чл. 19, ал. 2 ЗДДФЛ е приложено с пълния размер на удръжката "
         "276.21 EUR, без да е спазен лимитът",
@@ -615,9 +647,8 @@ def _check_universe(KEYWORDS, SAMPLE_TEXT, SCENARIOS, label):
                 problems.append(f"{ident}: its sample also matches {other} - that "
                                 f"pattern is too loose and would take credit for this "
                                 f"description")
-    # The observed corpus holds phrasings from real WIDE runs; judging the pair
-    # universe against it would report every one of them as lost recall.
-    observed = OBSERVED if label == "wide" else {}
+    # Each universe is judged against phrasings observed in ITS OWN real runs.
+    observed = OBSERVED if label == "wide" else PAIR_OBSERVED
     for ident, texts in sorted(observed.items()):
         for text in texts:
             matched = [o for o, p in sorted(KEYWORDS.items())
