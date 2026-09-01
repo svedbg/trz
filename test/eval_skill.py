@@ -88,7 +88,8 @@ KEYWORDS = {
     "F9_sick_pay_in_taxable":     [r"болничен|болнични|неработоспособ|чл\.? ?40",
                                    r"данъчн|данък|облага"],
     "F9_sick_pay_amount":         [r"болничен|болнични|неработоспособ|чл\.? ?40",
-                                   r"среднодневн|бонус|уговорен|база|по-висок"],
+                                   r"среднодневн|бонус|уговорен|база|постоянен характер|"
+                                   r"в повече|завишен"],
     "F9_missing_health_on_sick":  [r"здравн|ЗЗО", r"болничен|майчинств|неработоспособ"],
     "F10_in_kind_asymmetry":      [r"натура|карт"],
     "F10_excess_asymmetry":       [r"превишен|праг|застрахов|доброволн|30\.?6|60 лв"],
@@ -190,7 +191,12 @@ def ensure_venv():
 
 def prepare(seed, year=2026):
     """Generate a payroll and place it alone in an isolated directory."""
-    xlsx, _, man = G.generate(seed, year=year)
+    # Pinned, not drawn from the seed: the eval runs the skill from a clone or a
+    # symlink, where the plugin's install-time question was never asked and SKILL.md
+    # documents the default - an uncharacterised bonus stays out of the base. Letting
+    # the fixture pick the other reading would grade the skill against a configuration
+    # it does not have.
+    xlsx, _, man = G.generate(seed, year=year, bonus_in_base=False)
     d = os.path.join(WORKDIR, f"seed-{seed}")
     shutil.rmtree(d, ignore_errors=True)
     os.makedirs(d)
@@ -420,7 +426,7 @@ SAMPLE_TEXT = {
     "K3_stale_contributions": "вноските не са процент от обявения осигурителен доход - стойностите идват от друг период",
     "F9_sick_pay_out_of_insurable": "болничните за първите дни стоят извън осигурителния доход, а върху тях се дължат вноски",
     "F9_sick_pay_in_taxable": "болничните за първите дни са в данъчната основа, а са необлагаем доход",
-    "F9_sick_pay_amount": "болничните са сметнати по уговорената дневна ставка, а среднодневното брутно за месеца е по-високо",
+    "F9_sick_pay_amount": "болничните са сметнати върху база, в която е вкаран бонусът за месеца - той е еднократен, не е в нито една от седемте точки на чл. 17, ал. 1 НСОРЗ и не влиза в нея",
     "F9_missing_health_on_sick": "липсва здравна вноска за дните във временна неработоспособност",
     "F10_in_kind_asymmetry": "картата в натура е в едната база, но не и в другата",
     "F10_excess_asymmetry": "превишението над необлагаемия праг влиза само в едната от двете бази",

@@ -265,46 +265,81 @@ EMPLOYEE_COLUMNS = (("ДОО пенсии", "pension"), ("ДОО ОЗМ", "sickn
 
 # ---------------------------------------------------------- the clean payroll
 
+def permanent_work_pay(base, seniority, wage_system_pay=0.0):
+    """The month's remuneration of permanent character for the time actually worked.
+
+    The numerator of the base both чл. 177 КТ and чл. 40, ал. 5 КСО measure against.
+    чл. 17, ал. 1 НСОРЗ enumerates what goes in; of the elements this model carries,
+    that is the salary for the time worked (т. 1) and the length-of-service supplement
+    (т. 3, a supplement of permanent character). Everything agreed on top for a single
+    month - a bonus, a one-off premium - is in none of the seven points, and чл. 66 КТ
+    is the other half of the same rule: a supplement that belongs in the base is one
+    the contract names.
+
+    `wage_system_pay` is т. 2 - "възнаграждението над основната работна заплата,
+    определено според прилаганите системи за заплащане на труда". That one IS in the
+    base however much it looks like a bonus, and the difference is whether a system
+    determines it, not what the column is called. A file that characterises its bonus
+    column as such pay puts it here; a one-off stays out. Which of the two an
+    UNcharacterised column is, is the plugin's install-time question - carried through
+    this model as `policy["bonus_in_base"]`, because it is the auditor's configured
+    reading rather than a property of the file.
+
+    Note what is NOT here: the paid leave of the base month itself. чл. 17, ал. 1 does
+    not list it, and чл. 18, ал. 1 divides by the days **worked**, so pay and divisor
+    stay on the same footing. Out too, for reasons of their own, the sick pay - which
+    is measured against this figure and would be circular - and the чл. 224 КТ
+    compensation, which is not remuneration for labour.
+    """
+    return r2(base + seniority + wage_system_pay)
+
+
 def sick_daily_base(monthly_salary, seniority_pct, norm_days,
-                    accruals_for_work, paid_days):
+                    permanent_pay, worked_days):
     """The daily figure the чл. 40, ал. 5 КСО payment is computed on.
 
     The statute names two measures and owes the larger: 70% of the average daily
     **gross** remuneration for the month in which the incapacity arose, "но не по-малко
-    от" 70% of the average daily **agreed** remuneration. The agreed figure is a floor,
-    not the answer. Computing only it - which is what a payroll keeping one daily rate
-    per person does - shorts everyone whose month carried a bonus, by exactly the bonus
-    spread over the days it was earned in.
+    от" 70% of the average daily **agreed** remuneration.
 
-    Which elements make up "брутно възнаграждение за месеца" is not settled, and the
-    choice here is the model's, not the statute's: the remuneration accrued for labour
-    this month - base, seniority supplement, bonus, paid leave - over the days it
-    covers. Excluded are the sick pay itself, which would be circular, and the чл. 224
-    КТ compensation, which is not remuneration for labour. A payroll that reads it
-    differently is not thereby wrong; a payroll that never computes the gross measure
-    at all is.
+    Both are built from remuneration of permanent character - see permanent_work_pay -
+    so on an unchanged contract they coincide and the max() below is a formality. It
+    stops being one where the two can part: a salary changed mid-month, or leave
+    carried at a preceding month's rate. What the max() no longer does is let a bonus
+    raise the base. A payroll that spreads one over the days of incapacity pays more
+    than is owed - in the worker's favour, and still wrong on Декларация обр. 1.
     """
     agreed = monthly_salary * (1 + seniority_pct / 100.0) / norm_days
-    gross = accruals_for_work / paid_days if paid_days else 0.0
+    gross = permanent_pay / worked_days if worked_days else 0.0
     return max(gross, agreed)
 
 
-def leave_daily_base(previous_work_pay, previous_paid_days):
-    """The daily figure paid leave is computed on — чл. 177, ал. 1 КТ.
+def leave_daily_base(previous_permanent_pay, previous_worked_days,
+                     base_norm=None, leave_norm=None):
+    """The daily figure paid leave is computed on — чл. 177, ал. 1 КТ, чл. 18 НСОРЗ.
 
-    Not the contracted salary. The statute measures the average daily gross of the last
-    calendar month before the leave in which the person worked at least ten working
-    days. A payroll that pays leave from the contract understates it for anyone whose
-    previous month carried a bonus, and the shape of the error is the same as
-    чл. 40, ал. 5: a figure that happens to coincide most months is used as if it were
-    the rule. Neither is visible in a single month, which is why the pair fixture exists.
+    чл. 18, ал. 1: the gross accrued in the last calendar month before the leave in
+    which the person worked at least ten days, divided by the days worked in that
+    month. What counts as gross is чл. 17, ал. 1 - see permanent_work_pay.
 
-    What counts as "брутно трудово възнаграждение" is taken here as it is in
-    sick_daily_base - the remuneration accrued for labour over the days it covers - so
-    that the two readings in this model agree with each other. The choice is the
-    model's, not the statute's.
+    чл. 18, ал. 2 then corrects the figure by the ratio of the working days of the
+    base month to those of the month the leave falls in. That correction is the reason
+    a payroll paying leave from the contract is usually right rather than short: on an
+    unchanged contract the two norms cancel and the corrected daily lands exactly on
+    the leave month's contracted daily rate. Skip the coefficient and every pair of
+    months with different norms turns into a false finding.
+
+    What does move the figure is a preceding month whose permanent pay differs from
+    the contract - a raise, a change of hours. A bonus is not such a case: it is in
+    none of the seven points of чл. 17, ал. 1, and a payroll that carries it into this
+    month's leave days overpays. That is the error the pair fixture builds.
     """
-    return previous_work_pay / previous_paid_days if previous_paid_days else 0.0
+    if not previous_worked_days:
+        return 0.0
+    daily = previous_permanent_pay / previous_worked_days
+    if base_norm and leave_norm:
+        daily *= base_norm / leave_norm          # чл. 18, ал. 2 НСОРЗ
+    return daily
 
 
 def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
@@ -314,7 +349,9 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
          card_employer, card_employee, premium, personal_contribution,
          life_premium_personal
     policy: in_kind_in_bases, excess_in_insurable, excess_in_taxable (bool) -
-            one flag per base, because reading В is asymmetric; see the docstring
+            one flag per base, because reading В is asymmetric; see the docstring.
+            bonus_in_base (bool) - whether an uncharacterised bonus is read as
+            чл. 17, ал. 1, т. 2 pay and enters the leave and sick-pay base
     Returns dict: column name -> value.
     """
     ms = inp["monthly_salary"]
@@ -332,11 +369,15 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
     bonus = r2(inp["bonus"])
     comp_224 = r2(inp["compensation_224"])
 
-    # The remuneration accrued for labour this month, and the days it covers. Needed
-    # before the sick pay, which is measured against it - see sick_daily_base.
+    # Two figures, and the distance between them is the point. work_base is everything
+    # accrued for labour this month and goes on to the insurable income, bonus
+    # included. permanent is the narrower base the sick pay and the leave are measured
+    # against - see permanent_work_pay.
     work_base = r2(base + seniority + bonus + leave)
+    permanent = permanent_work_pay(base, seniority,
+                                   bonus if policy.get("bonus_in_base") else 0.0)
     sick_days_employer = min(sd, SICK_DAYS_EMPLOYER)
-    sick_pay = r2(sick_daily_base(ms, pct, norm_days, work_base, wd + pl)
+    sick_pay = r2(sick_daily_base(ms, pct, norm_days, permanent, wd)
                   * sick_days_employer * SICK_RATE)
 
     gross = r2(base + seniority + bonus + leave + comp_224 + sick_pay)
@@ -426,7 +467,7 @@ SCENARIOS = {
     "K7_cost_from_net":           ("K7", "cost of labour computed from net after deductions"),
     "F9_sick_pay_out_of_insurable": ("F9", "sick pay for the first days left out of the insurable income"),
     "F9_sick_pay_in_taxable":     ("F9", "sick pay for the first days left inside the taxable base"),
-    "F9_sick_pay_amount":         ("F9", "sick pay from the agreed daily rate when the month's gross is higher"),
+    "F9_sick_pay_amount":         ("F9", "sick pay computed on the wrong side of чл. 17, ал. 1 for the bonus"),
     "F9_missing_health_on_sick":  ("F9", "no health contribution for days of incapacity"),
     "F10_in_kind_asymmetry":      ("F10", "income in kind in one base but not the other"),
     "F10_excess_asymmetry":       ("F10", "threshold excess in one base but not the other"),
@@ -447,5 +488,5 @@ SCENARIOS = {
 PAIR_SCENARIOS = {
     "K8_stale_thresholds":    ("K8", "the later sheet keeps the earlier sheet's thresholds"),
     "I7_unexplained_jump":    ("I7", "gross jumps between adjacent months with nothing to explain it"),
-    "E3_leave_from_contract": ("E3", "paid leave computed from the contract, not the preceding month's gross"),
+    "E3_leave_base":          ("E3", "paid leave on the wrong side of чл. 17, ал. 1 for the preceding bonus"),
 }

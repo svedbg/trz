@@ -66,6 +66,9 @@ class Findings:
 
 def check(xlsx, manifest, quiet=False):
     man = json.load(open(manifest, encoding="utf8"))
+    # The configured reading of чл. 17, ал. 1 for an uncharacterised bonus column.
+    # The auditor is told this one; only the file's own practices are inferred.
+    bonus_in_base = bool((man.get("policy") or {}).get("bonus_in_base"))
     wb = openpyxl.load_workbook(xlsx, data_only=True)
     ws = wb[man["sheet"]]
     HDR, TOTAL = man["hdr"], man["total_row"]
@@ -227,17 +230,26 @@ def check(xlsx, manifest, quiet=False):
                 # accrued, not against the row's own figures: a defect injected into
                 # the supplement or the leave would otherwise move the base the sick
                 # pay is compared with, and one defect would be reported twice.
-                work_pay_due = r2(base_due + r2(base_due * pct / 100.0)
-                                  + bonus + leave_due)
+                # bonus_in_base is read from the manifest rather than inferred from
+                # the file: it is the auditor's configured reading of чл. 17, ал. 1
+                # (the plugin's install-time question), not a property of the payroll.
+                permanent_due = M.permanent_work_pay(
+                    base_due, r2(base_due * pct / 100.0),
+                    bonus if bonus_in_base else 0.0)
                 due = r2(M.sick_daily_base(c["monthly_salary"], pct, norm,
-                                           work_pay_due, wd + pl)
+                                           permanent_due, wd)
                          * employer_days * M.SICK_RATE)
                 if abs(sick_pay - due) > M.TOL:
-                    agreed_only = r2(daily * uplift * employer_days * M.SICK_RATE)
-                    why = " - from the agreed daily rate alone, when the month's " \
-                          "average daily gross is higher (чл. 40, ал. 5 КСО owes the " \
-                          "larger of the two)" \
-                        if abs(sick_pay - agreed_only) <= M.TOL else ""
+                    other = r2(M.sick_daily_base(
+                        c["monthly_salary"], pct, norm,
+                        r2(permanent_due + (-bonus if bonus_in_base else bonus)), wd)
+                        * employer_days * M.SICK_RATE) if wd else 0.0
+                    why = (" - on a base carrying the month's bonus, which is in none "
+                           "of the seven points of чл. 17, ал. 1 НСОРЗ"
+                           if not bonus_in_base else
+                           " - on a base without the month's bonus, which this file "
+                           "pays under a wage system (чл. 17, ал. 1, т. 2 НСОРЗ)") \
+                        if bonus and abs(sick_pay - other) <= M.TOL else ""
                     F.add("F9_sick_pay_amount", r,
                           f"sick pay under чл. 40, ал. 5 КСО for {int(employer_days)} "
                           f"days{why}", sick_pay, due)
@@ -368,9 +380,15 @@ def check(xlsx, manifest, quiet=False):
         # An unestablishable practice only stops conclusions about the composition
         # of the insurable income. The checks that do not depend on it - the cap,
         # the taxable base, the relief limit - carry on.
-        practice_clear = not any(el[k] and (practice[k] is None
-                                            or practice_tax[k] is None)
+        # One gate per base, not one for both. An element whose place in the TAXABLE
+        # base cannot be inferred says nothing about the insurable one, and folding
+        # them together silenced every insurable check on a file where only the
+        # taxable sample was too small - seed 165 lost four findings that way, three
+        # of which had nothing to do with the unknown.
+        practice_clear = not any(el[k] and practice[k] is None
                                  for k in ("in_kind", "excess"))
+        practice_clear_tax = not any(el[k] and practice_tax[k] is None
+                                     for k in ("in_kind", "excess"))
         allowed = {k for k in ("in_kind", "excess") if practice[k] and el[k]}
         allowed_sum = r2(sum(el[k] for k in allowed))
         # What the file's practice puts in the TAXABLE base, which need not be the
@@ -415,39 +433,77 @@ def check(xlsx, manifest, quiet=False):
                       f"allows ({expected_insurable:.2f}); candidates for the "
                       f"difference: {candidates}", d["insurable"], expected_insurable)
 
+        elif el["sick_pay"] and not d["at_cap"]:
+            # The practice could not be inferred, so the composition as a whole is
+            # not decidable - but the sick pay's place in it is not the contested
+            # part. чл. 3, ал. 1 НЕВДПОВ names it, so ask a question that does not
+            # need the practice: does ANY combination of the contested elements
+            # reach the declared figure with the sick pay inside, and does one reach
+            # it without? If only the second holds, the sick pay is out whatever the
+            # practice turns out to be.
+            #
+            # Without this the check went silent on every row of a file whose
+            # practice was unestablishable, and an injected defect went unfound for
+            # 3000 seeds while the suite stayed green at 300.
+            sums = [s for _, s in _subsets([("in_kind", el["in_kind"]),
+                                            ("excess", el["excess"])])]
+            with_sick = any(abs(r2(d["work_base"] + el["sick_pay"] + s)
+                                - d["insurable"]) <= M.TOL for s in sums)
+            without_sick = any(abs(r2(d["work_base"] + s) - d["insurable"]) <= M.TOL
+                               for s in sums)
+            if without_sick and not with_sick:
+                F.add("F9_sick_pay_out_of_insurable", r,
+                      f"{NAMES['sick_pay']} ({el['sick_pay']:.2f}) is outside the "
+                      f"insurable income - no combination of the contested elements "
+                      f"reaches {d['insurable']:.2f} with it inside, and one reaches "
+                      f"it without (чл. 3, ал. 1 НЕВДПОВ)",
+                      d["insurable"], r2(d["insurable"] + el["sick_pay"]))
+
         if d["insurable"] > max_insurable + M.TOL:
             F.add("B4_cap_from_wrong_period", "file",
                   f"insurable income {d['insurable']:.2f} above the maximum "
                   f"{max_insurable:.2f}", d["insurable"], max_insurable)
 
         # ---------------- composition of the taxable base ----------------
-        if not practice_clear:
-            continue        # without an established practice there is no expectation
+        # An element whose place in THIS base cannot be inferred from the file used to
+        # end the row here. That went too far. Of the deviations below, the sick pay's
+        # place is settled by чл. 24, ал. 2, т. 14 ЗДДФЛ and both relief scenarios are
+        # about what was deducted rather than what the base contains - none of the
+        # three needs the practice at all. So instead of going silent, enumerate the
+        # placements the unknown elements could have and let the arithmetic choose:
+        # the composition that explains the row with ONE known deviation is the
+        # composition the file used. Seed 165 lost three findings to the old bail-out.
+        unknown_tax = [k for k in ("in_kind", "excess")
+                       if el[k] and practice_tax[k] is None]
 
-        # Same shape as for the insurable income: first the hypothesis "as the
-        # file's practice provides", then one single deviation that explains the
-        # difference. Enumerating every subset gives several solutions and leads to
-        # the wrong localisation.
-        def taxable_for(delta, relief_mode):
-            # The sick pay sits inside the gross and outside the taxable base
-            # (чл. 24, ал. 2, т. 14 ЗДДФЛ), so it comes back out here.
-            before = r2(d["gross"] + allowed_tax_sum - d["sick_pay"] + delta
-                        - d["employee_total"])
-            pension, life = d["deduction"], d["deduction_life"]
-            if relief_mode == "limit":
-                # correct: one 10% per group of чл. 19, ал. 2
-                applied = M.relief_for(before, pension, life)
-            elif relief_mode == "full":
-                applied = r2(pension + life)
-            elif relief_mode == "combined":
-                # both groups squeezed under a single shared 10%
-                applied = r2(min(r2(pension + life), r2(before * M.RELIEF_LIMIT)))
-            else:
-                applied = 0.0
-            return r2(before - applied), applied, before
+        def resolve_taxable(inside, inside_sum):
+            """The verdict for one assumed composition of the taxable base.
 
-        hypothesis, relief, taxable_before = taxable_for(0.0, "limit")
-        if abs(d["taxable"] - hypothesis) > M.TOL:
+            (ident, text, stated, expected) for a single named deviation;
+            F6_taxable_unexplained when none or several fit; None when the row already
+            matches the hypothesis.
+            """
+            def taxable_for(delta, relief_mode):
+                # The sick pay sits inside the gross and outside the taxable base
+                # (чл. 24, ал. 2, т. 14 ЗДДФЛ), so it comes back out here.
+                before = r2(d["gross"] + inside_sum - d["sick_pay"] + delta
+                            - d["employee_total"])
+                pension, life = d["deduction"], d["deduction_life"]
+                if relief_mode == "limit":
+                    # correct: one 10% per group of чл. 19, ал. 2
+                    applied = M.relief_for(before, pension, life)
+                elif relief_mode == "full":
+                    applied = r2(pension + life)
+                elif relief_mode == "combined":
+                    # both groups squeezed under a single shared 10%
+                    applied = r2(min(r2(pension + life), r2(before * M.RELIEF_LIMIT)))
+                else:
+                    applied = 0.0
+                return r2(before - applied), applied, before
+
+            hypothesis, _, _ = taxable_for(0.0, "limit")
+            if abs(d["taxable"] - hypothesis) <= M.TOL:
+                return None
             candidates = [(0.0, "full", "F7_relief_over_limit",
                            "the whole withheld amount was deducted, without the limit")]
             if d["deduction"] or d["deduction_life"]:
@@ -477,12 +533,16 @@ def check(xlsx, manifest, quiet=False):
                                    "the чл. 224 КТ compensation is outside the taxable "
                                    "base"))
             for k in ("in_kind", "excess"):
-                if not el[k]:
+                if not el[k] or k in unknown_tax:
+                    # An element whose placement is being enumerated cannot also be a
+                    # deviation from it: "while the other rows include it" is exactly
+                    # what is not known. Offering it as a candidate turns the unknown
+                    # into an asymmetry finding against a row that has none.
                     continue
                 # Measured against what the OTHER ROWS do with this element in this
                 # base - not against the insurable income. The two bases are allowed
                 # to differ; rows are not.
-                sign = -1.0 if k in allowed_tax else 1.0
+                sign = -1.0 if k in inside else 1.0
                 candidates.append((sign * el[k], "limit", ID_FOR[k],
                                    f"{NAMES[k]} ({el[k]:.2f}) is "
                                    + ("outside" if sign < 0 else "inside")
@@ -498,21 +558,36 @@ def check(xlsx, manifest, quiet=False):
                 ident, text, applied, before = found[0]
                 if ident == "F7_relief_over_limit":
                     limit = r2(before * M.RELIEF_LIMIT)
-                    if applied > limit + M.TOL:
-                        F.add(ident, r,
-                              f"{applied:.2f} was deducted against a "
-                              f"{M.RELIEF_LIMIT:.0%} limit of {limit:.2f} "
-                              f"(чл. 42, ал. 3 във вр. с чл. 19 ЗДДФЛ)", applied, limit)
-                else:
-                    F.add(ident, r, text, d["taxable"], hypothesis)
-            else:
-                F.add("F6_taxable_unexplained", r,
-                      f"the taxable base {d['taxable']:.2f} does not follow from the "
-                      f"gross {d['gross']:.2f} minus the employee contributions "
-                      f"{d['employee_total']:.2f} (expected {hypothesis:.2f}); "
-                      + (f"{len(found)} possible explanations" if found
-                         else "none of the known deviations fits"),
-                      d["taxable"], hypothesis)
+                    if applied <= limit + M.TOL:
+                        return None
+                    return (ident,
+                            f"{applied:.2f} was deducted against a "
+                            f"{M.RELIEF_LIMIT:.0%} limit of {limit:.2f} "
+                            f"(чл. 42, ал. 3 във вр. с чл. 19 ЗДДФЛ)", applied, limit)
+                return (ident, text, d["taxable"], hypothesis)
+            return ("F6_taxable_unexplained",
+                    f"the taxable base {d['taxable']:.2f} does not follow from the "
+                    f"gross {d['gross']:.2f} minus the employee contributions "
+                    f"{d['employee_total']:.2f} (expected {hypothesis:.2f}); "
+                    + (f"{len(found)} possible explanations" if found
+                       else "none of the known deviations fits"),
+                    d["taxable"], hypothesis)
+
+        # With nothing unknown this is one pass over the inferred practice, exactly as
+        # before. With an unknown element it is two, or four, and only a verdict the
+        # arithmetic singles out survives.
+        verdicts = [resolve_taxable(allowed_tax | set(mask), r2(allowed_tax_sum + extra))
+                    for mask, extra in _subsets([(k, el[k]) for k in unknown_tax])]
+        named = {v[0]: v for v in verdicts if v and v[0] != "F6_taxable_unexplained"}
+        if len(named) == 1:
+            ident, text, stated, expected = next(iter(named.values()))
+            F.add(ident, r, text, stated, expected)
+        elif not named and any(v is None for v in verdicts):
+            pass                # some admissible composition explains the row exactly
+        else:
+            fallback = next(v for v in verdicts
+                            if v and v[0] == "F6_taxable_unexplained")
+            F.add(fallback[0], r, fallback[1], fallback[2], fallback[3])
 
     # --- F5: the accident rate implied by the employer contributions -----
     implied = [r2(d["er_social"] / d["insurable"] * 100.0 - M.EMPLOYER_SOCIAL)

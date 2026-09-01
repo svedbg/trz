@@ -2,7 +2,7 @@
   "name": "trz-expert",
   "displayName": "ТРЗ експерт (Bulgarian payroll audit)",
   "description": "Audits Bulgarian payroll documents against the Labour Code, the Social Security Code, the income tax act and the wage-structure ordinance. Never applies a rate from memory: every figure comes from a dated reference file with a verification status, and a missing rate downgrades the finding instead of being guessed.",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "author": {
     "name": "Svetoslav Rankov",
     "url": "https://github.com/svedbg"
@@ -21,6 +21,14 @@
     "audit",
     "hr"
   ],
+  "userConfig": {
+    "bonus_outside_base": {
+      "type": "boolean",
+      "title": "еднократни бонуси (не описани в трудовия договор) остават извън базата за отпуск и болнични — one-off bonuses not named in the employment contract stay outside the leave and sick-pay base",
+      "description": "Чл. 17, ал. 1 НСОРЗ изброява какво влиза в базата по чл. 177 и чл. 228 КТ. Еднократният бонус не е в списъка; възнаграждението по прилагана система на заплащане е (т. 2). Въпросът е само за колона „Бонус“, която самият файл не характеризира. Да — чети я като еднократна и я остави вън от базата. Не — дружеството плаща по система на заплащане, значи влиза по т. 2. Настройката не отменя чл. 17 и отстъпва пред трудов договор, КТД или вътрешни правила, когато те казват кое от двете е плащането. — In English: чл. 17, ал. 1 НСОРЗ lists what enters the base for чл. 177 and чл. 228 КТ. A one-off bonus is not on that list; pay under an applied wage system is (т. 2). Yes — read a „Бонус“ column the file does not characterise as a one-off and keep it out of the base. No — the company pays under a wage system, so it goes in under т. 2. The setting never overrides чл. 17, nor a contract, collective agreement or internal wage rules that say which kind of payment it is.",
+      "default": true
+    }
+  },
   "metadata": {
     "jurisdiction": "BG",
     "rates_verified": "2026-08-30",

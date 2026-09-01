@@ -28,8 +28,13 @@ Four suites:
    the months the thresholds change between. It covers the three checks that
    cannot be expressed in a single sheet: a copied sheet keeping the previous
    month's norm and thresholds (K8), a jump in someone's implied salary between
-   adjacent months (I7), and paid leave measured against the contract rather than
-   the preceding month's gross, which is what чл. 177 КТ requires (E3).
+   adjacent months (I7), and paid leave computed on the wrong side of чл. 17, ал. 1
+   НСОРЗ for the preceding month's bonus (E3). That last one runs in both polarities:
+   the plugin asks at install time whether an uncharacterised bonus is a one-off or
+   т. 2 pay, each seed draws one reading, and the suite fails if a run never used
+   both. Suite 3 also asserts the чл. 18, ал. 2 coefficient
+   directly: the fixture and the checker share the function that applies it, so no
+   number of seeds can see it missing.
 
 Not included: `eval_skill.py`. That one calls Claude, so it needs authentication
 and costs money per run. It is run by hand when the guidance in SKILL.md changes.
@@ -52,6 +57,7 @@ import generate_wide as G                                 # noqa: E402
 import generate_pair as P                                 # noqa: E402
 from structural_test import check                         # noqa: E402
 from pair_test import check as check_pair                 # noqa: E402
+from pair_test import selftest_leave_base                 # noqa: E402
 
 
 def suite_rates():
@@ -95,6 +101,7 @@ def suite_structural(start, count, quiet=True):
     print("=" * 78)
     coverage = collections.Counter()
     months = collections.Counter()
+    readings = collections.Counter()
     failures = []
     total_injected = total_found = total_findings = 0
     for seed in range(start, start + count):
@@ -102,6 +109,8 @@ def suite_structural(start, count, quiet=True):
         for _, _, ident in man["expected"]:
             coverage[ident] += 1
         months[man["month"]] += 1
+        readings["т. 2 (вътре)" if man["policy"]["bonus_in_base"]
+                 else "еднократен (вън)"] += 1
         result = check(xlsx, manifest_path, quiet=quiet)
         total_injected += result["injected"]
         total_found += result["found"]
@@ -112,11 +121,15 @@ def suite_structural(start, count, quiet=True):
     print(f"  seeds: {count} · injected defects: {total_injected} · "
           f"found: {total_found} · all findings: {total_findings}")
     print(f"  months: {dict(sorted(months.items()))}")
+    print(f"  bonus reading (чл. 17, ал. 1): {dict(sorted(readings.items()))}")
     print("\n  coverage per scenario:")
     for ident in M.SCENARIOS:
         n = coverage.get(ident, 0)
         mark = "  " if n else "!!"
         print(f"  {mark} {ident:30} {n:4d}  {M.SCENARIOS[ident][1]}")
+    if len(readings) < 2:
+        failures.append(("readings", {"missed": ["one reading of чл. 17, ал. 1 never "
+                                                 "ran at these seeds"], "extra": []}))
     untested = [i for i in M.SCENARIOS if not coverage.get(i)]
     if untested:
         print(f"\n  WARNING: {len(untested)} scenarios were never injected at these "
@@ -142,10 +155,22 @@ def suite_pair(start, count, quiet=True):
     print(f"SUITE 3 - two-month payrolls, seeds {start}..{start + count - 1}")
     print("=" * 78)
     coverage = collections.Counter()
+    readings = collections.Counter()
     failures = []
+    # Asserted before the seeds, and deliberately not through them: the fixture and
+    # the checker share leave_daily_base, so no number of seeds can tell whether the
+    # чл. 18, ал. 2 coefficient is there. See the docstring in pair_test.
+    try:
+        cases = selftest_leave_base()
+        print(f"  чл. 18 НСОРЗ, {cases} norm pairs asserted against arithmetic: ok")
+    except AssertionError as exc:
+        print(f"  чл. 18 НСОРЗ: FAILED - {exc}")
+        failures.append(("selftest", str(exc)))
     injected = found = 0
     for seed in range(start, start + count):
         xlsx, _, man = P.generate(seed)
+        readings["т. 2 (вътре)" if man["policy"]["bonus_in_base"]
+                 else "еднократен (вън)"] += 1
         for _, _, ident in man["cross_expected"]:
             coverage[ident] += 1
         result = check_pair(xlsx, man, quiet=quiet)
@@ -155,6 +180,10 @@ def suite_pair(start, count, quiet=True):
             failures.append((seed, result))
 
     print(f"  seeds: {count} · injected defects: {injected} · found: {found}")
+    print(f"  bonus reading (чл. 17, ал. 1): {dict(sorted(readings.items()))}")
+    if len(readings) < 2:
+        failures.append(("readings", {"missed": ["one reading of чл. 17, ал. 1 never "
+                                                 "ran at these seeds"], "extra": []}))
     print("\n  coverage per scenario:")
     for ident in M.PAIR_SCENARIOS:
         n = coverage.get(ident, 0)
