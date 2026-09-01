@@ -101,6 +101,16 @@ In Claude Code, two commands:
 you just want the skill: it costs about 270 tokens of context per session and loads the rest
 only when it runs.
 
+**Enabling it asks one question.** Whether a „Бонус“ column the file does not characterise
+should be read as a one-off payment — outside the base for paid leave and sick pay — or as
+pay under an applied wage system, which чл. 17, ал. 1, т. 2 НСОРЗ puts inside it. The
+default is **outside**, which is what чл. 17 gives for a one-off. The question is narrow on
+purpose: it settles only the case the file leaves open. A contract, a collective agreement
+or internal wage rules that say which kind of payment it is override the setting, and no
+value of it can take a supplement of permanent character out of the base. Change it later
+with `/plugin`. Cloned rather than installed, there is no setting and the default applies —
+the skill says so in the report rather than deciding quietly.
+
 **If you want to work on it**, clone and symlink instead, so your edits are live:
 
 ```sh
@@ -158,15 +168,16 @@ demonstrably wrong. Three scenarios that no single sheet can hold, because in on
 stale threshold looks exactly like the threshold, a jump has nothing to jump from, and the
 base for paid leave is in the month before: a sheet still built on the previous month's norm
 and thresholds (K8), an implied monthly salary that moves between the months with no annex in
-the file (I7), and paid leave computed from the contract instead of the preceding month's
-average daily gross (E3, чл. 177 КТ).
+the file (I7), and paid leave computed on a base the preceding month's bonus was let into —
+чл. 17, ал. 1 НСОРЗ enumerates in seven points what the leave is measured against, and a
+bonus agreed for the one month is in none of them (E3).
 
 A run passes only when **every** injected defect is found and **no** finding is raised
 beyond them. False positives fail the suite exactly like misses: a skill that sees
 violations everywhere is as useless as one that sees none.
 
-Current state, both generated suites at 3000 seeds: 25 825 injected defects in suite 2 and
-6 853 in suite 3, every one of them found, zero false positives.
+Current state, both generated suites at 3000 seeds: 25 652 injected defects in suite 2 and
+6 438 in suite 3, every one of them found, zero false positives.
 Randomisation earned its keep — it exposed three bugs in the checks themselves, including
 one where five separately rounded contributions drift up to 0.03 from 13.78% of the base and
 a two-cent tolerance produces a phantom violation every few hundred rows. A static fixture

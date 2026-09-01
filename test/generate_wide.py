@@ -393,28 +393,44 @@ def m_sick_pay_in_taxable(row, inp, regime, tzpb, policy, rnd):
         {"F9_sick_pay_in_taxable"}
 
 
-def m_sick_pay_from_agreed(row, inp, regime, tzpb, policy, rnd):
-    """Sick pay taken from the agreed daily rate when the month's gross is higher.
+def m_sick_pay_base_wrong_side(row, inp, regime, tzpb, policy, rnd):
+    """Sick pay computed on the bonus's other side of чл. 17, ал. 1 НСОРЗ.
 
-    чл. 40, ал. 5 КСО owes 70% of the month's average daily gross and treats the agreed
-    rate only as a floor. A payroll that keeps one daily rate per person computes the
-    floor and stops, which shorts everyone whose month carried a bonus. The defect is
-    invisible without the contract and the month's other accruals side by side, which
-    is why it survives in real files.
+    чл. 40, ал. 5 КСО owes 70% of the month's average daily gross, and the gross it
+    means is remuneration of permanent character. Whether an uncharacterised bonus is
+    part of that has two lawful answers - a one-off is in none of the seven points, pay
+    determined by an applied wage system is т. 2 - and the auditor's configured reading
+    picks one. Whichever it picks, the defect is the payroll using the other:
+
+    - configured **out** (the default): the bonus is spread over the days of incapacity
+      and the payment comes out too high. The direction is why it survives - nobody
+      queries a payment that came out large - and it is a finding all the same, because
+      Декларация обр. 1 leaves the building with the wrong number;
+    - configured **in** (т. 2): the bonus is left out and the worker is short.
+
+    One mutation, both polarities, so neither reading is the only one with teeth.
     """
     if not inp["days_sick"] or not row["Болнични (работодател)"]:
         return None
     if not inp["bonus"]:
-        return None                     # without a bonus the two measures coincide
+        return None                     # without a bonus the two bases coincide
+    worked = inp["days_worked"]
+    if not worked:
+        return None
     employer_days = min(inp["days_sick"], M.SICK_DAYS_EMPLOYER)
-    agreed = inp["monthly_salary"] * (1 + inp["seniority_pct"] / 100.0) / row["_norm"]
-    short = r2(agreed * employer_days * M.SICK_RATE)
-    if abs(short - row["Болнични (работодател)"]) < 0.10:
+    # The reading the file did NOT apply - which is what makes the row wrong.
+    other = 0.0 if policy.get("bonus_in_base") else row["Бонус"]
+    permanent = M.permanent_work_pay(row["Основна за отработеното"], row["Клас сума"],
+                                     other)
+    wrong = r2(M.sick_daily_base(inp["monthly_salary"], inp["seniority_pct"],
+                                 row["_norm"], permanent, worked)
+               * employer_days * M.SICK_RATE)
+    if abs(wrong - row["Болнични (работодател)"]) < 0.10:
         return None                     # too small to tell from rounding
     row = dict(row)
-    row["Болнични (работодател)"] = short
+    row["Болнични (работодател)"] = wrong
     row["БРУТО"] = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
-                      + row["Платен отпуск"] + row["Обезщетение чл. 224"] + short)
+                      + row["Платен отпуск"] + row["Обезщетение чл. 224"] + wrong)
     return _recompute_downstream(row, inp, regime, tzpb, policy), \
         {"F9_sick_pay_amount"}
 
@@ -652,7 +668,7 @@ ROW_MUTATIONS = [
     ("K7_cost_from_net", m_cost_from_net),
     ("F9_sick_pay_out_of_insurable", m_sick_pay_out_of_insurable),
     ("F9_sick_pay_in_taxable", m_sick_pay_in_taxable),
-    ("F9_sick_pay_amount", m_sick_pay_from_agreed),
+    ("F9_sick_pay_amount", m_sick_pay_base_wrong_side),
     ("F9_missing_health_on_sick", m_missing_health_on_sick),
     ("F10_in_kind_asymmetry", m_in_kind_asymmetry),
     ("F10_excess_asymmetry", m_excess_asymmetry),
@@ -677,7 +693,11 @@ SPOILS_SAMPLE = ("F9_sick_pay_out_of_insurable", "F10_in_kind_asymmetry",
 # =====================================================================
 
 
-def generate(seed, month=None, year=2026):
+def generate(seed, month=None, year=2026, bonus_in_base=None):
+    """Build one payroll. `bonus_in_base` pins the configured reading of чл. 17, ал. 1
+    for an uncharacterised bonus column instead of drawing it from the seed - the skill
+    eval needs it pinned, because a cloned skill has no plugin setting and applies the
+    documented default."""
     rnd = random.Random(seed)
     month = month or rnd.choice([6, 7, 8, 9, 10, 11])
     norm = M.working_days(year, month)
@@ -692,7 +712,9 @@ def generate(seed, month=None, year=2026):
     # One of the three readings of the excess, applied to the whole file. В is the
     # asymmetric one and must produce no finding when it is applied consistently.
     reading = rnd.choice(list(M.EXCESS_READINGS))
-    policy = dict(in_kind_in_bases=rnd.random() < 0.5,
+    policy = dict(bonus_in_base=(rnd.random() < 0.5 if bonus_in_base is None
+                                 else bool(bonus_in_base)),
+                  in_kind_in_bases=rnd.random() < 0.5,
                   excess_in_insurable=M.EXCESS_READINGS[reading]["insurable"],
                   excess_in_taxable=M.EXCESS_READINGS[reading]["taxable"],
                   excess_reading=reading)

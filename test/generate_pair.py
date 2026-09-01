@@ -65,9 +65,15 @@ def _inputs_august(rnd, norm, july):
                 bonus=r2(rnd.uniform(80, 500)) if rnd.random() < 0.35 else 0.0)
 
 
-def _work_pay(row):
-    return r2(row["Основна за отработеното"] + row["Клас сума"]
-              + row["Бонус"] + row["Платен отпуск"])
+def _permanent_pay(row, policy):
+    """The row's remuneration of permanent character — the base чл. 177 КТ measures.
+
+    The bonus column is in or out according to the configured reading of чл. 17, ал. 1:
+    out as a one-off (in none of the seven points), in as т. 2 pay determined by an
+    applied wage system. See permanent_work_pay.
+    """
+    return M.permanent_work_pay(row["Основна за отработеното"], row["Клас сума"],
+                                row["Бонус"] if policy.get("bonus_in_base") else 0.0)
 
 
 def _write_sheet(wb, title, header, people, tzpb, rnd, first):
@@ -117,7 +123,8 @@ def generate(seed):
     regime_august = M.REGIMES["H2"]
     tzpb = rnd.choice([0.4, 0.5, 0.7, 1.1])
     reading = rnd.choice(list(M.EXCESS_READINGS))
-    policy = dict(in_kind_in_bases=rnd.random() < 0.5,
+    policy = dict(bonus_in_base=rnd.random() < 0.5,
+                  in_kind_in_bases=rnd.random() < 0.5,
                   excess_in_insurable=M.EXCESS_READINGS[reading]["insurable"],
                   excess_in_taxable=M.EXCESS_READINGS[reading]["taxable"],
                   excess_reading=reading)
@@ -138,8 +145,10 @@ def generate(seed):
 
         august_inp = _inputs_august(rnd, norm_for_august, july_inp)
         # чл. 177: August's leave is measured against July's average daily gross.
-        base = M.leave_daily_base(_work_pay(july_row),
-                                  july_inp["days_worked"] + july_inp["days_leave"])
+        # чл. 18 НСОРЗ: July's permanent pay over July's worked days, then corrected
+        # by the ratio of the two months' norms (ал. 2).
+        base = M.leave_daily_base(_permanent_pay(july_row, policy),
+                                  july_inp["days_worked"], norm_july, norm_for_august)
         august_row = M.clean_row(august_inp, regime_for_august, tzpb, policy,
                                  norm_for_august, leave_daily=base)
         august_row["_norm"] = norm_for_august
@@ -153,19 +162,30 @@ def generate(seed):
     if stale:
         cross.append(["file", None, "K8_stale_thresholds"])
 
-    # --- paid leave computed from the contract instead of July's gross -------
+    # --- paid leave computed on the bonus's other side of чл. 17, ал. 1 --------
+    # Whichever reading the file applies, the defect is the base built the other way:
+    # July's bonus carried into August's leave days when it should stay out, or left
+    # out when the company pays it under a wage system (т. 2). Paying the leave from
+    # the contract is NOT the defect it looks like - with the чл. 18, ал. 2 coefficient
+    # the two norms cancel and the correct base lands on the leave month's contracted
+    # daily rate.
     for idx, p in enumerate(people):
         if not p["august"]["inputs"]["days_leave"]:
             continue
         inp = p["august"]["inputs"]
-        contract_daily = inp["monthly_salary"] * (1 + inp["seniority_pct"] / 100.0) \
-            / norm_for_august
-        if abs(contract_daily - p["leave_daily_due"]) * inp["days_leave"] < 1.0:
+        july_row, july_inp = p["july"]["row"], p["july"]["inputs"]
+        if not july_row["Бонус"] or not july_inp["days_worked"]:
+            continue
+        other = dict(policy, bonus_in_base=not policy.get("bonus_in_base"))
+        wrong = M.leave_daily_base(_permanent_pay(july_row, other),
+                                   july_inp["days_worked"], norm_july, norm_for_august)
+        if abs(wrong - p["leave_daily_due"]) * inp["days_leave"] < 1.0:
             continue                     # the two bases coincide; nothing to see
-        broken = M.clean_row(inp, regime_for_august, tzpb, policy, norm_for_august)
+        broken = M.clean_row(inp, regime_for_august, tzpb, policy, norm_for_august,
+                             leave_daily=wrong)
         broken["_norm"] = norm_for_august
         p["august"]["row"] = broken
-        cross.append(["row", idx, "E3_leave_from_contract"])
+        cross.append(["row", idx, "E3_leave_base"])
         break
 
     # --- an unexplained jump in the gross ------------------------------------
@@ -213,6 +233,10 @@ def generate(seed):
 
     manifest = dict(
         seed=seed, file=os.path.basename(path), year=YEAR,
+        # File-wide, and at the top level because the checker needs it before it
+        # reaches either sheet: the configured reading of чл. 17, ал. 1 for an
+        # uncharacterised bonus column.
+        policy=policy,
         months=[MONTH_EARLY, MONTH_LATE],
         applicable=dict(early=dict(max_insurable=regime_july["max_insurable"],
                                    norm_days=norm_july),

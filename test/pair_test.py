@@ -100,12 +100,55 @@ def implied_salary(row, sheet_norm):
     return None if not worked else row["Основна за отработеното"] / worked * sheet_norm
 
 
-def work_pay(row):
-    return r2(row["Основна за отработеното"] + row["Клас сума"]
-              + row["Бонус"] + row["Платен отпуск"])
+def permanent_pay(row, bonus_in_base):
+    """The row's remuneration of permanent character — the base чл. 177 КТ measures.
+
+    The bonus column is in or out by the configured reading of чл. 17, ал. 1: out as a
+    one-off, in as т. 2 pay determined by an applied wage system.
+    """
+    return M.permanent_work_pay(row["Основна за отработеното"], row["Клас сума"],
+                                row["Бонус"] if bonus_in_base else 0.0)
+
+
+def selftest_leave_base():
+    """Pin чл. 18 НСОРЗ against arithmetic, not against the generator.
+
+    The suites cannot see this one. The fixture and the checker both call
+    M.leave_daily_base, so dropping the ал. 2 coefficient from it changes both sides
+    equally and 300 seeds stay green - the round-trip blindness scenarios.md describes,
+    which has now hidden three defects in this same area.
+
+    So the property is asserted directly, derived from the statute rather than from the
+    model: for an unchanged monthly contract, чл. 18, ал. 1 divides the base month's
+    permanent pay by the days worked in it, and ал. 2 multiplies by (base norm / leave
+    norm). The base month's norm cancels, and what is left is the salary over the LEAVE
+    month's norm - the contracted daily rate of the month the leave falls in. That is
+    why a payroll paying leave from the contract is right, and the reason must hold for
+    two months whose norms differ, or the claim is empty.
+    """
+    salary, pct = 1740.0, 7.2
+    uplift = 1 + pct / 100.0
+    for base_norm, leave_norm in ((23, 21), (21, 23), (20, 20)):
+        for sick in (0, 3):
+            worked = base_norm - sick
+            daily = salary / base_norm
+            permanent = M.permanent_work_pay(r2(daily * worked),
+                                             r2(r2(daily * worked) * pct / 100.0))
+            got = M.leave_daily_base(permanent, worked, base_norm, leave_norm)
+            want = salary * uplift / leave_norm
+            if abs(got - want) > 0.005:
+                raise AssertionError(
+                    f"чл. 18 НСОРЗ: base month {base_norm} days ({worked} worked), "
+                    f"leave month {leave_norm} days - corrected daily {got:.4f}, "
+                    f"contracted daily of the leave month {want:.4f}")
+    return 3 * 2
 
 
 def check(xlsx, manifest, quiet=False):
+    cfg = manifest if isinstance(manifest, dict) else json.load(
+        open(manifest, encoding="utf8"))
+    # Told, not inferred - see the note in structural_test.check.
+    bonus_in_base = bool((cfg.get("policy") or {}).get("bonus_in_base"))
     wb = openpyxl.load_workbook(xlsx, data_only=True)
     early_name, late_name = wb.sheetnames[0], wb.sheetnames[1]
     _, _, early = read_sheet(wb[early_name])
@@ -169,20 +212,28 @@ def check(xlsx, manifest, quiet=False):
         days_leave = after["Дни платен отпуск"]
         if not days_leave:
             continue
-        paid_days = before["Отраб. дни"] + before["Дни платен отпуск"]
-        if paid_days < 10:
-            continue          # чл. 177 looks further back; the fixture never builds this
-        due_daily = M.leave_daily_base(work_pay(before), paid_days)
+        worked_before = before["Отраб. дни"]
+        if worked_before < 10:
+            continue          # чл. 18, ал. 1 looks further back; the fixture never does
+        permanent_before = permanent_pay(before, bonus_in_base)
+        due_daily = M.leave_daily_base(permanent_before, worked_before,
+                                       early_norm, late_norm)
         due = r2(due_daily * days_leave)
         stated = after["Платен отпуск"]
         if abs(stated - due) <= TOL:
             continue
-        worked = after["Отраб. дни"]
-        contract_daily = (after["Основна за отработеното"] / worked
-                          * (1 + after["Клас %"] / 100.0)) if worked else 0.0
-        why = " - from the contracted daily rate, not from the preceding month" \
-            if abs(stated - r2(contract_daily * days_leave)) <= TOL else ""
-        F.add("E3_leave_from_contract", row_no,
+        other = M.leave_daily_base(
+            r2(permanent_before + (-before["Бонус"] if bonus_in_base
+                                   else before["Бонус"])),
+            worked_before, early_norm, late_norm)
+        why = ((f" - on a base carrying the bonus of „{early_name}“, which is in none "
+                f"of the seven points of чл. 17, ал. 1 НСОРЗ"
+                if not bonus_in_base else
+                f" - on a base without the bonus of „{early_name}“, which this file "
+                f"pays under a wage system (чл. 17, ал. 1, т. 2 НСОРЗ)")
+               if before["Бонус"] and abs(stated - r2(other * days_leave)) <= TOL
+               else "")
+        F.add("E3_leave_base", row_no,
               f"paid leave for {days_leave:g} days{why}; чл. 177 КТ measures it "
               f"against the average daily gross of „{early_name}“ ({due_daily:.4f})",
               stated, due)

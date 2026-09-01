@@ -66,7 +66,7 @@ The groups match `references/proverki.md`.
 | `K7_cost_from_net` | K7 | Cost of labour computed from net after deductions | Cost ≠ gross + employer contributions + benefits; short by exactly what was withheld |
 | `F9_sick_pay_out_of_insurable` | F9 | The чл. 40, ал. 5 КСО payment is left out of the insurable income | Solving the composition: чл. 3, ал. 1 НЕВДПОВ puts the element inside, and the stated figure is short by it |
 | `F9_sick_pay_in_taxable` | F9 | The same payment is left inside the taxable base | Solving the composition of the taxable base: чл. 24, ал. 2, т. 14 ЗДДФЛ keeps it out |
-| `F9_sick_pay_amount` | F9 | Sick pay computed from the agreed daily rate when the month's average daily gross is higher | The two measures of чл. 40, ал. 5 КСО are computed separately and the larger is owed; the base is rebuilt from the contract so a defect elsewhere on the row is not counted twice |
+| `F9_sick_pay_amount` | F9 | Sick pay computed on the bonus's other side of чл. 17, ал. 1 НСОРЗ | The base is remuneration of permanent character. Whether an uncharacterised bonus belongs to it has two lawful answers — a one-off is in none of the seven points, pay under an applied wage system is т. 2 — and `policy["bonus_in_base"]` carries the configured one. The mutation always writes the other, so both readings have teeth: configured **out**, the row overpays; configured **in**, it shorts the worker. The base is rebuilt from the contract so a defect elsewhere on the row is not counted twice |
 | `F9_missing_health_on_sick` | F9 | No health contribution under чл. 40, ал. 1, т. 5 ЗЗО for days of incapacity | 4.8% × the self-employed minimum × days / norm |
 | `F10_in_kind_asymmetry` | F10 | The benefit in kind is in one base but not the other | The composition of the two bases is solved separately and compared |
 | `F10_excess_asymmetry` | F10 | The same, for the excess over the social-expense threshold | Same — but the practice is inferred **per base**, because reading В (`stavki.md`) puts the excess inside the insurable income and outside the taxable base. A file applying В throughout is correct and must produce no finding; the defect is a row that departs from what the other rows do |
@@ -125,7 +125,7 @@ August's leave to be measured against it.
 | --- | --- | --- | --- |
 | `K8_stale_thresholds` | K8 | The later sheet keeps the earlier sheet's norm and thresholds | Two independent signs: the day sums reconcile to the other month's norm, and rows sit on the other period's cap |
 | `I7_unexplained_jump` | I7 | Someone's pay jumps between adjacent months | The **implied monthly salary** — base pay ÷ days worked × the sheet's norm — changes with no annex in the file |
-| `E3_leave_from_contract` | E3 | Paid leave computed from the contract | чл. 177 КТ measures it against the average daily gross of the preceding month |
+| `E3_leave_base` | E3 | Paid leave computed on the bonus's other side of чл. 17, ал. 1 НСОРЗ | чл. 18: the preceding month's чл. 17, ал. 1 pay over its **worked** days, corrected by the ratio of the two months' norms (ал. 2). Same two readings and same both-polarity mutation as `F9_sick_pay_amount`. Paying the leave from the contract is **not** a defect — with the ал. 2 coefficient the norms cancel and the correct base lands on the leave month's contracted daily rate |
 
 **The sheet's norm is not the month's norm**, and the distinction carries the suite. When
 a sheet is copied forward, the first stops following the second, and every row then
@@ -181,6 +181,38 @@ generator and the checker computed the sick pay with the same formula, so they a
 with each other and agreed wrongly. A round trip cannot find a mistake in its own
 premise, and that is the one thing an independent reader can. The rule is now in
 `sick_daily_base()` and `F9_sick_pay_amount` guards it.
+
+**Then the same round trip hid the correction's own mistake.** The fix put every accrual
+into the "брутно" measure, bonus included, and that is not what the base is. чл. 17, ал. 1
+НСОРЗ enumerates seven points and a bonus is in none of them; чл. 18, ал. 1 divides by the
+days **worked**; and чл. 18, ал. 2 corrects the result by the ratio of the two months'
+norms, which on an unchanged contract cancels out to the leave month's contracted daily
+rate. The model overcorrected on all three counts, and the two scenarios standing on it,
+`F9_sick_pay_amount` and the pair fixture's leave base, scored a payroll that had paid
+correctly as defective. Nothing in the suites could tell, for exactly the reason above. It
+came from a reader again, not from a run.
+
+**A practice that cannot be inferred is not a reason to go silent.** Twice in this change a
+seed lost findings that way: seed 1162 to an unestablishable practice for the insurable
+income, seed 165 to one for the taxable base. Both were the same mistake — gating a check on
+a question it does not depend on. The sick pay's place in either base is settled by statute
+(чл. 3, ал. 1 НЕВДПОВ, чл. 24, ал. 2, т. 14 ЗДДФЛ) and neither relief scenario is about what
+the base contains. So the checker no longer stops: it asks whether some admissible
+composition reaches the declared figure and whether one reaches it without the element, and
+for the taxable base it enumerates the placements the unknown element could have and keeps
+the verdict the arithmetic singles out. An element being enumerated is not offered as its own
+deviation, or the unknown itself turns into an asymmetry finding.
+
+Both scenarios now inject the opposite error — and, since the plugin asks at install time
+which of the two lawful readings to apply, they inject it in **both** polarities. Each seed
+draws `policy["bonus_in_base"]`, the fixture is built consistently under it, the checker is
+told it (told, not inferred: it is the auditor's configuration, not a property of the file),
+and the mutation writes whichever side the file did not use. `run_tests.py` prints the split
+and fails the suite if a run never exercised one of the two — coverage of one reading is not
+coverage. The statute itself is quoted in `stavki.md`, where a status caps what a finding may
+claim. The two bases are not equally well founded, and the split is recorded
+there: чл. 17 and чл. 18 are `ДВ` and cover чл. 177 and чл. 228 КТ only, so carrying the
+same composition to the чл. 40, ал. 5 КСО base is an analogy, held at `за потвърждение`.
 
 Three decisions in its construction are worth knowing.
 

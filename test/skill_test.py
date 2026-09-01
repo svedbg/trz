@@ -158,6 +158,43 @@ if plugin:
         fail("plugin.json carries `category`, which belongs in marketplace.json and "
              "is ignored here")
 
+    # The install-time question. Claude Code asks it when the plugin is enabled and
+    # substitutes the answer into SKILL.md as ${user_config.<key>}. Two ways for that
+    # to break without anyone noticing: a key declared and never read (the installer
+    # is asked a question whose answer is discarded), and a key read and never
+    # declared (the placeholder reaches the user as literal text and the skill acts on
+    # a value nobody set). Both are checked here, in both directions.
+    TYPES = ("string", "number", "boolean", "directory", "file")
+    user_config = plugin.get("userConfig") or {}
+    if not user_config:
+        fail("plugin.json declares no userConfig - if the install-time question was "
+             "removed on purpose, remove the section in SKILL.md that reads its answer")
+    for key, spec in user_config.items():
+        if not isinstance(spec, dict):
+            fail(f"userConfig.{key} is not an object")
+            continue
+        for field in ("type", "title", "description"):
+            if not spec.get(field):
+                fail(f"userConfig.{key} has no {field} - the enable dialog shows all "
+                     f"three, and a field without them is unanswerable")
+        if spec.get("type") not in TYPES:
+            fail(f"userConfig.{key} has type {spec.get('type')!r}; Claude Code offers "
+                 f"{list(TYPES)}")
+        if "default" not in spec:
+            fail(f"userConfig.{key} has no default - an installer who dismisses the "
+                 f"dialog leaves the skill reading an empty value")
+        if spec.get("sensitive"):
+            fail(f"userConfig.{key} is marked sensitive, and sensitive values are not "
+                 f"substituted into skill content - SKILL.md would never see it")
+        if "${user_config.%s}" % key not in text:
+            fail(f"userConfig.{key} is declared but SKILL.md never reads "
+                 f"${{user_config.{key}}} - the installer is asked and the answer "
+                 f"goes nowhere")
+    for ref in sorted(set(re.findall(r"\$\{user_config\.([A-Za-z0-9_]+)\}", text))):
+        if ref not in user_config:
+            fail(f"SKILL.md reads ${{user_config.{ref}}}, which plugin.json does not "
+                 f"declare - it reaches the reader as literal text")
+
 if plugin and marketplace:
     entries = marketplace.get("plugins") or []
     if not entries:
