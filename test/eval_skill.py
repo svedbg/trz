@@ -92,14 +92,20 @@ KEYWORDS = {
     "F9_missing_health_on_sick":  [r"здравн|ЗЗО", r"болничен|майчинств|неработоспособ"],
     "F10_in_kind_asymmetry":      [r"натура|карт"],
     "F10_excess_asymmetry":       [r"превишен|праг|застрахов|доброволн|30\.?6|60 лв"],
+    # The second pattern discriminates over_limit from the other two F7 scenarios, but
+    # „над" alone was too narrow: a live run described this defect as „приложено с
+    # пълния размер на удръжката, без да е спазен лимитът" and scored as located only.
     "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19|чл\.? ?42",
-                                   r"над|превиш|надвиш|повече от"],
+                                   r"над|превиш|надвиш|повече от|без да е спазен"
+                                   r"|не е спазен|пълния размер|целия размер"
+                                   r"|без ограничен"],
     "F7_relief_combined_limit":   [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19",
                                    r"два|две|отделн|поотделно|груп|общ|20 ?%|вместо|по-малк"],
     # A bare `0` matched any text containing a zero digit, i.e. almost everything;
     # `0\.00` was no better - it matches the tail of „250.00".
     "F7_relief_not_applied":      [r"облекчен|приспадн|намал|чл\.? ?19|чл\.? ?42",
-                                   r"не е|липсв|без|нула|не намал"],
+                                   r"не е приложен|не е ползван|не е намален"
+                                   r"|липсв|без облекчен|нула|не намал"],
     "F5_tzpb_below_due":          [r"ТЗПБ|трудова злополука"],
     "B4_cap_from_wrong_period":   [r"таван|максимал"],
     "C2_seniority_on_gross":      [r"клас", r"база|бруто|основна"],
@@ -426,6 +432,29 @@ SAMPLE_TEXT = {
 }
 
 
+# Phrasings taken from real graded runs, kept as regression cases. A pattern that
+# stops matching one of these has lost recall on wording a model actually produced -
+# which is how the tightening in the previous commit turned a correct finding into
+# „located only" and cost a seed's worth of signal.
+OBSERVED = {
+    "F7_relief_over_limit": [
+        "Облекчението по чл. 19, ал. 2 ЗДДФЛ е приложено с пълния размер на удръжката "
+        "276.21 EUR, без да е спазен лимитът",
+    ],
+    "F9_sick_pay_in_taxable": [
+        "Сумата по чл. 40, ал. 5 КСО (185.47) е включена в данъчната основа, вместо да "
+        "бъде изключена като необлагаема",
+    ],
+    "F10_excess_asymmetry": [
+        "Превишението над необлагаемия праг 30.68 EUR (4.69) е добавено в данъчната "
+        "основа, но не и в осигурителния доход",
+    ],
+    "F5_tzpb_below_due": [
+        "ТЗПБ е приложен 0.80% вместо потвърдените 1.1% при всичките 11 лица",
+    ],
+}
+
+
 def check_keywords():
     """Prove the keyword patterns discriminate. Free, starts no session.
 
@@ -457,6 +486,17 @@ def check_keywords():
                 problems.append(f"{ident}: its sample also matches {other} - that "
                                 f"pattern is too loose and would take credit for this "
                                 f"description")
+    for ident, texts in sorted(OBSERVED.items()):
+        for text in texts:
+            matched = [o for o, p in sorted(KEYWORDS.items())
+                       if all(re.search(x, text, re.I) for x in p)]
+            if ident not in matched:
+                problems.append(f"{ident}: a phrasing seen in a real run no longer "
+                                f"matches its patterns - recall lost")
+            for other in matched:
+                if other != ident:
+                    problems.append(f"{ident}: a real phrasing of it also matches "
+                                    f"{other} - that pattern is too loose")
     graded = [i for i in KEYWORDS if i not in SAMPLE_TEXT]
     for ident in sorted(graded):
         problems.append(f"{ident}: graded by KEYWORDS but has no sample to check it")
