@@ -483,8 +483,15 @@ def clean_row(inp, regime, tzpb, policy, norm_days, leave_daily=None):
     er_social = r2(insurable * (EMPLOYER_SOCIAL + tzpb) / 100.0)
     er_upf = r2(insurable * EMPLOYER_UPF / 100.0)
     er_health = r2(insurable * EMPLOYER_HEALTH / 100.0)
+    # чл. 40, ал. 1, т. 5 ЗЗО - but NOT for the employer-paid first days. Their
+    # чл. 40, ал. 5 pay is insurable income and the full health contribution already
+    # rides on it there; т. 17 of Декларация обр. 1 excludes those days from this
+    # base by name (quoted in stavki.md), and charging 4.8% on the self-insured
+    # minimum for them as well pays health twice. This model did exactly that until
+    # the adversarial review held it against the reference's own quote.
+    health_days = (sd - sick_days_employer) + md
     er_health_sick = r2(regime["min_insurable_self"] * HEALTH_ON_INCAPACITY / 100.0
-                        * (sd + md) / norm_days) if (sd + md) else 0.0
+                        * health_days / norm_days) if health_days else 0.0
     er_total = r2(er_social + er_upf + er_health + er_health_sick)
 
     cost = r2(gross + er_total + in_kind + premium)
@@ -527,7 +534,7 @@ SCENARIOS = {
     "F9_sick_pay_out_of_insurable": ("F9", "sick pay for the first days left out of the insurable income"),
     "F9_sick_pay_in_taxable":     ("F9", "sick pay for the first days left inside the taxable base"),
     "F9_sick_pay_amount":         ("F9", "sick pay computed on the wrong side of чл. 17, ал. 1 for the bonus"),
-    "F9_missing_health_on_sick":  ("F9", "no health contribution for days of incapacity"),
+    "F9_health_on_sick_days":     ("F9", "the чл. 40, ал. 1, т. 5 ЗЗО contribution on the wrong days"),
     "F10_in_kind_asymmetry":      ("F10", "income in kind in one base but not the other"),
     "F10_excess_asymmetry":       ("F10", "threshold excess in one base but not the other"),
     "F7_relief_over_limit":       ("F7", "tax relief above the monthly percentage limit"),

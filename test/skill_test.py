@@ -281,9 +281,11 @@ MONTHS_BG = ["януари", "февруари", "март", "април", "ма
              "август", "септември", "октомври", "ноември", "декември"]
 
 rates_text = read(os.path.join(SKILL_DIR, "references", "stavki.md"))
-verified = re.search(r"Последна сверка: \*\*(\d{2})\.(\d{2})\.(\d{4})\*\*", rates_text)
+verified = re.search(r"Последна сверка на ставките: \*\*(\d{2})\.(\d{2})\.(\d{4})\*\*",
+                     rates_text)
 if not verified:
-    fail("cannot find „Последна сверка: **dd.mm.yyyy**“ in references/stavki.md - it is "
+    fail("cannot find „Последна сверка на ставките: **dd.mm.yyyy**“ in "
+         "references/stavki.md - it is "
          "the source of truth for the verification date, so none of the places that "
          "advertise it can be checked")
 else:
