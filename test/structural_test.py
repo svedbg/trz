@@ -255,14 +255,25 @@ def check(xlsx, manifest, quiet=False):
                     F.add("F9_sick_pay_amount", r,
                           f"sick pay under чл. 40, ал. 5 КСО for {int(employer_days)} "
                           f"days{why}", sick_pay, due)
-            if sd + md:
+            if sd or md:
+                # The base counts the days the employer's чл. 40, ал. 5 pay does not
+                # cover: т. 17 of Декларация обр. 1 excludes the employer-paid first
+                # days by name - their pay is insurable income and health rides on it
+                # there already.
+                health_days = (sd - min(sd, M.SICK_DAYS_EMPLOYER)) + md
                 due = r2(min_insurable_self * M.HEALTH_ON_INCAPACITY / 100.0
-                         * (sd + md) / norm)
+                         * health_days / norm)
                 if abs(er_health_sick - due) > M.TOL:
-                    F.add("F9_missing_health_on_sick", r,
-                          f"health contribution for {int(sd + md)} days of "
-                          f"incapacity or maternity (чл. 40, ал. 1, т. 5 ЗЗО)",
-                          er_health_sick, due)
+                    over = r2(min_insurable_self * M.HEALTH_ON_INCAPACITY / 100.0
+                              * (sd + md) / norm)
+                    why = (" - charged for the employer-paid first days too, whose "
+                           "чл. 40, ал. 5 pay already carries health through the "
+                           "insurable income; внесено в повече"
+                           if health_days != sd + md
+                           and abs(er_health_sick - over) <= M.TOL else "")
+                    F.add("F9_health_on_sick_days", r,
+                          f"the чл. 40, ал. 1, т. 5 ЗЗО contribution for days of "
+                          f"incapacity or maternity{why}", er_health_sick, due)
 
         # --- C2: the base of the seniority supplement -------------------
         if pct:

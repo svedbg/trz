@@ -435,19 +435,40 @@ def m_sick_pay_base_wrong_side(row, inp, regime, tzpb, policy, rnd):
         {"F9_sick_pay_amount"}
 
 
-def m_missing_health_on_sick(row, inp, regime, tzpb, policy, rnd):
-    """The health contribution for days of incapacity is missing."""
-    if not row["ЗО при болничен/майчинство"]:
+def m_health_on_sick_days(row, inp, regime, tzpb, policy, rnd):
+    """The чл. 40, ал. 1, т. 5 ЗЗО contribution computed on the wrong days.
+
+    The base counts the days the employer's чл. 40, ал. 5 pay does NOT cover - from
+    the third working day of incapacity, plus maternity. Two shapes, one id:
+
+    - the contribution due is missing entirely (the original scenario);
+    - it is charged over ALL the days of incapacity, employer-paid ones included -
+      the refuted rule, paying health twice for those days, since their pay is
+      insurable income and carries the full contribution there. This model itself
+      did that until the adversarial review held it against т. 17 of Декларация
+      обр. 1, which stavki.md had been quoting all along.
+    """
+    sd, md = inp["days_sick"], inp["days_maternity"]
+    due = row["ЗО при болничен/майчинство"]
+    shapes = []
+    if due:
+        shapes.append(0.0)                              # missing entirely
+    if sd:
+        all_days = r2(regime["min_insurable_self"] * M.HEALTH_ON_INCAPACITY / 100.0
+                      * (sd + md) / row["_norm"])
+        if abs(all_days - due) > 0.10:
+            shapes.append(all_days)                     # the employer days charged too
+    if not shapes:
         return None
     row = dict(row)
-    row["ЗО при болничен/майчинство"] = 0.0
+    row["ЗО при болничен/майчинство"] = rnd.choice(shapes)
     row["Вноски работодател общо"] = r2(row["Вноски работодател ДОО+ТЗПБ"]
                                        + row["ДЗПО-УПФ работодател"]
                                        + row["ЗО работодател"])
     row["Общ разход за труд"] = r2(row["БРУТО"] + row["Вноски работодател общо"]
                                    + row["Карта (за сметка на работодателя)"]
                                    + row["Доброволно здравно осигуряване (премия)"])
-    return row, {"F9_missing_health_on_sick"}
+    return row, {"F9_health_on_sick_days"}
 
 
 def _asymmetry(row, inp, regime, tzpb, policy, element, ident, usable=99):
@@ -669,7 +690,7 @@ ROW_MUTATIONS = [
     ("F9_sick_pay_out_of_insurable", m_sick_pay_out_of_insurable),
     ("F9_sick_pay_in_taxable", m_sick_pay_in_taxable),
     ("F9_sick_pay_amount", m_sick_pay_base_wrong_side),
-    ("F9_missing_health_on_sick", m_missing_health_on_sick),
+    ("F9_health_on_sick_days", m_health_on_sick_days),
     ("F10_in_kind_asymmetry", m_in_kind_asymmetry),
     ("F10_excess_asymmetry", m_excess_asymmetry),
     ("F7_relief_over_limit", m_relief_over_limit),
