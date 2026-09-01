@@ -80,6 +80,31 @@ The groups match `references/proverki.md`.
 | `F1_compensation_in_insurable` | F1 | The чл. 224 КТ compensation inside the insurable income | чл. 1, ал. 8, т. 7 НЕВДПОВ is an exhaustive list of the sums no contributions are due on, and чл. 224 is in it — the statute-settled mirror of the sick pay. Guarded even when the file's practice cannot be inferred, via `statutory_misplacements()` |
 | `I5_days_do_not_reconcile` | I5 | The day counts do not reconcile with the month's norm | Sum of days ≠ working days in the month |
 
+## Suite 4: the formula layer
+
+The first real audit this skill performed found every one of its defects in the
+formulas — a cap typed by hand on 13 of 24 rows, a days column added into a money sum,
+a `Diff` control algebraically always zero, `=31.88*0.02+31.88` inlined on every row —
+and no suite could have caught any of them, because every fixture was a value-only
+export. `generate_formula.py` writes those shapes on purpose; `formula_test.py` finds
+them **from the formulas alone**.
+
+| id | shape | how it is found |
+| --- | --- | --- |
+| `KF1_sum_omits_column` | the gross formula skips an accrual column | the gross must reference every accrual column, present or empty — the omission is a defect with a delay fuse |
+| `KF2_days_in_money_sum` | a day-count cell inside the gross | money formulas must not reference day columns |
+| `KF3_hard_value_in_formula_column` | a typed value in a column of formulas | shape uniformity: the one row whose "formula" is a literal |
+| `KF4_tautological_control` | `Разлика = A−B` while `B = =A` | one level of reference resolution proves the control can detect nothing |
+| `KF5_constant_in_formula` | a parameter inlined as a literal on one row | shape uniformity again: strip the row digits and the deviating row carries numbers where the others carry a `$`-reference |
+
+Two design limits, on the record. openpyxl writes formulas without cached values and
+evaluates nothing, so this suite checks **structure, not arithmetic** — which is also
+why the paid eval does not use this fixture yet: a live session opening it with
+`data_only=True` sees `None` everywhere; a faithful eval fixture needs Excel-produced
+caches. And the shape-uniformity check needs a majority to deviate from, so a file
+where EVERY row inlines the same constant (the live audit's `+1.84`) reads as uniform —
+that shape is caught only by the parameter-cell convention, not by comparison.
+
 `K2_amount_in_day_column` produces two findings, not one: the amount in the day
 column, and the days that no longer reconcile. That is how it goes in reality too
 — the number takes the day's place and the day disappears.

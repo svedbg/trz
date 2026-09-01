@@ -137,7 +137,7 @@ through the normal permission prompt — deliberately, for something that reads 
 
 ```sh
 pip install -r test/requirements.txt
-python test/run_tests.py              # all four suites
+python test/run_tests.py              # all five suites
 python test/run_tests.py --seeds 300  # longer randomised run
 python test/skill_test.py             # packaging: frontmatter, references, manifests
 ```
@@ -172,12 +172,21 @@ the file (I7), and paid leave computed on a base the preceding month's bonus was
 чл. 17, ал. 1 НСОРЗ enumerates in seven points what the leave is measured against, and a
 bonus agreed for the one month is in none of them (E3).
 
+**Suite 4 — the formula layer.** The only fixture whose computed columns carry real
+formulas, and it exists because the first real audit this skill performed found every one
+of its defects there: a cap typed by hand in a column of formulas, a days column added
+into a money sum, a control column algebraically always zero, a parameter inlined as a
+literal. Value exports — which is what every other fixture is — cannot hold any of these.
+The checker judges the formulas alone, structure rather than arithmetic, since nothing in
+openpyxl evaluates them.
+
 A run passes only when **every** injected defect is found and **no** finding is raised
 beyond them. False positives fail the suite exactly like misses: a skill that sees
 violations everywhere is as useless as one that sees none.
 
-Current state, both generated suites at 3000 seeds: 25 658 injected defects in suite 2 and
-6 866 in suite 3, every one of them found, zero false positives.
+Current state, the three generated suites at 3000 seeds: 25 658 injected defects in
+suite 2, 6 866 in suite 3 and 8 994 in suite 4, every one of them found, zero false
+positives.
 Randomisation earned its keep — it exposed three bugs in the checks themselves, including
 one where five separately rounded contributions drift up to 0.03 from 13.78% of the base and
 a two-cent tolerance produces a phantom violation every few hundred rows. A static fixture

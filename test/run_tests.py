@@ -24,6 +24,13 @@ Four suites:
    construction of the file and the composition of the bases. The scenarios are
    described in `scenarios.md`.
 
+4. `formula_test.py` over `generate_formula.py`'s workbooks - the only fixture
+   whose computed columns carry REAL formulas. Checks the formula layer the way
+   group K states it: the gross's coverage, day cells in money sums, typed values
+   inside formula columns, tautological controls, inlined parameters. Value
+   exports cannot hold any of these, and the first real audit found ALL of its
+   defects in exactly this layer.
+
 3. `pair_test.py` over a two-sheet payroll - July and August 2026, one roster,
    the months the thresholds change between. It covers the three checks that
    cannot be expressed in a single sheet: a copied sheet keeping the previous
@@ -58,6 +65,8 @@ import generate_pair as P                                 # noqa: E402
 from structural_test import check                         # noqa: E402
 from pair_test import check as check_pair                 # noqa: E402
 from pair_test import selftest_leave_base                 # noqa: E402
+import generate_formula as GF                              # noqa: E402
+from formula_test import check as check_formula            # noqa: E402
 
 
 def suite_rates():
@@ -251,6 +260,42 @@ def suite_pair(start, count, quiet=True):
     return not failures and not untested
 
 
+def suite_formula(start, count, quiet=True):
+    print()
+    print("=" * 78)
+    print(f"SUITE 4 - the formula layer, seeds {start}..{start + count - 1}")
+    print("=" * 78)
+    coverage = collections.Counter()
+    failures = []
+    injected = found = 0
+    for seed in range(start, start + count):
+        xlsx, mpath, man = GF.generate(seed)
+        for _, _, ident in man["expected"]:
+            coverage[ident] += 1
+        result = check_formula(xlsx, mpath, quiet=quiet)
+        injected += result["injected"]
+        found += result["found"]
+        if result["missed"] or result["extra"]:
+            failures.append((seed, result))
+    print(f"  seeds: {count} · injected defects: {injected} · found: {found}")
+    print("\n  coverage per scenario:")
+    for ident in M.FORMULA_SCENARIOS:
+        n = coverage.get(ident, 0)
+        print(f"  {'  ' if n else '!!'} {ident:34} {n:4d}  "
+              f"{M.FORMULA_SCENARIOS[ident][1]}")
+    untested = [i for i in M.FORMULA_SCENARIOS if not coverage.get(i)]
+    if untested:
+        print(f"\n  WARNING: never injected at these seeds: {', '.join(untested)}")
+    if failures:
+        print(f"\n  FAILING SEEDS ({len(failures)}):")
+        for seed, result in failures:
+            print(f"    seed {seed}: missed {result['missed']} "
+                  f"| extra {result['extra']}")
+    else:
+        print(f"\n  -> OK: zero missed, zero false positives across {count} seeds")
+    return not failures and not untested
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=50)
@@ -264,10 +309,12 @@ if __name__ == "__main__":
     ok1 = suite_static()
     ok2 = suite_structural(a.start, a.seeds, quiet=not a.verbose)
     ok3 = suite_pair(a.start, a.seeds, quiet=not a.verbose)
+    ok4 = suite_formula(a.start, a.seeds, quiet=not a.verbose)
     print()
     print("=" * 78)
     print(f"RESULT: suite 0 {'OK' if ok0 else 'FAILED'} · "
           f"suite 1 {'OK' if ok1 else 'FAILED'} · "
           f"suite 2 {'OK' if ok2 else 'FAILED'} · "
-          f"suite 3 {'OK' if ok3 else 'FAILED'}")
-    sys.exit(0 if (ok0 and ok1 and ok2 and ok3) else 1)
+          f"suite 3 {'OK' if ok3 else 'FAILED'} · "
+          f"suite 4 {'OK' if ok4 else 'FAILED'}")
+    sys.exit(0 if (ok0 and ok1 and ok2 and ok3 and ok4) else 1)
