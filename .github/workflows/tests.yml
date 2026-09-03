@@ -11,10 +11,15 @@ on:
     # the freshness job below FAILS the scheduled run when it has gone stale -
     # a reminder that cannot fail is not a reminder.
     - cron: "0 6 1 * *"
-    # Once a week, on Monday: the two generated suites at the 3000 seeds the
-    # README claims, so the claim stays continuously true instead of manually
-    # re-proven after every model change.
+    # Once a week, on Monday: all five suites (0-4) at the 3000 seeds the README
+    # claims for the generated ones, so the claim stays continuously true instead
+    # of manually re-proven after every model change.
     - cron: "0 6 * * 1"
+
+# Every action is pinned to the commit SHA its tag resolved to on the day, with
+# the tag kept in a trailing comment: a tag can be moved to different code, a SHA
+# cannot. Dependabot (.github/dependabot.yml) reads the comment and raises the
+# SHA when the tag advances.
 
 # Least privilege: nothing here writes to the repository.
 permissions:
@@ -33,9 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
           cache: pip
@@ -69,23 +74,68 @@ jobs:
         # a list of real names committed here would itself be the leak the step
         # exists to prevent.
         run: |
-          # A ten-digit number (national ID) or a nine-digit one (company ID).
+          # A ten-digit number (national ID) or a nine-digit one (company ID), in
+          # every kind of text file the repository tracks - documentation, Python,
+          # manifests, workflows, the social-preview card, and any CSV or plain text
+          # a fixture might arrive as.
           #
           # The exclusions are applied to the matched NUMBER, not to the line it sits
           # on. Filtering whole lines would drop `Иван Петров, ЕГН 8001011234,
           # осигурителен доход 2111.64 EUR` because of the money figure at the end -
           # and an ID next to a money figure is precisely the shape a leak takes here.
-          hits=$(git grep -hoE '\b[0-9]{10}\b|\b[1-9][0-9]{8}\b' -- '*.md' '*.py' \
-                 | grep -vxE '000000000' | sort -u || true)
+          # Two numbers are allowed through: 000000000, the company ID every generated
+          # fixture carries (SECURITY.md documents it), and 8001011234, which is the
+          # illustration in the comment above - this file is scanned too.
+          # An array of quoted pathspecs: an unquoted `*.md` would be expanded by the
+          # shell against the repository root and quietly drop `test/*.md`.
+          paths=('*.md' '*.py' '*.json' '*.yml' '*.yaml' '*.html' '*.csv' '*.txt')
+          hits=$(git grep -hoE '\b[0-9]{10}\b|\b[1-9][0-9]{8}\b' -- "${paths[@]}" \
+                 | grep -vxE '000000000|8001011234' | sort -u || true)
           if [ -n "$hits" ]; then
             echo "Found numbers shaped like a national or company ID:"
             echo "$hits"
             echo
             echo "Locations:"
-            for n in $hits; do git grep -nF "$n" -- '*.md' '*.py'; done
+            for n in $hits; do git grep -nF "$n" -- "${paths[@]}"; done
             exit 1
           fi
           echo "clean"
+
+      - name: Guard against leaked personal data inside spreadsheets
+        # The step above cannot see into an .xlsx: it is a zip, and git grep reads
+        # the compressed bytes. Yet the fixtures are spreadsheets, so a national ID
+        # typed into a cell is the likeliest form a leak takes here. Every tracked
+        # workbook is unpacked and the XML that holds cell values - the worksheets,
+        # and xl/sharedStrings.xml when the writer used shared rather than inline
+        # strings - is scanned for the same two shapes.
+        run: |
+          # Same shapes as above. The lookbehind refuses a digit or a dot before the
+          # run, so the tail of a float like 85.56999999999999 is not read as an ID;
+          # a number cell holding one is written as <v>8001011234</v> and still hits.
+          pattern='(?<![0-9.])[0-9]{10}(?![0-9])|(?<![0-9.])[1-9][0-9]{8}(?![0-9])'
+          status=0
+          tmp=$(mktemp -d)
+          for f in $(git ls-files -- '*.xlsx'); do
+            dir="$tmp/$(echo "$f" | tr '/' '_')"
+            mkdir -p "$dir"
+            unzip -q -o "$f" -d "$dir"
+            files=$(find "$dir/xl/worksheets" "$dir/xl/sharedStrings.xml" \
+                         -name '*.xml' 2>/dev/null || true)
+            if [ -z "$files" ]; then
+              echo "$f: no worksheet XML inside - not a workbook this guard can read"
+              status=1
+              continue
+            fi
+            hits=$(grep -ohP "$pattern" $files | grep -vxE '000000000' | sort -u || true)
+            if [ -n "$hits" ]; then
+              echo "$f: numbers shaped like a national or company ID inside the workbook:"
+              echo "$hits"
+              status=1
+            else
+              echo "$f: clean"
+            fi
+          done
+          exit $status
 
   # Runs per Python version. The payroll suites are pure stdlib plus openpyxl, so
   # they should hold across the versions people actually have installed; if one
@@ -98,9 +148,9 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -112,7 +162,7 @@ jobs:
       - name: Suite 1 - rates and working-time regimes
         run: python test/checks_test.py
 
-      - name: Suite 2 - file construction and base composition, 300 seeds
+      - name: All five suites (0-4) - rates, static payroll, generated payrolls, two-month pairs, formulas; 300 seeds
         run: python test/run_tests.py --seeds 300
 
       # test/eval_skill.py is deliberately not run here. It calls Claude, so it
@@ -128,7 +178,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Rates verified within the last 92 days
         run: |
           date=$(grep -oP 'Последна сверка на ставките: \*\*\K[0-9.]+(?=\*\*)' \
@@ -148,13 +198,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: test/requirements.txt
       - name: Install dependencies
         run: pip install -r test/requirements.txt
-      - name: Both generated suites at the depth the README claims
+      - name: All five suites (0-4) at the 3000 seeds the README claims
         run: python test/run_tests.py --seeds 3000

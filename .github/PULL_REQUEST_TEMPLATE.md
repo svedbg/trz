@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] `python test/run_tests.py` passes (all three suites)
+- [ ] `python test/run_tests.py` passes (all five suites, 0–4)
 - [ ] No real payroll data anywhere — fixtures are generated, not collected
 - [ ] If a **rate** changed: the source is cited in `stavki.md` with a status, the
       changelog table has a new line, and `test/rates_test.py` passes

@@ -114,7 +114,7 @@ column, and the days that no longer reconcile. That is how it goes in reality to
 ```sh
 pip install -r test/requirements.txt
 
-python test/run_tests.py                   # all four suites, 50 seeds
+python test/run_tests.py                   # all five suites (0–4), 50 seeds
 python test/run_tests.py --seeds 300       # longer
 python test/structural_test.py --seed 42   # one seed, with the findings
 python test/generate_wide.py --seed 42     # generate only, with the answers

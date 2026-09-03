@@ -213,7 +213,7 @@ national identity number (ЕГН).
 ### Running them when the skill changes
 
 One more suite reads the skill itself, and it is the only one that does. `run_tests.py` puts
-it first and numbers it zero, because a drift here makes the other three meaningless:
+it first and numbers it zero, because a drift here makes the other four meaningless:
 
 ```sh
 python test/rates_test.py    # no dependencies — reads markdown
@@ -226,8 +226,8 @@ otherwise leave the tests passing happily with last year's numbers. A restructur
 fails the check too — if the value can no longer be located, the correspondence is no longer
 verifiable.
 
-The other three suites test Python, not markdown. Editing `SKILL.md` cannot change their
-result, so running them on every prose edit is theatre. The split is wired into the
+The other four suites (1–4) test Python, not markdown. Editing `SKILL.md` cannot change
+their result, so running them on every prose edit is theatre. The split is wired into the
 pre-commit hook:
 
 ```sh
@@ -235,14 +235,14 @@ git config core.hooksPath .githooks   # once
 python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt
 ```
 
-Every commit runs the rate check. Commits that touch `test/*.py` also run the other three at
-25 seeds. Nothing is skipped silently: if the environment cannot run a check, the hook says
-so and stops rather than passing quietly. `--no-verify` overrides it.
+Every commit runs the rate check. Commits that touch `test/*.py` also run all five suites
+(0–4) at 25 seeds. Nothing is skipped silently: if the environment cannot run a check, the
+hook says so and stops rather than passing quietly. `--no-verify` overrides it.
 
-CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs everything at 300
-seeds on push and pull request, plus a scheduled monthly run — not because the code changes
-by itself but because the rates do, and the reference file carries a verification date that
-goes stale.
+CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs all five suites (0–4)
+at 300 seeds on push and pull request, plus a scheduled monthly run — not because the code
+changes by itself but because the rates do, and the reference file carries a verification
+date that goes stale.
 
 ### What none of this tests
 
@@ -333,14 +333,14 @@ Two licences, because the repository holds two kinds of thing:
 
 | What | Licence |
 | --- | --- |
-| the skill — `skills/trz-expert/SKILL.md` and `references/*.md` | [CC BY 4.0](LICENSE-DOCS) |
-| everything else — all Python under `test/`, the git hook, the CI workflow | [MIT](LICENSE) |
+| the skill directory `skills/trz-expert/` — `SKILL.md`, `references/*.md`, the two plugin manifests and `LICENSE-DOCS` itself | [CC BY 4.0](LICENSE-DOCS) |
+| the source repository around it — all Python under `test/`, the git hook, the CI workflow | [MIT](LICENSE) |
 
 **What an install carries is CC BY 4.0 alone.** The plugin's source is
 `./skills/trz-expert`, not the repository root, so a `/plugin install` copies the skill,
-its three reference files and a copy of `LICENSE-DOCS` — and no MIT-licensed file at all.
-That is why `plugin.json` declares `CC-BY-4.0` rather than the repository's pair: a bundle
-may only declare what it actually contains.
+its three reference files, the two manifests and a copy of `LICENSE-DOCS` — and no
+MIT-licensed file at all. That is why both `plugin.json` files declare `CC-BY-4.0` rather
+than the repository's pair: a bundle may only declare what it actually contains.
 
 Use it, change it, ship it commercially. Keep the attribution, and if you change the
 reference material say that you did — someone downstream needs to know whose verification

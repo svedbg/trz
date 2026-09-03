@@ -1,7 +1,9 @@
 version: 2
 updates:
-  # The workflow pins actions by tag. Dependabot moves the tags when a new major
-  # lands, so a stale action does not sit here for a year.
+  # The workflow pins every action to a commit SHA, with the tag it resolves from in
+  # a trailing `# vN` comment. A tag can be moved; a SHA cannot. Dependabot reads the
+  # comment, and when the tag advances it raises the SHA and the comment together,
+  # so a stale action does not sit here for a year either.
   - package-ecosystem: github-actions
     directory: /
     schedule:
