@@ -19,6 +19,7 @@ import openpyxl
 
 import trz_model as M
 from trz_model import r2
+from findings import grounded
 
 # --- rates -------------------------------------------------------------------
 # Read from trz_model.py, which rates_test.py cross-checks against stavki.md line by
@@ -68,6 +69,14 @@ findings = []
 
 
 def report(severity, row, person, check, basis, stated, due, action):
+    # A finding needs a basis, and the basis has to be one the reference files carry:
+    # a citation quoted from them for groups A-J, „arithmetic" for I and K. The field
+    # used to be free text that was printed and never read, so an invented article -
+    # or nothing at all - passed. findings.grounded is the same gate the generated
+    # suites go through.
+    problem = grounded(check.split()[0], basis)
+    if problem:
+        raise SystemExit(f"finding without a usable basis - {problem}")
     findings.append(dict(
         severity=severity, row=row, person=person, check=check, basis=basis,
         stated=stated, due=due,
@@ -119,7 +128,7 @@ for r in rows:
     due_min = r2(MIN_WAGE * part_time * days_worked / WORK_DAYS)
     if base_pay + 1e-9 < due_min - TOL:
         report("нарушение", r, name, "B1 base pay below the minimum wage",
-               "чл.244 т.1 КТ; ПМС №243 от 13.11.2025, ДВ бр.98/2025",
+               "чл. 244, т. 1 КТ; ПМС № 243 от 13.11.2025",
                base_pay, due_min,
                "Top up to the minimum wage and sign an annex to the contract.")
 
@@ -128,7 +137,7 @@ for r in rows:
     # --- B4 maximum insurable income ---
     if insurable > MAX_INSURABLE + TOL:
         report("нарушение", r, name, "B4 insurable income above the maximum",
-               "чл.9 ЗБДОО за 2026 г., ДВ бр.68 от 28.07.2026",
+               "чл. 9 ЗБДОО за 2026 г",
                insurable, MAX_INSURABLE,
                "Cap the insurable income at 2111.64 EUR and correct the "
                "contributions (Декларация обр. 1 и 6).")
@@ -139,7 +148,7 @@ for r in rows:
         if seniority_pct + 1e-9 < due_pct:
             report("нарушение", r, name,
                    f"C1 supplement: {seniority_pct}% applied for {years} years of service",
-                   "ПМС №147 от 29.06.2007, ДВ бр.56/2007; чл.12 ал.1 НСОРЗ",
+                   "ПМС № 147 от 29.06.2007; чл. 12, ал. 1 НСОРЗ",
                    r2(base_pay * seniority_pct / 100),
                    r2(base_pay * due_pct / 100),
                    f"Accrue at least {due_pct}% on the base salary.")
@@ -148,7 +157,7 @@ for r in rows:
             if abs(seniority_sum - expected) > TOL:
                 report("нарушение", r, name,
                        "C2 supplement: the amount does not match the stated percentage",
-                       "чл.12 ал.1 НСОРЗ", seniority_sum, expected,
+                       "чл. 12, ал. 1 НСОРЗ", seniority_sum, expected,
                        "Recompute the supplement on the base salary.")
 
     # --- D4 overtime ---
@@ -162,17 +171,18 @@ for r in rows:
         if overtime_premium + TOL < floor:
             report("нарушение", r, name,
                    f"D4 {overtime_hours} overtime hours on working days without the premium",
-                   "чл.262 ал.1 т.1 КТ (+50%); чл.7 НСОРЗ (базата)", overtime_premium, due,
-                   "Accrue the premium on the basic salary plus the permanent supplements.")
+                   "чл. 262 КТ; чл. 7 НСОРЗ", overtime_premium, due,
+                   "Accrue the +50% premium on the basic salary plus the permanent "
+                   "supplements.")
         elif overtime_premium + TOL < due:
             report("за проверка", r, name,
                    f"D4 {overtime_hours} overtime hours: the premium is computed on the "
                    f"basic salary alone",
-                   "чл.7 НСОРЗ - the base is the basic salary plus the supplements of "
-                   "permanent character unless the contract provides another base; the "
-                   "contract is not supplied", overtime_premium, due,
-                   "Supply the contract clause on the base; failing another base, "
-                   "recompute on the basic salary plus the supplement.")
+                   "чл. 7 НСОРЗ", overtime_premium, due,
+                   "The base is the basic salary plus the supplements of permanent "
+                   "character unless the contract provides another base, and the "
+                   "contract is not supplied. Supply its clause on the base; failing "
+                   "another base, recompute on the basic salary plus the supplement.")
 
     # --- D6 night work ---
     if night_hours:
@@ -180,8 +190,8 @@ for r in rows:
         if night_premium + TOL < due:
             report("нарушение", r, name,
                    f"D6 {night_hours} night hours without the supplement",
-                   "чл.8 НСОРЗ (0.15% of the minimum wage per hour)",
-                   night_premium, due, "Accrue the night supplement.")
+                   "чл. 8 НСОРЗ", night_premium, due,
+                   "Accrue the night supplement (0.15% of the minimum wage per hour).")
 
     # --- D7 work on a public holiday ---
     # Same two tiers. The base of the чл. 264 double pay has no norm like чл. 7 НСОРЗ
@@ -193,14 +203,14 @@ for r in rows:
         if holiday_premium + TOL < floor:
             report("нарушение", r, name,
                    f"D7 {holiday_hours} hours on a public holiday below the double rate",
-                   "чл.264 КТ", holiday_premium, due, "Top up to the double rate.")
+                   "чл. 264 КТ", holiday_premium, due, "Top up to the double rate.")
         elif holiday_premium + TOL < due:
             report("за проверка", r, name,
                    f"D7 {holiday_hours} hours on a public holiday doubled on the basic "
                    f"salary alone",
-                   "чл.264 КТ; the composition of the base is `за потвърждение` in "
-                   "references/stavki.md (чл.66 ал.1 т.7 КТ)", holiday_premium, due,
-                   "Confirm the base of the double pay; on the basic salary plus the "
+                   "чл. 264 КТ; чл. 66, ал. 1, т. 7 КТ", holiday_premium, due,
+                   "The composition of the base is `за потвърждение` in "
+                   "references/stavki.md. Confirm it; on the basic salary plus the "
                    "supplement the difference is as stated.")
 
     # --- F9 sick days ---
@@ -208,7 +218,7 @@ for r in rows:
         per_day = r2(sick_pay / sick_days) if sick_days else 0
         report("нарушение", r, name,
                f"F9 the employer pays {sick_days} sick days instead of {SICK_DAYS_EMPLOYER}",
-               "чл.40 ал.5 КСО, изм. ДВ бр.106/2023, в сила от 01.01.2024",
+               "чл. 40, ал. 5 КСО",
                sick_pay, r2(per_day * SICK_DAYS_EMPLOYER),
                "The first 2 working days are at the employer's expense; the rest "
                "are paid by the state fund.")
@@ -227,7 +237,7 @@ for r in rows:
                and abs(insurable - r2(gross - sick_pay)) <= TOL else "")
         report("нарушение", r, name,
                f"F1 the insurable income is not the whole gross{why}",
-               "чл.3 ал.1 НЕВДПОВ; чл.6 ал.2 КСО", insurable, expected_insurable,
+               "чл. 3, ал. 1 НЕВДПОВ; чл. 6, ал. 2 КСО", insurable, expected_insurable,
                "Include every accrual in the insurable income, then recompute the "
                "contributions and Декларация обр. 1 (т. 21).")
 
@@ -236,7 +246,9 @@ for r in rows:
     if abs(employee_contributions - expected) > 0.05:
         report("нарушение", r, name,
                "F2 employee contributions are not 13.78% of the insurable income "
-               "(capped)", "чл.6 ал.1 и ал.3 КСО", employee_contributions, expected,
+               "(capped)",
+               "чл. 6, ал. 3, т. 7 КСО; чл. 157, ал. 3, т. 1 и 2 КСО; "
+               "чл. 40, ал. 1, т. 1 ЗЗО", employee_contributions, expected,
                "Recompute the contributions.")
 
     # --- F6 taxable base and tax ---
@@ -253,19 +265,19 @@ for r in rows:
         report("нарушение", r, name,
                f"F6 taxable base is not the taxable income minus the employee "
                f"contributions{why}",
-               "чл.42 ал.2 във вр. с чл.24 ал.2 т.14 ЗДДФЛ",
+               "чл. 42, ал. 2 ЗДДФЛ; чл. 24, ал. 2, т. 14 ЗДДФЛ",
                taxable, expected_base, "Correct the taxable base.")
     expected_tax = r2(taxable * TAX_RATE)
     if abs(tax - expected_tax) > TOL:
         report("нарушение", r, name, "F6 tax is not 10% of the taxable base",
-               "чл.42 ал.4 ЗДДФЛ", tax, expected_tax, "Correct the tax.")
+               "чл. 42, ал. 4 ЗДДФЛ", tax, expected_tax, "Correct the tax.")
 
     # --- I2 the accruals add up to the gross ---
     accrual_sum = r2(base_pay + seniority_sum + overtime_premium + holiday_premium
                      + night_premium + sick_pay)
     if abs(gross - accrual_sum) > TOL:
         report("нарушение", r, name, "I2 the accruals do not add up to the gross",
-               "arithmetic consistency", gross, accrual_sum,
+               "arithmetic", gross, accrual_sum,
                "Check the accruals by type.")
 
     # --- I1 vertical reconciliation ---
@@ -273,7 +285,7 @@ for r in rows:
     if abs(net - expected_net) > TOL:
         report("нарушение", r, name,
                "I1 net is not gross minus contributions minus tax minus deductions",
-               "arithmetic consistency", net, expected_net,
+               "arithmetic", net, expected_net,
                "Correct the amount paid.")
 
     # --- G2 protected minimum income ---
@@ -281,10 +293,9 @@ for r in rows:
         report("за проверка", r, name,
                f"G2 deduction of {deductions:.2f} EUR against a net before deductions "
                f"of {r2(gross - employee_contributions - tax):.2f} EUR",
-               "чл.446 ГПК - the thresholds are NOT in references/stavki.md",
-               deductions, None,
-               "Enter the чл.446 ГПК thresholds and the number of dependants, then "
-               "recompute.")
+               "чл. 446 ГПК", deductions, None,
+               "The чл. 446 ГПК thresholds are NOT in references/stavki.md. Enter them "
+               "and the number of dependants, then recompute.")
 
 # --- report ---
 ORDER = {"нарушение": 0, "риск": 1, "за проверка": 2, "бележка": 3}
