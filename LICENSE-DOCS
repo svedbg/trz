@@ -6,15 +6,21 @@ Copyright (c) 2026 Svetoslav Rankov
 
 WHAT THIS COVERS
 
-This licence applies to the skill itself — the prose, the checklists and the
-reference material:
+This licence applies to the skill directory as it is installed — the prose, the
+checklists, the reference material, the two plugin manifests that describe the
+bundle, and this file:
 
-    skills/trz-expert/SKILL.md
-    skills/trz-expert/references/*.md
+    SKILL.md
+    references/*.md
+    .claude-plugin/plugin.json
+    plugin.json
+    LICENSE-DOCS
 
-Everything else in this repository, including all Python under test/, the git
-hook and the CI workflow, is covered by the MIT licence in the LICENSE file at
-the root.
+That directory is the whole of what an install carries, and it is licensed CC BY
+4.0 alone. In the source repository, https://github.com/svedbg/trz, it is
+skills/trz-expert; the rest of that repository — the test suite under test/, the
+git hook, the CI workflow and the other tooling — is not part of the installed
+bundle and is covered by the MIT licence in the repository's LICENSE file.
 
 THE GRANT
 

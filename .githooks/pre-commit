@@ -4,9 +4,9 @@
 #
 # The split is deliberate. Suite 0 reads the skill itself and always runs: it is
 # the only one that catches a drift between the rate reference file and the test
-# model, which is exactly the risk when the skill is updated. The other two
-# suites check Python code and run only when Python was touched; a change in
-# markdown cannot break them and running them then is noise.
+# model, which is exactly the risk when the skill is updated. The other four
+# suites (1-4) check Python code and run only when Python was touched; a change
+# in markdown cannot break them and running them then is noise.
 #
 # Never skip silently: if the environment cannot run a check, the hook says so.
 set -e
@@ -36,20 +36,27 @@ fi
 rm -f /tmp/trz-rates.$$
 echo "pre-commit: rates match"
 
-# --- packaging: only when the skill, a manifest, a licence or a README changed ---
-# The READMEs are in the list because four of the seven places the verification date
-# is advertised are in them - a badge and a sentence in each. skill_test.py checks all
-# seven; without README here it never ran for the commit that broke one.
-if git diff --cached --name-only | grep -qE '^(skills/|\.claude-plugin/|LICENSE|README)'; then
+# --- packaging: only when something skill_test.py asserts against changed ---
+# The list is everything that test reads: the skill directory (SKILL.md, the
+# references, both plugin manifests, the bundled licence), the marketplace and its
+# .github/plugin mirror, the root licences, the READMEs, the social-preview card, and
+# the three test files it consults - eval_skill.py for the fixture pin, trz_model.py for
+# the scenario count, and itself. The READMEs are here because four of the eight copies
+# of the verification date are in them - a badge and a sentence in each; skill_test.py
+# checks the source plus all eight, and without README in the list it never ran for the
+# commit that broke one. The same goes for the card and the mirror, which were missing
+# from an earlier version of this pattern.
+PACKAGING='^(skills/|\.claude-plugin/|\.github/plugin/|\.github/social-preview\.html$|LICENSE|README|test/(eval_skill|skill_test|trz_model)\.py$)'
+if git diff --cached --name-only | grep -qE "$PACKAGING"; then
     if ! "$PY" -c 'import yaml' 2>/dev/null; then
         echo
-        echo "pre-commit: the skill, a manifest or a README changed but PyYAML is missing -"
-        echo "            the packaging check did NOT run. Create the environment once:"
+        echo "pre-commit: the skill, a manifest, a README or the social card changed but PyYAML"
+        echo "            is missing - the packaging check did NOT run. Create the environment once:"
         echo "              python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt"
         echo "Commit stopped. Skip: --no-verify"
         exit 1
     fi
-    echo "pre-commit: skill, manifest, licence or README changed - validating packaging"
+    echo "pre-commit: skill, manifest, licence, README or social card changed - validating packaging"
     if ! "$PY" test/skill_test.py > /tmp/trz-skill.$$ 2>&1; then
         cat /tmp/trz-skill.$$
         rm -f /tmp/trz-skill.$$
@@ -62,17 +69,20 @@ if git diff --cached --name-only | grep -qE '^(skills/|\.claude-plugin/|LICENSE|
     echo "pre-commit: packaging valid"
 fi
 
-# --- the generated suites: only when Python changed ------------------------
+# --- all five suites (0-4): only when Python changed ------------------------
+# run_tests.py repeats suite 0 and adds the static payroll and the three generated
+# suites. There is no personal-data step here: that guard runs in CI, over the text
+# files and inside every tracked spreadsheet.
 if git diff --cached --name-only | grep -q '^test/.*\.py$'; then
     if ! "$PY" -c 'import openpyxl' 2>/dev/null; then
         echo
         echo "pre-commit: Python under test/ was touched but openpyxl is missing -"
-        echo "            the generated suites did NOT run. Create the environment once:"
+        echo "            the five suites did NOT run. Create the environment once:"
         echo "              python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt"
         echo "Commit stopped so that unchecked code does not land. Skip: --no-verify"
         exit 1
     fi
-    echo "pre-commit: Python under test/ was touched - running the suites, 25 seeds"
+    echo "pre-commit: Python under test/ was touched - running all five suites (0-4), 25 seeds"
     if ! "$PY" test/run_tests.py --seeds 25 > /tmp/trz-suites.$$ 2>&1; then
         tail -40 /tmp/trz-suites.$$
         rm -f /tmp/trz-suites.$$
@@ -81,5 +91,5 @@ if git diff --cached --name-only | grep -q '^test/.*\.py$'; then
         exit 1
     fi
     rm -f /tmp/trz-suites.$$
-    echo "pre-commit: the generated suites pass"
+    echo "pre-commit: all five suites pass"
 fi

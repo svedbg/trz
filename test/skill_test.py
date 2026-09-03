@@ -25,6 +25,10 @@ import sys
 import yaml
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+# The social-preview card quotes the scenario count, which only the test model knows.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import trz_model  # noqa: E402  (stdlib only; rates_test.py relies on the same)
+
 SKILL_DIR = os.path.join(ROOT, "skills", "trz-expert")
 SKILL_MD = os.path.join(SKILL_DIR, "SKILL.md")
 # The plugin root is the skill directory itself, so that installing the plugin
@@ -57,6 +61,13 @@ def note(msg):
 
 def read(path):
     with open(path, encoding="utf8") as f:
+        return f.read()
+
+
+def read_bytes(path):
+    # For the "byte-identical" copies. Text mode would translate line endings and
+    # let a CRLF/LF drift between two copies pass as equal.
+    with open(path, "rb") as f:
         return f.read()
 
 
@@ -203,9 +214,9 @@ if plugin:
 
     # The default is not only declared, it is *described* - in SKILL.md, in both
     # READMEs and, as its mirror image, in the eval fixture. Flip it in the manifest
-    # alone and every test stays green while five other places describe the opposite
+    # alone and every test stays green while every other place describes the opposite
     # reading. That is the drift class this file already guards for the verification
-    # date, which is why that one is checked in all seven of its places.
+    # date, which is why that one is checked in its source plus all eight copies.
     for key, spec in user_config.items():
         if not isinstance(spec, dict) or "default" not in spec:
             continue
@@ -253,6 +264,17 @@ if plugin and marketplace:
             fail(f"version drift: plugin.json says {plugin.get('version')}, "
                  f"marketplace.json says {entry.get('version')} - users are pinned by "
                  f"whichever is read first, so they must match")
+        # The entry repeats the manifest's author, licence and homepage, and a
+        # browser of the marketplace reads the entry, never the manifest. Its
+        # `description` and `keywords` are deliberately not compared: the listing
+        # carries a shorter description written for browsing and a subset of the
+        # keywords, so a difference there is design, not drift.
+        for field in ("author", "license", "homepage"):
+            if entry.get(field) != plugin.get(field):
+                fail(f"marketplace drift: the trz-expert entry's {field} is "
+                     f"{entry.get(field)!r}, .claude-plugin/plugin.json says "
+                     f"{plugin.get(field)!r} - the listing describes the bundle it "
+                     f"installs")
         source = entry.get("source")
         if isinstance(source, str):
             target = os.path.normpath(os.path.join(ROOT, source))
@@ -282,9 +304,10 @@ if plugin and marketplace:
 if not os.path.exists(MARKETPLACE_MIRROR):
     fail(".github/plugin/marketplace.json is missing - VS Code finds the marketplace "
          "nowhere else; copy .claude-plugin/marketplace.json there")
-elif os.path.exists(MARKETPLACE) and read(MARKETPLACE_MIRROR) != read(MARKETPLACE):
+elif os.path.exists(MARKETPLACE) and read_bytes(MARKETPLACE_MIRROR) != read_bytes(MARKETPLACE):
     fail(".github/plugin/marketplace.json has drifted from .claude-plugin/marketplace.json "
-         "- they are one marketplace at two paths, and Copilot reads the .github copy")
+         "- they are one marketplace at two paths, and Copilot reads the .github copy "
+         "(compared byte for byte: a line-ending change counts)")
 
 # ------------------------------------------- the Agent Plugins 1.0 manifest
 # Copilot CLI installs the plugin from `.claude-plugin/plugin.json` on its own, but the
@@ -388,13 +411,31 @@ if agent:
                      f"Copilot users are pinned by the first, Claude Code users by "
                      f"the second")
 
+# ----------------------------------------------- metadata shared with SKILL.md
+# The Claude manifest and the SKILL.md frontmatter both carry a `metadata` block
+# describing the same skill. `jurisdiction` and `language` are the same fact stated
+# twice, under the same key, and the key is `language` in both - the manifest's
+# documented name. The frontmatter once said `reference_language`, and nothing
+# compared them.
+if plugin:
+    skill_meta = frontmatter.get("metadata") or {}
+    plugin_meta = plugin.get("metadata") or {}
+    for key in ("jurisdiction", "language"):
+        if skill_meta.get(key) != plugin_meta.get(key):
+            fail(f"metadata drift: SKILL.md frontmatter metadata.{key} is "
+                 f"{skill_meta.get(key)!r}, .claude-plugin/plugin.json metadata.{key} "
+                 f"is {plugin_meta.get(key)!r} - one fact under one key in both")
+
 # ------------------------------------- the rates-verification date, everywhere
-# `references/stavki.md` is the source of truth for the date, and seven other places
-# advertise a copy of it: two manifest/frontmatter fields, the compatibility line, a
+# `references/stavki.md` is the source of truth for the date, and eight copies of it
+# are advertised elsewhere: two manifest/frontmatter fields, the compatibility line, a
 # badge and a sentence in each README, and the social-preview image every visitor to
 # the repository page sees. A copy that is not updated with the reference file
 # promises a freshness the rates do not have. The social preview was added after it
-# was found two updates behind - the previous "seven places" check could not see it.
+# was found two updates behind - the check before it did not know about that copy.
+# DATE_COPIES below is the count the messages quote; it is asserted against the list,
+# so adding a copy here without changing the wording is caught.
+DATE_COPIES = 8
 MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July",
              "August", "September", "October", "November", "December"]
 MONTHS_BG = ["януари", "февруари", "март", "април", "май", "юни", "юли",
@@ -412,21 +453,29 @@ else:
     day, month, year = verified.group(1), verified.group(2), verified.group(3)
     iso, dotted = f"{year}-{month}-{day}", f"{day}.{month}.{year}"
     stale = []
+    copies = 0
 
     for label, stated in (
             ("plugin.json metadata.rates_verified",
              (plugin or {}).get("metadata", {}).get("rates_verified")),
             ("SKILL.md frontmatter metadata.rates_verified",
              (frontmatter.get("metadata") or {}).get("rates_verified"))):
+        copies += 1
         if stated is None:
             note(f"{label} is not set - nothing to keep in step")
         elif str(stated) != iso:
             stale.append(f"{label} says {stated}, references/stavki.md says {iso}")
 
+    # The compatibility line is a frontmatter field, so it is read from the parsed
+    # frontmatter rather than grepped out of the whole file - a grep over SKILL.md
+    # would be satisfied by the date appearing anywhere in the body.
+    copies += 1
+    if dotted not in str(compatibility):
+        stale.append(f"SKILL.md frontmatter compatibility does not carry {dotted}")
+
     # The prose copies. Each is matched in the exact shape it is written in, so that a
     # half-edit - badge updated, sentence forgotten - is still caught.
     for label, path, pattern in (
-            ("SKILL.md compatibility", SKILL_MD, re.escape(dotted)),
             ("README.md badge", os.path.join(ROOT, "README.md"),
              rf"rates%20verified-{year}--{month}--{day}-"),
             ("README.md body", os.path.join(ROOT, "README.md"),
@@ -438,18 +487,101 @@ else:
             (".github/social-preview.html", os.path.join(ROOT, ".github",
                                                          "social-preview.html"),
              rf"ставки: {re.escape(dotted)}")):
+        copies += 1
         if not os.path.exists(path):
             fail(f"{path} is missing, so {label} cannot be checked")
         elif not re.search(pattern, read(path)):
             stale.append(f"{label} does not carry {dotted}")
 
+    if copies != DATE_COPIES:
+        fail(f"this file checks {copies} copies of the verification date but its "
+             f"messages, CLAUDE.md and the pre-commit hook say {DATE_COPIES} - update "
+             f"DATE_COPIES and the prose together")
     if stale:
         for s in stale:
             fail(f"rates-verification date out of step: {s}")
-        fail("the date is advertised in eight places and they must move together; "
-             "references/stavki.md is the one that leads")
+        fail(f"the date lives in references/stavki.md plus {DATE_COPIES} copies and they "
+             f"must move together; the reference file is the one that leads")
     else:
-        note(f"rates verification date {dotted} agrees in all eight places")
+        note(f"rates verification date {dotted} agrees in the source plus all "
+             f"{DATE_COPIES} copies")
+
+# ------------------------------------------------- the social-preview figures
+# The card GitHub shows when the repository link is shared quotes three numbers: how
+# many checks the skill runs, how many defect scenarios the generated suite injects,
+# and how many injected defects the scenario suite found at 3000 seeds. Each is a
+# claim about something that moves. The check count is read from
+# references/proverki.md, the scenario count from the test model, and the defect
+# total from the README - which is the only place the 3000-seed run is recorded, since
+# it is far too expensive to repeat here; the card copies the README's figure, it does
+# not recompute one. The two READMEs must also agree with each other on all three
+# per-suite figures.
+SOCIAL_PREVIEW = os.path.join(ROOT, ".github", "social-preview.html")
+CARD_FACT = re.compile(r'<div class="n">([^<]*)</div>\s*<div class="l">([^<]*)</div>')
+CHECK_BULLET = re.compile(r"^- \*\*[A-K]\d+\.", re.M)
+# "the three generated suites at 3000 seeds: 25 658 injected defects in suite 2,
+# 6 866 in suite 3 and 8 994 in suite 4" - hard-wrapped, so matched on collapsed
+# whitespace. The card carries the first figure: suite 2 is the one the 22 scenarios
+# next to it on the card feed.
+README_TOTALS = (
+    ("README.md", r"3000 seeds: ([\d ]+?) injected defects in suite 2, ([\d ]+?) in "
+                  r"suite 3 and ([\d ]+?) in suite 4"),
+    ("README.bg.md", r"3000 семена: ([\d ]+?) вкарани дефекта в комплект 2, ([\d ]+?) "
+                     r"в комплект 3 и ([\d ]+?) в комплект 4"),
+)
+
+
+def digits(s):
+    return int(re.sub(r"\D", "", s))
+
+
+def grouped(n):
+    # 41518 -> "41 518", the way the card and the READMEs write it.
+    return f"{n:,}".replace(",", " ")
+
+
+if not os.path.exists(SOCIAL_PREVIEW):
+    fail(".github/social-preview.html is missing - the card's figures cannot be checked")
+else:
+    facts = {}
+    for number, label in CARD_FACT.findall(read(SOCIAL_PREVIEW)):
+        facts[label.split()[0]] = number.strip()
+    for key in ("проверки", "сценария", "дефекта"):
+        if key not in facts:
+            fail(f".github/social-preview.html shows no „{key}“ figure - the card's "
+                 f"layout changed, so update CARD_FACT and the labels this test expects")
+
+    check_count = len(CHECK_BULLET.findall(read(os.path.join(SKILL_DIR, "references",
+                                                             "proverki.md"))))
+    if "проверки" in facts and digits(facts["проверки"]) != check_count:
+        fail(f".github/social-preview.html claims {facts['проверки']} checks; "
+             f"references/proverki.md lists {check_count} `- **X1.` bullets")
+
+    scenario_count = len(trz_model.SCENARIOS)
+    if "сценария" in facts and digits(facts["сценария"]) != scenario_count:
+        fail(f".github/social-preview.html claims {facts['сценария']} scenarios; "
+             f"trz_model.SCENARIOS has {scenario_count}")
+
+    totals = {}
+    for label, pattern in README_TOTALS:
+        m = re.search(pattern, " ".join(read(os.path.join(ROOT, label)).split()))
+        if not m:
+            fail(f"{label} no longer states the per-suite defect counts at 3000 seeds in "
+                 f"the shape this test reads - the card's defect total cannot be checked")
+        else:
+            totals[label] = tuple(digits(g) for g in m.groups())
+    if len(totals) == 2 and totals["README.md"] != totals["README.bg.md"]:
+        fail(f"the READMEs disagree on the 3000-seed defect counts: README.md says "
+             f"{totals['README.md']}, README.bg.md says {totals['README.bg.md']}")
+    if "дефекта" in facts and "README.md" in totals:
+        expected = totals["README.md"][0]
+        if digits(facts["дефекта"]) != expected:
+            fail(f".github/social-preview.html claims {facts['дефекта']} defects; the "
+                 f"README states {grouped(expected)} for suite 2 at 3000 seeds, and the "
+                 f"card copies the README")
+    if facts and len(totals) == 2:
+        note(f"social preview: {check_count} checks, {scenario_count} scenarios, "
+             f"{grouped(totals['README.md'][0])} defects - all agree with their sources")
 
 # ------------------------------------------------------------------ licences
 # The repository is dual-licensed - CC BY 4.0 for the skill prose, MIT for the Python
@@ -467,9 +599,10 @@ if not os.path.exists(BUNDLED_LICENCE):
     fail("skills/trz-expert/LICENSE-DOCS is missing - the skill directory is what gets "
          "installed, and CC BY 4.0 requires its terms to travel with the text")
 elif os.path.exists(os.path.join(ROOT, "LICENSE-DOCS")):
-    if read(BUNDLED_LICENCE) != read(os.path.join(ROOT, "LICENSE-DOCS")):
+    if read_bytes(BUNDLED_LICENCE) != read_bytes(os.path.join(ROOT, "LICENSE-DOCS")):
         fail("skills/trz-expert/LICENSE-DOCS has drifted from the root LICENSE-DOCS - "
-             "they are one licence, and installed users only ever read the copy")
+             "they are one licence, and installed users only ever read the copy "
+             "(compared byte for byte: a line-ending change counts)")
 
 if plugin:
     # Only what the bundle carries may be declared. `MIT AND CC-BY-4.0` was right when

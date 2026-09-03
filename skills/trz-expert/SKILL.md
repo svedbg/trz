@@ -10,7 +10,7 @@ compatibility: Prose and reference material only; no bundled scripts. Needs a Bu
 metadata:
   jurisdiction: BG
   rates_verified: '2026-09-01'
-  reference_language: bg
+  language: bg
 ---
 
 # Експерт по ТРЗ — България

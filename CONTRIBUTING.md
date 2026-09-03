@@ -30,8 +30,8 @@ To add or change a rate:
    what you verified.
 4. If a test needs the figure, update `test/trz_model.py` to match. The reference
    file is the source of truth; the model follows it, never the other way round.
-5. Run `python test/rates_test.py`. It cross-checks 26 figures between the two
-   and fails on any drift.
+5. Run `python test/rates_test.py`. It cross-checks every figure the model carries
+   against the reference file and fails on any drift.
 
 If you are downgrading a rate's status — because a source turned out weaker than
 it looked — say so in the changelog. That is as valuable as adding one.
@@ -94,8 +94,8 @@ What runs when:
 | Trigger | Runs |
 | --- | --- |
 | every commit (hook) | the rates cross-check |
-| commit touching `test/*.py` | plus the payroll and formula suites, 25 seeds |
-| push and pull request (CI) | packaging, leak guard, both suites at 300 seeds on Python 3.10–3.13 |
+| commit touching `test/*.py` | plus all five suites (0–4), 25 seeds |
+| push and pull request (CI) | packaging, leak guard, the five suites (0–4) at 300 seeds on Python 3.10–3.13 |
 | by hand | `eval_skill.py` — it calls Claude and costs about USD 2.4 per seed |
 
 `eval_skill.py` is the only test that exercises the skill rather than the rules.
@@ -106,7 +106,8 @@ notice.
 
 Payrolls are personal data under the GDPR, and sick-leave records are health
 data. Every fixture in this repository is invented and derived from a seed. CI
-greps for numbers shaped like a national ID or a company ID and fails the build.
+greps for numbers shaped like a national ID or a company ID — in the text files and
+inside every tracked spreadsheet — and fails the build.
 
 If you need a realistic case, generate one:
 
@@ -119,7 +120,7 @@ python test/generate_wide.py --seed 12345
 `main` is protected by a ruleset, so nobody pushes to it directly — not outside
 contributors and not the maintainer. Every change goes through a pull request,
 and the pull request cannot merge until CI is green: the packaging check, the
-personal-data guard, and the payroll and formula suites on Python 3.10 through 3.13.
+personal-data guard, and the five suites (0–4) on Python 3.10 through 3.13.
 
 Approvals are not required, so a solo maintainer is not deadlocked, but the
 status checks are. Linear history is enforced, so rebase rather than merge when
