@@ -29,14 +29,17 @@ guess.
 Person and company names are Bulgarian because they are data. The rest is English.
 """
 import argparse
+import datetime
 import itertools
 import json
 import os
 import random
+import zipfile
 
 import openpyxl
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
+from openpyxl.writer.excel import ExcelWriter
 
 import trz_model as M
 from trz_model import r2
@@ -44,6 +47,57 @@ from trz_model import r2
 HERE = os.path.dirname(os.path.abspath(__file__))
 TMP = os.path.join(HERE, "tmp")
 SEPARATION = 0.50      # minimum gap between two subset sums
+# One person in five is a leaver with чл. 224 КТ compensation for unused leave. Higher
+# than any real roster, on purpose: three scenarios can only land on such a row
+# (F1_compensation_in_insurable, F6_compensation_out_of_taxable, and the stale-net shape
+# of I1_vertical), and at one in ten F1 was injected on 17 of 300 seeds - a 25-seed run
+# had a one-in-five chance of never testing it at all.
+COMPENSATION_RATE = 0.20
+
+# The same seed must give the same bytes. openpyxl stamps docProps/core.xml with the
+# wall clock - save_workbook() overwrites properties.modified with now() on every call,
+# so setting it beforehand changes nothing - and ZipFile dates every entry with the
+# current time as well. Both are pinned to this instant instead.
+FIXED_STAMP = datetime.datetime(2026, 1, 1)
+
+
+class _FrozenZip(zipfile.ZipFile):
+    """A ZipFile whose entries carry FIXED_STAMP instead of the time of writing.
+
+    openpyxl adds most parts with writestr() - dated with the wall clock - and the
+    worksheets with write() from a temporary file, dated with that file's mtime. Both
+    routes are pinned, or the sheet part alone keeps the workbook from repeating.
+    """
+
+    def _frozen_info(self, arcname, mode):
+        zinfo = zipfile.ZipInfo(arcname, date_time=FIXED_STAMP.timetuple()[:6])
+        zinfo.compress_type = self.compression
+        zinfo.external_attr = mode << 16
+        return zinfo
+
+    def writestr(self, zinfo_or_arcname, data, *args, **kwargs):
+        if not isinstance(zinfo_or_arcname, zipfile.ZipInfo):
+            # 0o600 is what ZipFile gives a bare name itself
+            zinfo_or_arcname = self._frozen_info(zinfo_or_arcname, 0o600)
+        super().writestr(zinfo_or_arcname, data, *args, **kwargs)
+
+    def write(self, filename, arcname=None, *args, **kwargs):
+        with open(filename, "rb") as fh:
+            data = fh.read()
+        # 0o100600: a regular file, as ZipInfo.from_file would record it
+        super().writestr(self._frozen_info(arcname or os.path.basename(filename),
+                                           0o100600), data)
+
+
+def save_frozen(wb, path):
+    """Write `wb` to `path` so that two runs of one seed are byte-identical.
+
+    Used by all three generators. Goes through ExcelWriter directly rather than
+    wb.save(), because save_workbook() is where openpyxl restamps the modified date.
+    """
+    wb.properties.created = wb.properties.modified = FIXED_STAMP
+    with _FrozenZip(path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+        ExcelWriter(wb, archive).save()
 
 # --- invented names. Deliberately unlike any real roster. ---
 FIRST_M = ["Борислав", "Дарин", "Захари", "Ивайло", "Камен", "Лъчезар", "Никифор",
@@ -151,8 +205,10 @@ def random_inputs(rnd, norm, regime):
         bonus=r2(rnd.uniform(50, 400)) if rnd.random() < 0.18 else 0.0,
         # A leaver with compensation for unused leave. Rare but real - and without any
         # row carrying one, F1_compensation_in_insurable was a detection with no
-        # generator: a check that had never once been allowed to fail.
-        compensation_224=r2(rnd.uniform(150, 800)) if rnd.random() < 0.10 else 0.0,
+        # generator: a check that had never once been allowed to fail. The rate is
+        # COMPENSATION_RATE, and the comment there says why it is what it is.
+        compensation_224=(r2(rnd.uniform(150, 800))
+                          if rnd.random() < COMPENSATION_RATE else 0.0),
         card_employer=r2(rnd.uniform(38, 72)) if has_card else 0.0,
         card_employee=r2(rnd.uniform(3, 12)) if has_card else 0.0,
         premium=r2(rnd.uniform(32.9, 44.5)) if has_premium else 0.0,
@@ -710,6 +766,245 @@ def m_days_do_not_reconcile(row, inp, regime, tzpb, policy, rnd):
     return row, {"I5_days_do_not_reconcile"}
 
 
+DEDUCTION_COLUMNS = ("Удръжка доброволно осиг. (лична)",
+                     "Удръжка застраховка Живот (лична)", "Удръжка карта (лична част)")
+
+
+def m_net_not_refreshed(row, inp, regime, tzpb, policy, rnd):
+    """The net columns do not follow the rest of the row. Two shapes, one id (I1).
+
+    - stale: a bonus or a чл. 224 compensation was added to the row late, the gross,
+      the contributions and the tax were recomputed - and „НЕТО преди удръжки“ and
+      everything below it are pasted values from before the addition;
+    - unwired: a deduction column is withheld on the row but was never subtracted in
+      the net formula, so „НЕТО за изплащане“ is high by exactly that column.
+
+    Both are the shape of a payslip whose bottom half stopped following its top half,
+    which is what I1 in proverki.md - the vertical reconciliation - exists to catch.
+    Until this mutation existed the two I1 branches in structural_test had never fired.
+    """
+    late = ("bonus" if inp["bonus"] else
+            "compensation_224" if inp["compensation_224"] else None)
+    shapes = (["stale"] if late else []) \
+        + (["unwired"] if any(row[c] >= 1.0 for c in DEDUCTION_COLUMNS) else [])
+    if not shapes:
+        return None
+    row = dict(row)
+    if rnd.choice(shapes) == "stale":
+        earlier = M.clean_row(dict(inp, **{late: 0.0}), regime, tzpb, policy, row["_norm"])
+        if abs(earlier["НЕТО преди удръжки"] - row["НЕТО преди удръжки"]) < 1.0:
+            return None                  # too small to tell from rounding
+        row["НЕТО преди удръжки"] = earlier["НЕТО преди удръжки"]
+        row["НЕТО за изплащане"] = earlier["НЕТО за изплащане"]
+    else:
+        skipped = rnd.choice([c for c in DEDUCTION_COLUMNS if row[c] >= 1.0])
+        row["НЕТО за изплащане"] = r2(row["НЕТО за изплащане"] + row[skipped])
+    row["Изплатено"] = row["НЕТО за изплащане"]
+    row["Разлика"] = 0.0
+    return row, {"I1_vertical"}
+
+
+def m_tax_not_from_base(row, inp, regime, tzpb, policy, rnd):
+    """The tax does not follow the taxable base the same row states (F6).
+
+    Two shapes, one id: the tax formula points at the base BEFORE the чл. 19 relief
+    while the base column shows the relieved figure (the relief is granted in one
+    column and taxed away in the next); or the tax is a pasted value from an earlier
+    version of the row. The net follows the wrong tax, as a file's formulas would, so
+    the vertical reconciliation holds and the only thing wrong is the tax itself.
+    """
+    taxable = row["Данъчна основа"]
+    if taxable <= 0:
+        return None
+    in_kind = row["Карта (за сметка на работодателя)"]
+    premium = row["Доброволно здравно осигуряване (премия)"]
+    excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
+    work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
+                   + row["Платен отпуск"])
+    _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
+    before = r2(row["БРУТО"] + add_taxable - row["Болнични (работодател)"]
+                - row["Лични вноски общо"])
+    shapes = [r2(taxable * M.TAX_RATE * rnd.uniform(0.80, 0.93))]         # pasted
+    if r2(before - taxable) * M.TAX_RATE >= 1.0:
+        shapes.append(r2(before * M.TAX_RATE))                            # relief taxed
+    wrong = rnd.choice(shapes)
+    if abs(wrong - row["ДДФЛ"]) < 1.0:
+        return None                      # too small to tell from rounding
+    row = dict(row)
+    row["ДДФЛ"] = wrong
+    row["НЕТО преди удръжки"] = r2(row["БРУТО"] - row["Лични вноски общо"] - wrong)
+    row["НЕТО за изплащане"] = r2(row["НЕТО преди удръжки"]
+                                  - sum(row[c] for c in DEDUCTION_COLUMNS))
+    row["Изплатено"] = row["НЕТО за изплащане"]
+    row["Разлика"] = 0.0
+    return row, {"F6_tax_amount"}
+
+
+def m_base_from_other_salary(row, inp, regime, tzpb, policy, rnd):
+    """The row is computed from a salary that is not the contracted one (A6).
+
+    A stale salary before a raise, or a raise applied in the payroll before the annex
+    exists - proverki.md counts both directions, the first as a violation, the second
+    as a risk. The whole row follows the wrong salary consistently, so nothing else on
+    it disagrees with itself: the only witness is the contract. Rows with leave or
+    sick days are skipped, because there the same wrong salary would also move the
+    leave and the sick pay, and one defect would be reported three times.
+    """
+    if inp["days_leave"] or inp["days_sick"] or not inp["days_worked"]:
+        return None
+    if rnd.random() < 0.5:
+        other = r2(inp["monthly_salary"] * rnd.uniform(0.85, 0.95))
+        if other < regime["min_wage"]:
+            return None                  # would add a minimum-wage finding to this one
+    else:
+        other = r2(inp["monthly_salary"] * rnd.uniform(1.05, 1.15))
+    new = M.clean_row(dict(inp, monthly_salary=other), regime, tzpb, policy,
+                      row["_norm"])
+    if abs(new["Основна за отработеното"] - row["Основна за отработеното"]) < 1.0:
+        return None
+    # A raise must not carry the row onto a cap: capped, its composition stops being
+    # solvable, it leaves the sample the file's practice is inferred from, and a
+    # defect already injected elsewhere can lose the voters it was gated on.
+    if new["Осигурителен доход"] >= min(v["max_insurable"]
+                                       for v in M.REGIMES.values()) - 1.0:
+        return None
+    return new, {"A6_base_vs_contract"}
+
+
+def m_insurable_unexplained(row, inp, regime, tzpb, policy, rnd):
+    """The insurable income is a figure no composition of the row reaches (F1).
+
+    A pasted value from another month: the contributions on both sides follow it, so
+    K3 and F5 hold, and the taxable base follows the contributions, so F6 holds. What
+    does not hold is the composition itself - the gap to the accruals is not any one
+    element, present or absent, and the checker must say so rather than pick the
+    nearest element. The guard below keeps the gap away from every element's value,
+    or the finding would carry that element's id instead.
+    """
+    in_kind = row["Карта (за сметка на работодателя)"]
+    premium = row["Доброволно здравно осигуряване (премия)"]
+    excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
+    work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
+                   + row["Платен отпуск"])
+    if work_base <= 0:
+        return None
+    add_insurable, _ = M.additions_for(policy, in_kind, excess, work_base)
+    expected = r2(work_base + row["Болнични (работодател)"] + add_insurable)
+    caps = [v["max_insurable"] for v in M.REGIMES.values()]
+    if expected >= min(caps) - 1.0:
+        return None                      # at a cap the composition is not solvable
+    for _ in range(20):
+        stale = r2(expected * rnd.uniform(0.86, 0.95))
+        gap = r2(expected - stale)
+        if gap < 1.0 or any(abs(stale - c) < 1.0 for c in caps):
+            continue
+        if any(abs(gap - v) <= SEPARATION for v in _elements(row) if v):
+            continue                     # one element would explain it - another id
+        break
+    else:
+        return None
+    return _recompute_downstream(row, inp, regime, tzpb, policy, insurable=stale), \
+        {"F1_insurable_unexplained"}
+
+
+def _taxable_explanations(row, policy):
+    """Every taxable base a catalogued single deviation would give this row.
+
+    The generator's side of the same determinacy guarantee _separable gives the
+    insurable income: a mutation of the taxable base must land at least SEPARATION
+    away from each of these, or the checker cannot tell which deviation it is looking
+    at - and in a real file that same coincidence would make the conclusion unsafe.
+    Keyed by the scenario id whose deviation produces the figure; „clean“ is the
+    correct base.
+    """
+    in_kind = row["Карта (за сметка на работодателя)"]
+    premium = row["Доброволно здравно осигуряване (премия)"]
+    excess = r2(max(0.0, premium - M.SOCIAL_EXPENSE_THRESHOLD)) if premium else 0.0
+    work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
+                   + row["Платен отпуск"])
+    sick_pay, comp = row["Болнични (работодател)"], row["Обезщетение чл. 224"]
+    pension = row["Удръжка доброволно осиг. (лична)"]
+    life = row["Удръжка застраховка Живот (лична)"]
+    _, add_taxable = M.additions_for(policy, in_kind, excess, work_base)
+    before = r2(row["БРУТО"] + add_taxable - sick_pay - row["Лични вноски общо"])
+
+    def relieved(b):
+        return r2(b - M.relief_for(b, pension, life))
+
+    out = {"clean": relieved(before),
+           "F7_relief_over_limit": r2(before - r2(pension + life)),
+           "F7_relief_not_applied": before,
+           "F7_relief_combined_limit": r2(before - min(r2(pension + life),
+                                                       r2(before * M.RELIEF_LIMIT)))}
+    if sick_pay:
+        out["F9_sick_pay_in_taxable"] = relieved(r2(before + sick_pay))
+    if comp:
+        out["F6_compensation_out_of_taxable"] = relieved(r2(before - comp))
+    # The contested elements flipped against the file's own practice for this base.
+    if in_kind:
+        sign = -1.0 if policy["in_kind_in_bases"] else 1.0
+        out["F10_in_kind_asymmetry"] = relieved(r2(before + sign * in_kind))
+    if excess:
+        sign = -1.0 if policy["excess_in_taxable"] else 1.0
+        out["F10_excess_asymmetry"] = relieved(r2(before + sign * excess))
+    return out
+
+
+def m_taxable_unexplained(row, inp, regime, tzpb, policy, rnd):
+    """The taxable base is a figure no catalogued deviation reaches (F6).
+
+    The base is a pasted value from another month; the tax and the net follow it.
+    Nothing about the gross, the contributions or the relief explains the figure, and
+    the honest finding is exactly that - „does not follow from the gross minus the
+    contributions; none of the known deviations fits“ - rather than the nearest
+    named defect.
+    """
+    work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
+                   + row["Платен отпуск"])
+    if work_base <= 0:
+        return None
+    explanations = _taxable_explanations(row, policy)
+    clean = explanations.pop("clean")
+    if clean <= 0:
+        return None
+    for _ in range(20):
+        stale = r2(clean * rnd.uniform(0.86, 0.95))
+        if clean - stale < 1.0:
+            continue
+        if any(abs(stale - v) <= SEPARATION for v in explanations.values()):
+            continue                     # a named deviation would explain it instead
+        break
+    else:
+        return None
+    return _recompute_downstream(row, inp, regime, tzpb, policy,
+                                 insurable=row["Осигурителен доход"], taxable=stale), \
+        {"F6_taxable_unexplained"}
+
+
+def m_compensation_out_of_taxable(row, inp, regime, tzpb, policy, rnd):
+    """The чл. 224 КТ compensation left out of the taxable base (F6).
+
+    The mirror of F1_compensation_in_insurable: a file that reads „обезщетение“ as
+    exempt. чл. 24, ал. 2, т. 8 ЗДДФЛ lists the compensations that are, and чл. 224
+    is not among them - the sum is taxable, and leaving it out undertaxes the person
+    by 10% of it. Only a row that carries the compensation qualifies, and only when no
+    other catalogued deviation lands on the same figure.
+    """
+    if not row["Обезщетение чл. 224"]:
+        return None
+    work_base = r2(row["Основна за отработеното"] + row["Клас сума"] + row["Бонус"]
+                   + row["Платен отпуск"])
+    if work_base <= 0:
+        return None
+    explanations = _taxable_explanations(row, policy)
+    target = explanations.pop("F6_compensation_out_of_taxable")
+    if any(abs(target - v) <= SEPARATION for v in explanations.values()):
+        return None                      # another deviation reaches the same figure
+    return _recompute_downstream(row, inp, regime, tzpb, policy,
+                                 insurable=row["Осигурителен доход"], taxable=target), \
+        {"F6_compensation_out_of_taxable"}
+
+
 ROW_MUTATIONS = [
     ("K1_sum_omits_column", m_sum_omits_column),
     ("K2_amount_in_day_column", m_amount_in_day_column),
@@ -730,16 +1025,25 @@ ROW_MUTATIONS = [
     ("C2_seniority_on_gross", m_seniority_on_gross),
     ("E3_leave_without_seniority", m_leave_without_seniority),
     ("I5_days_do_not_reconcile", m_days_do_not_reconcile),
+    ("I1_vertical", m_net_not_refreshed),
+    ("F6_tax_amount", m_tax_not_from_base),
+    ("A6_base_vs_contract", m_base_from_other_salary),
+    ("F1_insurable_unexplained", m_insurable_unexplained),
+    ("F6_taxable_unexplained", m_taxable_unexplained),
+    ("F6_compensation_out_of_taxable", m_compensation_out_of_taxable),
 ]
 
 # Defects whose localisation goes through the file's practice for the benefits.
 NEEDS_PRACTICE = ("F9_sick_pay_out_of_insurable", "F1_compensation_in_insurable",
+                  "F1_insurable_unexplained",
                   "F10_in_kind_asymmetry",
                   "F10_excess_asymmetry", "F9_sick_pay_in_taxable",
+                  "F6_taxable_unexplained", "F6_compensation_out_of_taxable",
                   "F7_relief_over_limit", "F7_relief_not_applied",
                   "F7_relief_combined_limit")
 # Of those, only these spoil the sample the practice is inferred from.
 SPOILS_SAMPLE = ("F9_sick_pay_out_of_insurable", "F1_compensation_in_insurable",
+                 "F1_insurable_unexplained",
                  "F10_in_kind_asymmetry",
                  "F10_excess_asymmetry")
 
@@ -830,7 +1134,12 @@ def generate(seed, month=None, year=2026, bonus_in_base=None):
     rnd.shuffle(free)
     candidates = ROW_MUTATIONS[:]
     rnd.shuffle(candidates)
-    how_many = rnd.randint(5, 9)
+    # Six to eleven defects per file. It was five to nine with nineteen candidate
+    # mutations; six more candidates at the same draw would have cut every scenario's
+    # rate by a quarter (K1 from 0.54 to 0.40 per seed, F7_relief_combined_limit from
+    # 0.12 to 0.06). This keeps the existing scenarios about where they were and the
+    # 300-seed suite green with zero false positives.
+    how_many = rnd.randint(6, 11)
     injected = 0
     spoiled = {"in_kind": 0, "excess": 0}      # rows whose vote is already wrong
     for ident, fn in candidates:
@@ -945,7 +1254,7 @@ def generate(seed, month=None, year=2026, bonus_in_base=None):
         ws.column_dimensions[get_column_letter(i)].width = max(9, min(15, len(column) // 2 + 6))
 
     path = os.path.join(TMP, f"wide_{seed}.xlsx")
-    wb.save(path)
+    save_frozen(wb, path)
 
     expected += [["file", None, i] for i in file_defects]
 

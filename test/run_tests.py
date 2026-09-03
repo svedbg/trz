@@ -5,7 +5,7 @@
     python test/run_tests.py --seeds 200     # longer
     python test/run_tests.py --from 500 --seeds 100
 
-Four suites:
+Five suites:
 
 0. `rates_test.py` - cross-checks the rates in `trz_model.py` against
    `references/stavki.md`. The only test that reads the skill itself, and
@@ -24,13 +24,6 @@ Four suites:
    construction of the file and the composition of the bases. The scenarios are
    described in `scenarios.md`.
 
-4. `formula_test.py` over `generate_formula.py`'s workbooks - the only fixture
-   whose computed columns carry REAL formulas. Checks the formula layer the way
-   group K states it: the gross's coverage, day cells in money sums, typed values
-   inside formula columns, tautological controls, inlined parameters. Value
-   exports cannot hold any of these, and the first real audit found ALL of its
-   defects in exactly this layer.
-
 3. `pair_test.py` over a two-sheet payroll - July and August 2026, one roster,
    the months the thresholds change between. It covers the three checks that
    cannot be expressed in a single sheet: a copied sheet keeping the previous
@@ -43,18 +36,38 @@ Four suites:
    directly: the fixture and the checker share the function that applies it, so no
    number of seeds can see it missing.
 
+4. `formula_test.py` over `generate_formula.py`'s workbooks - the only fixture
+   whose computed columns carry REAL formulas. Checks the formula layer the way
+   group K states it: the gross's coverage, day cells in money sums, typed values
+   inside formula columns, tautological controls, inlined parameters. Value
+   exports cannot hold any of these, and the first real audit found ALL of its
+   defects in exactly this layer.
+
 Not included: `eval_skill.py`. That one calls Claude, so it needs authentication
 and costs money per run. It is run by hand when the guidance in SKILL.md changes.
 
 Coverage is reported too: how many times each scenario was injected across the
 seeds that ran. A scenario with zero injections was not tested - which is not the
-same as passing.
+same as passing. Below COVERAGE_FLOOR seeds that is a warning, because a rare
+scenario legitimately finds no row in a short run (the pre-commit hook runs 25);
+from COVERAGE_FLOOR seeds up it fails the suite.
+
+A seed that raises is a failing seed, not the end of the run: the exception is
+recorded against it, the remaining seeds and suites still run, and the RESULT
+line is always printed.
+
+The generated workbooks go to a per-run directory under test/tmp that is removed
+when the run ends, whatever the outcome. Reproduce a failing seed with
+`structural_test.py --seed N`, `pair_test.py --seed N` or `formula_test.py --seed N`,
+which write to test/tmp itself and leave the files there.
 """
 import argparse
 import collections
 import os
+import shutil
 import subprocess
 import sys
+import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -68,6 +81,40 @@ from pair_test import selftest_leave_base                 # noqa: E402
 import generate_formula as GF                              # noqa: E402
 from formula_test import check as check_formula            # noqa: E402
 
+# Below this many seeds a scenario that was never injected is reported and does not
+# fail the run; from here up it does. 25 seeds - the pre-commit hook's depth - had a
+# one-in-three chance of never drawing F1_compensation_in_insurable or
+# F7_relief_combined_limit, and a coverage gap on a short run says nothing about the
+# code. At 300, CI's depth, it says the mutation can no longer break anything.
+COVERAGE_FLOOR = 100
+TMP_ROOT = os.path.join(HERE, "tmp")
+
+
+def _exception_line(exc):
+    """One line for a failing seed: the exception and where it was raised."""
+    text = traceback.format_exception_only(type(exc), exc)[-1].strip()
+    frames = traceback.extract_tb(exc.__traceback__)
+    if frames:
+        text += f" ({os.path.basename(frames[-1].filename)}:{frames[-1].lineno})"
+    return text
+
+
+def _coverage_ok(untested, count):
+    """Print the verdict on never-injected scenarios; True unless it fails the run."""
+    if not untested:
+        return True
+    fails = count >= COVERAGE_FLOOR
+    print(f"\n  {'FAILED' if fails else 'WARNING'}: {len(untested)} scenario(s) never "
+          f"injected at these seeds, so not tested: {', '.join(untested)}")
+    print("  Two things cause this and they are not the same. At a low seed count "
+          "the generator may find no suitable row - raise --seeds. But a scenario "
+          "that stays at zero on a long run means its mutation can no longer break "
+          "anything: the model now produces what the mutation was going to write. "
+          "Check what changed in trz_model.py before raising the seeds further.")
+    print(f"  Below {COVERAGE_FLOOR} seeds this is a warning; from {COVERAGE_FLOOR} up "
+          f"it fails the suite.")
+    return not fails
+
 
 def suite_rates():
     print("=" * 78)
@@ -79,6 +126,10 @@ def suite_rates():
         if line.startswith(("  MISMATCH", "  NOT FOUND", "  CHANGED", "FAILED", "OK:")) \
                 or line.startswith("              "):
             print("  " + line.strip())
+    if p.returncode != 0 and p.stderr:
+        # A crash in rates_test (an import error, a missing reference file) has its
+        # story on stderr; swallowing it left "FAILED" with nothing to act on.
+        print(p.stderr[-2000:])
     print(f"  -> {'OK' if p.returncode == 0 else 'FAILED'}")
     return p.returncode == 0
 
@@ -179,13 +230,20 @@ def suite_structural(start, count, quiet=True):
     failures = []
     total_injected = total_found = total_findings = 0
     for seed in range(start, start + count):
-        xlsx, manifest_path, man = G.generate(seed)
-        for _, _, ident in man["expected"]:
-            coverage[ident] += 1
-        months[man["month"]] += 1
-        readings["т. 2 (вътре)" if man["policy"]["bonus_in_base"]
-                 else "еднократен (вън)"] += 1
-        result = check(xlsx, manifest_path, quiet=quiet)
+        # An exception is this seed's failure, not the run's end: later seeds and
+        # suites still run, and RESULT is still printed.
+        try:
+            xlsx, manifest_path, man = G.generate(seed)
+            for _, _, ident in man["expected"]:
+                coverage[ident] += 1
+            months[man["month"]] += 1
+            readings["т. 2 (вътре)" if man["policy"]["bonus_in_base"]
+                     else "еднократен (вън)"] += 1
+            result = check(xlsx, manifest_path, quiet=quiet)
+        except Exception as exc:                              # noqa: BLE001
+            failures.append((seed, dict(missed=[f"exception: {_exception_line(exc)}"],
+                                        extra=[])))
+            continue
         total_injected += result["injected"]
         total_found += result["found"]
         total_findings += result["findings"]
@@ -204,15 +262,7 @@ def suite_structural(start, count, quiet=True):
     if len(readings) < 2:
         failures.append(("readings", {"missed": ["one reading of чл. 17, ал. 1 never "
                                                  "ran at these seeds"], "extra": []}))
-    untested = [i for i in M.SCENARIOS if not coverage.get(i)]
-    if untested:
-        print(f"\n  WARNING: {len(untested)} scenarios were never injected at these "
-              f"seeds, so they were not tested: {', '.join(untested)}")
-        print("  Two things cause this and they are not the same. At a low seed count "
-              "the generator may find no suitable row - raise --seeds. But a scenario "
-              "that stays at zero on a long run means its mutation can no longer break "
-              "anything: the model now produces what the mutation was going to write. "
-              "Check what changed in trz_model.py before raising the seeds further.")
+    covered = _coverage_ok([i for i in M.SCENARIOS if not coverage.get(i)], count)
     if failures:
         print(f"\n  FAILING SEEDS ({len(failures)}):")
         for seed, result in failures:
@@ -220,7 +270,7 @@ def suite_structural(start, count, quiet=True):
                   f"| extra {result['extra']}")
     else:
         print(f"\n  -> OK: zero missed, zero false positives across {count} seeds")
-    return not failures and not untested
+    return not failures and covered
 
 
 def suite_pair(start, count, quiet=True):
@@ -242,12 +292,17 @@ def suite_pair(start, count, quiet=True):
         failures.append(("selftest", {"missed": [str(exc)], "extra": []}))
     injected = found = 0
     for seed in range(start, start + count):
-        xlsx, _, man = P.generate(seed)
-        readings["т. 2 (вътре)" if man["policy"]["bonus_in_base"]
-                 else "еднократен (вън)"] += 1
-        for _, _, ident in man["cross_expected"]:
-            coverage[ident] += 1
-        result = check_pair(xlsx, man, quiet=quiet)
+        try:
+            xlsx, _, man = P.generate(seed)
+            readings["т. 2 (вътре)" if man["policy"]["bonus_in_base"]
+                     else "еднократен (вън)"] += 1
+            for _, _, ident in man["cross_expected"]:
+                coverage[ident] += 1
+            result = check_pair(xlsx, man, quiet=quiet)
+        except Exception as exc:                              # noqa: BLE001
+            failures.append((seed, dict(missed=[f"exception: {_exception_line(exc)}"],
+                                        extra=[])))
+            continue
         injected += result["injected"]
         found += result["found"]
         if result["missed"] or result["extra"]:
@@ -262,9 +317,7 @@ def suite_pair(start, count, quiet=True):
     for ident in M.PAIR_SCENARIOS:
         n = coverage.get(ident, 0)
         print(f"  {'  ' if n else '!!'} {ident:26} {n:4d}  {M.PAIR_SCENARIOS[ident][1]}")
-    untested = [i for i in M.PAIR_SCENARIOS if not coverage.get(i)]
-    if untested:
-        print(f"\n  WARNING: never injected at these seeds: {', '.join(untested)}")
+    covered = _coverage_ok([i for i in M.PAIR_SCENARIOS if not coverage.get(i)], count)
     if failures:
         print(f"\n  FAILING SEEDS ({len(failures)}):")
         for seed, result in failures:
@@ -272,7 +325,7 @@ def suite_pair(start, count, quiet=True):
                   f"| extra {result['extra']}")
     else:
         print(f"\n  -> OK: zero missed, zero false positives across {count} seeds")
-    return not failures and not untested
+    return not failures and covered
 
 
 def suite_formula(start, count, quiet=True):
@@ -284,10 +337,15 @@ def suite_formula(start, count, quiet=True):
     failures = []
     injected = found = 0
     for seed in range(start, start + count):
-        xlsx, mpath, man = GF.generate(seed)
-        for _, _, ident in man["expected"]:
-            coverage[ident] += 1
-        result = check_formula(xlsx, mpath, quiet=quiet)
+        try:
+            xlsx, mpath, man = GF.generate(seed)
+            for _, _, ident in man["expected"]:
+                coverage[ident] += 1
+            result = check_formula(xlsx, mpath, quiet=quiet)
+        except Exception as exc:                              # noqa: BLE001
+            failures.append((seed, dict(missed=[f"exception: {_exception_line(exc)}"],
+                                        extra=[])))
+            continue
         injected += result["injected"]
         found += result["found"]
         if result["missed"] or result["extra"]:
@@ -298,9 +356,8 @@ def suite_formula(start, count, quiet=True):
         n = coverage.get(ident, 0)
         print(f"  {'  ' if n else '!!'} {ident:34} {n:4d}  "
               f"{M.FORMULA_SCENARIOS[ident][1]}")
-    untested = [i for i in M.FORMULA_SCENARIOS if not coverage.get(i)]
-    if untested:
-        print(f"\n  WARNING: never injected at these seeds: {', '.join(untested)}")
+    covered = _coverage_ok([i for i in M.FORMULA_SCENARIOS if not coverage.get(i)],
+                           count)
     if failures:
         print(f"\n  FAILING SEEDS ({len(failures)}):")
         for seed, result in failures:
@@ -308,7 +365,38 @@ def suite_formula(start, count, quiet=True):
                   f"| extra {result['extra']}")
     else:
         print(f"\n  -> OK: zero missed, zero false positives across {count} seeds")
-    return not failures and not untested
+    return not failures and covered
+
+
+def _guarded(label, suite, *args, **kwargs):
+    """Run one suite; an exception outside its seed loop fails the suite, not the run."""
+    try:
+        return suite(*args, **kwargs)
+    except Exception as exc:                                  # noqa: BLE001
+        print(f"\n  {label}: aborted by an exception - {_exception_line(exc)}")
+        return False
+
+
+def _run_dir():
+    """A directory of this run's own under test/tmp, for the three generators.
+
+    Every run used to leave its workbooks and manifests in test/tmp for good - tens
+    of thousands of files after a few months. The generators write wherever their
+    module-level TMP points, so the run points all three at one directory it creates
+    and removes at the end. Nothing outside it is ever touched: the files a hand run
+    of a generator or a single-seed checker leaves in test/tmp stay where they are.
+    """
+    path = os.path.join(TMP_ROOT, f"run_{os.getpid()}")
+    os.makedirs(path, exist_ok=True)
+    for module in (G, P, GF):
+        module.TMP = path
+    return path
+
+
+def _remove_run_dir(path):
+    inside = os.path.commonpath([os.path.abspath(path), TMP_ROOT]) == TMP_ROOT
+    if inside and os.path.basename(path).startswith("run_"):
+        shutil.rmtree(path, ignore_errors=True)
 
 
 if __name__ == "__main__":
@@ -319,12 +407,16 @@ if __name__ == "__main__":
                     help="print the findings of every seed")
     a = ap.parse_args()
 
-    ok0 = suite_rates()
-    print()
-    ok1 = suite_static()
-    ok2 = suite_structural(a.start, a.seeds, quiet=not a.verbose)
-    ok3 = suite_pair(a.start, a.seeds, quiet=not a.verbose)
-    ok4 = suite_formula(a.start, a.seeds, quiet=not a.verbose)
+    run_dir = _run_dir()
+    try:
+        ok0 = _guarded("suite 0", suite_rates)
+        print()
+        ok1 = _guarded("suite 1", suite_static)
+        ok2 = _guarded("suite 2", suite_structural, a.start, a.seeds, quiet=not a.verbose)
+        ok3 = _guarded("suite 3", suite_pair, a.start, a.seeds, quiet=not a.verbose)
+        ok4 = _guarded("suite 4", suite_formula, a.start, a.seeds, quiet=not a.verbose)
+    finally:
+        _remove_run_dir(run_dir)
     print()
     print("=" * 78)
     print(f"RESULT: suite 0 {'OK' if ok0 else 'FAILED'} · "

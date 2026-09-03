@@ -15,7 +15,7 @@ reach them by reconciling the file against itself.
 
 The payroll is generated from a seed. Every seed changes the company, the people,
 the salaries, the days, the price of the benefits, the month, the threshold
-regime, even the accident-insurance rate. Between five and nine defects are
+regime, even the accident-insurance rate. Between six and eleven defects are
 injected, drawn at random from the catalogue below, onto randomly chosen rows.
 
 The reason is not convenience. A static fixture allows a check that passes by
@@ -79,6 +79,12 @@ The groups match `references/proverki.md`.
 | `E3_leave_without_seniority` | E3 | Paid leave computed without the supplement | Leave ≠ daily base × (1 + supplement) × days |
 | `F1_compensation_in_insurable` | F1 | The чл. 224 КТ compensation inside the insurable income | чл. 1, ал. 8, т. 7 НЕВДПОВ is an exhaustive list of the sums no contributions are due on, and чл. 224 is in it — the statute-settled mirror of the sick pay. Guarded even when the file's practice cannot be inferred, via `statutory_misplacements()` |
 | `I5_days_do_not_reconcile` | I5 | The day counts do not reconcile with the month's norm | Sum of days ≠ working days in the month |
+| `I1_vertical` | I1 | The net columns do not follow the rest of the row | Net before deductions ≠ gross − contributions − tax, or net payable ≠ net before deductions − the deduction columns. Two shapes, one id: the bottom half of the payslip is a pasted value from before a late bonus or чл. 224 compensation was added, or a deduction column is withheld but was never wired into the net formula |
+| `F6_tax_amount` | F6 | The tax does not follow the taxable base the row states | Tax ≠ the rate × the stated base. The base itself is right and the net follows the wrong tax, so nothing else on the row disagrees with itself. Two shapes: the tax formula points at the base before the чл. 19 relief (granted in one column, taxed away in the next), or the tax is a pasted value |
+| `A6_base_vs_contract` | A6 | The row is computed from a salary other than the contracted one | Base for the days worked ≠ contracted salary ÷ norm × days, in either direction — a stale salary before a raise, or a raise applied before the annex exists; `proverki.md` counts both. The row is self-consistent and the contract is the only witness. Injected only on rows without leave or sick days, where the same wrong salary would also move the leave and the sick pay and one defect would be reported three times |
+| `F1_insurable_unexplained` | F1 | Insurable income that no composition of the row reaches | A pasted figure; the contributions on both sides and the taxable base follow it, so K3, F5 and F6 hold. Solving the composition finds no element, present or absent, that explains the gap — and the checker must say so rather than name the nearest element. The generator keeps the gap at least 0.50 from every element's value, or the finding would carry that element's id |
+| `F6_taxable_unexplained` | F6 | Taxable base that no catalogued deviation reaches | A pasted base; the tax and the net follow it. Every named deviation of the taxable base — the three relief shapes, the sick pay inside, the compensation outside, either contested element flipped against the file's practice — is enumerated by `_taxable_explanations()` and the figure lands at least 0.50 from each, so the only honest verdict is „does not follow from the gross minus the contributions; none of the known deviations fits“ |
+| `F6_compensation_out_of_taxable` | F6 | The чл. 224 КТ compensation left out of the taxable base | The mirror of `F1_compensation_in_insurable`: чл. 24, ал. 2, т. 8 ЗДДФЛ lists the exempt compensations and чл. 224 is not among them, so the sum is taxable. Solving the composition of the taxable base: the relieved base without the compensation matches, and no other catalogued deviation lands on the same figure |
 
 ## Suite 4: the formula layer
 
@@ -96,6 +102,7 @@ them **from the formulas alone**.
 | `KF3_hard_value_in_formula_column` | a typed value in a column of formulas | shape uniformity: the one row whose "formula" is a literal |
 | `KF4_tautological_control` | `Разлика = A−B` while `B = =A` | one level of reference resolution proves the control can detect nothing |
 | `KF5_constant_in_formula` | a parameter inlined as a literal on one row | shape uniformity again: strip the row digits and the deviating row carries numbers where the others carry a `$`-reference |
+| `KF_shape_deviates` | a formula of a different shape on one row, with no literal in it | shape uniformity's third bin — not a typed value, not an inlined literal, simply not the column's formula: an insurable income that skips the `MIN` against the cap, or a net that forgets the tax term |
 
 Two design limits, on the record. openpyxl writes formulas without cached values and
 evaluates nothing, so this suite checks **structure, not arithmetic** — which is also
@@ -126,7 +133,16 @@ like misses.
 
 `run_tests.py` also prints coverage — how many times each scenario was injected. A
 scenario with zero injections did not pass, it was not tested; at low seed counts
-some scenarios find no suitable row and are skipped.
+some scenarios find no suitable row and are skipped. Below 100 seeds that is printed
+as a warning and the run still passes — the pre-commit hook runs 25, and a rare
+scenario legitimately finds no row in 25 payrolls. From 100 seeds up a scenario at zero
+fails the run, because at that depth it means the mutation can no longer break anything.
+
+A seed that raises an exception is recorded as a failing seed with the exception's
+text; the remaining seeds and suites still run, and the `RESULT` line is always
+printed. The workbooks of a run go to a per-run directory under `test/tmp` that is
+removed at the end; the single-seed commands above write to `test/tmp` itself and
+leave their files there for inspection.
 
 ## The two-month suite
 
@@ -248,8 +264,9 @@ the verdict the arithmetic singles out. An element being enumerated is not offer
 deviation, or the unknown itself turns into an asymmetry finding.
 
 That debt is paid. `F1_compensation_in_insurable` has its mutation (a leaver's
-compensation pulled into the insurable income — one row in ten now carries a real чл. 224
-amount), the statutory escape hatch covers both settled elements symmetrically, and the
+compensation pulled into the insurable income — one row in five now carries a real чл. 224
+amount, `COMPENSATION_RATE` in the generator says why), the statutory escape hatch covers
+both settled elements symmetrically, and the
 placement logic lives in `statutory_misplacements()`, pinned directly by `run_tests`'
 selftest — directly, because the generator's own NEEDS_PRACTICE gate refuses to build the
 only state the hatch runs in, so seeds prove nothing about it.
@@ -412,7 +429,7 @@ the findings in any payroll report. Both are fixed and both are now self-test ca
 ## How much of `proverki.md` the suites reach
 
 **27 of the 78 checks** have a test behind them: 13 in suite 1's static answer key,
-17 across the generated suites, three of them shared. The number is worth stating
+21 across the generated suites, seven of them shared. The number is worth stating
 plainly, because a green run is easy to read as "the skill is tested" when what it
 means is "the tested part of the skill still works".
 
@@ -430,9 +447,11 @@ express. Two groups sit at zero:
   done and whether it was filed, and a spreadsheet of amounts carries neither.
   They are answered from dates and documents outside the payroll.
 
-The rest of the gap is ordinary and closable: `B2`, `B3`, `C3`–`C6`, `E1`, `E2`,
-`F1`, `F6` and the like are all expressible in a monthly sheet and simply have no
-scenario yet. Nothing about the fixtures blocks them.
+The rest of the gap is ordinary and closable: `B2`, `B3`, `C3`–`C6`, `E1`, `E2`
+and the like are all expressible in a monthly sheet and simply have no scenario yet.
+Nothing about the fixtures blocks them. `A6`, `I1`, `F1` and `F6` were in that list
+until their checker branches — present since the suite was written — got the
+mutations that let them fire.
 
 Two things this does **not** mean. An uncovered check is not an unimplemented one —
 `proverki.md` describes all 78 and the skill is asked to apply all 78; what is

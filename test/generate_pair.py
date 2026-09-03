@@ -250,7 +250,7 @@ def generate(seed, bonus_in_base=None):
             expected=[]))
 
     path = os.path.join(TMP, f"pair_{seed}.xlsx")
-    wb.save(path)
+    G.save_frozen(wb, path)
 
     manifest = dict(
         seed=seed, file=os.path.basename(path), year=YEAR,

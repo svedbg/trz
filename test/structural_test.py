@@ -179,6 +179,15 @@ def check(xlsx, manifest, quiet=False):
     max_insurable = man["max_insurable"]
     min_insurable_self = man["min_insurable_self"]
     tzpb_due = man["tzpb_due"]
+    # The accident rate the contributions are measured against comes from the manifest,
+    # and the manifest is the generator's word. It must at least lie in the band of
+    # чл. 6, ал. 1, т. 5 КСО that the reference states; outside it the fixture is
+    # broken, and that is not a payroll finding.
+    low, high = M.TZPB_RANGE
+    if not low - 1e-9 <= tzpb_due <= high + 1e-9:
+        raise AssertionError(f"manifest accident rate {tzpb_due}% is outside the "
+                             f"{low}-{high}% band of чл. 6, ал. 1, т. 5 КСО - a broken "
+                             f"fixture, not a payroll finding")
     # From the manifest, not from "whichever other cap the table holds": the yearly
     # addition of new regimes must not change what "the other period" means here.
     other_cap = man["other_max_insurable"]
