@@ -428,8 +428,10 @@ the findings in any payroll report. Both are fixed and both are now self-test ca
 
 ## How much of `proverki.md` the suites reach
 
-**27 of the 78 checks** have a test behind them: 13 in suite 1's static answer key,
-21 across the generated suites, seven of them shared. The number is worth stating
+**29 of the 78 checks** have a test behind them: 14 implemented in suite 1's static
+checker (11 of them in the answer key, three — F1, F6 on the composition, I2 — asserted
+to stay silent on a correct row), 21 across the generated suites, six shared between the
+two (B4, C2, F1, F6, F9, I1). The number is worth stating
 plainly, because a green run is easy to read as "the skill is tested" when what it
 means is "the tested part of the skill still works".
 

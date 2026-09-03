@@ -5,7 +5,7 @@ license: CC-BY-4.0
 compatibility: Prose and reference material only; no bundled scripts. Needs a Bulgarian
   payroll context and a working Python with openpyxl for spreadsheet work. The rates in
   references/stavki.md were verified on 01.09.2026 and must be re-verified for any later
-  period; the skill refuses to guess one. Installed as a plugin it asks one question when
+  period; the skill refuses to guess one. Installed as a Claude Code plugin it asks one question when
   enabled; anywhere else that answer is absent and the documented default applies.
 metadata:
   jurisdiction: BG
@@ -29,7 +29,9 @@ metadata:
 труд, минималните почивки, дните отпуск, изпитателния срок, сроковете за уведомление и за
 плащане, давността, несеквестируемия минимум. Числото идва от `stavki.md` (раздел „Срокове
 и лимити по КТ“) или от потребителя; проверка, чийто лимит няма ред там, се пише
-`за проверка` с назован липсващия лимит — не „над 150 часа“ по памет.
+`за проверка` с назован липсващия лимит — не „над X часа“ по памет. Изключение са
+стойностите „по устройство“ — МОД и ТЗПБ по КИД на дружеството: без реда на дружеството
+проверката (B3, F5) е **неприложима**, не `за проверка` с число от друг бранш.
 
 Ако стойността за нужния период липсва в справочника или е маркирана като непотвърдена,
 имаш два допустими хода:
@@ -53,7 +55,7 @@ metadata:
 ## Второ правило: изчисленията стават с код
 
 Ведомостта е таблица със стотици редове. Не смятай наум и не смятай "на око" по извадка.
-Напиши Python скрипт (pandas / openpyxl), който:
+Напиши Python скрипт с openpyxl (pandas само ако е наличен — не разчитай на него), който:
 
 - чете файла,
 - прилага проверките от `references/proverki.md` ред по ред,
@@ -237,8 +239,8 @@ fs = openpyxl.load_workbook(path, data_only=False)   # формулите
 
 ### Тежестта не може да надхвърли статуса на реда, на който стъпва
 
-Всеки ред в `stavki.md` носи статус: `ДВ`, `официален`, `вторичен`, `за потвърждение` или
-празно. Находката, която стъпва на такъв ред, не може да е по-категорична от него:
+Всеки ред в `stavki.md` носи статус: `ДВ`, `официален`, `вторичен`, `за потвърждение`,
+`изчислено` или празно. Находката, която стъпва на такъв ред, не може да е по-категорична от него:
 
 | Статус на реда в `stavki.md` | Най-високата допустима тежест |
 | --- | --- |
