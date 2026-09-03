@@ -192,10 +192,25 @@ payroll and maps the findings it reports back onto the manifest.
 python test/eval_skill.py --dry           # what would be sent, paying nothing
 python test/eval_skill.py --seeds 3       # three seeds
 python test/eval_skill.py --seed 42 --model sonnet
+python test/eval_skill.py --regrade       # re-score the saved results, paying nothing
 ```
 
 **It costs money.** A measured run on Opus: 18 turns, about 12 minutes and USD 2.4
 for one seed. Hence it is not in `run_tests.py` and not in CI.
+
+**What a run leaves behind.** Each seed's session runs in `/tmp/trz-eval/seed-<n>`
+(`pair-<n>` for the two-month fixture) and leaves its transcript there — `stream.jsonl`,
+`findings.json`. A directory holding a transcript was paid for, so a new run of the same
+seed is refused unless `--overwrite` is given; `--dry` builds into `dry-seed-<n>` and
+never touches it. Since 2026-09-03 every seed is also written, the moment it is graded, to
+`/tmp/trz-eval/results/<mode>-<seed>.json`: the manifest, the findings, the grades, the
+cost, and three signatures — of the skill in the working tree, of the keyword universe
+and of the fixture generator — so a saved score cannot be mistaken for a score of the
+current text. Ctrl-C mid-batch prints the summary over the seeds already finished and
+exits 130; nothing paid for is lost. `--regrade` re-scores every saved file against the
+*current* keywords, prints which expectations changed status per seed and the summary,
+and regenerates nothing — the way to see what a keyword change does to a run without
+paying for the run again.
 
 **It paid for itself on the first graded run.** Seed 7 scored 7 of 7, and among the
 findings it reported that were *not* injected was this one: the sick pay for the first
@@ -261,22 +276,36 @@ Three decisions in its construction are worth knowing.
 
 **Isolation.** The model gets a directory in `/tmp` with two files: the workbook
 and `dogovori.csv`, holding the contracted salaries and supplement percentages —
-what an auditor legitimately has. The manifest stays in the repository, the
-repository is not passed with `--add-dir`, and the openpyxl environment is a
-separate venv outside it. The reason is blunt: `test/` holds a full implementation
-of every check and a manifest with the answers. A run that reads those measures
-reading, not expertise.
+what an auditor legitimately has. The manifest — the answer key — is deleted from
+`test/tmp` the moment the generator writes it and lives only in the harness process
+(and, graded, in the results file, which the session cannot see); the repository is
+not passed with `--add-dir`, and the openpyxl environment is a separate venv outside
+it. Bash is allowed for that venv's python and `ls` only. The reason is blunt: `test/`
+holds a full implementation of every check. A run that reads it measures reading,
+not expertise.
 
 That isolation is not complete, and the harness says so. The skill is installed as
 a symlink into the same repository and the model legitimately reads its reference
 files, so a path to `test/` exists and cannot be closed without closing the skill.
-So the whole tool stream is recorded and screened: a run that reached the answers
-is reported as tainted and kept out of the statistics.
+So the whole tool stream is recorded and screened twice over: the tool *inputs* for
+a path into the checking code, and the tool *results* for the answer key's own
+vocabulary — the manifest's `"expected"` key and the scenario identifiers, which
+occur nowhere the session may legitimately read. A run that reached either is
+reported as tainted and kept out of the statistics. `--selftest` proves the screen
+on a synthetic transcript, and proves that the skill's own files do not trip it.
 
 **The scenario catalogue is not given to the model.** Otherwise the task becomes
 label matching. All that is asked for is a list of findings: where, severity, one
 sentence and the two figures. The mapping happens in the harness, by row and by
 keywords in the description.
+
+The pair prompt broke that rule until 2026-09-03: after "check each month and the two
+against each other" it went on to name "the paid-leave base, the thresholds and the norm
+on each sheet, the movement of salaries between the months" — the three categories the
+fixture injects, in order. The sentence is gone. **Pair scores from before that date are
+not comparable with those after it**: the earlier ones measured how well the skill
+follows a hint, the later ones whether it looks there unprompted. The first live pair
+run (01–02.09.2026) is such an earlier score.
 
 **The result is three numbers, not one.** The keywords are judgement, not
 measurement, and are reported as such:
@@ -286,6 +315,12 @@ measurement, and are reported as such:
 | located | was a defect reported on this row at all — objective |
 | identified | does the description match what was injected — by keyword, visible in `eval_skill.py` — **and** does the finding assert a defect: severity `нарушение`, `риск` or `дефект`, and a sentence that does not deny it. A `бележка` saying the row is correct stands on the right row and mentions the right word; it is „located", not „identified" |
 | unattributed | everything the model found that was not injected |
+
+Every keyword entry has at least two groups, and one of them names what is *wrong* —
+the direction, the reason, the shape of the mistake. An entry naming only the subject
+scored the opposite finding as identified („ТЗПБ е приложен над дължимия процент" for
+a rate applied *below* the due one); `--selftest` holds those sentences and fails the
+moment one of them scores again.
 
 The unattributed ones are **not counted automatically as false positives**; they
 are printed for review. The generated payroll is random and some of what the model
@@ -323,13 +358,19 @@ Three separate questions, because they fail separately:
 half-year" presupposes a published cap for this year to be wrong against; with no rates
 there is nothing to be wrong about, and the finding the skill owes is that it cannot tell.
 
-**The grading is itself tested, for free.** `--selftest` builds six synthetic reports — a
-skill that refused, one that guessed a rate, one that went silent, one that did both
-wrong, and the two phrasings a live run actually produced — and asserts the three checks
-separate them. It runs in CI. The reason is that the run it guards costs real money and a
-quarter of an hour, and a grader that passes everything is much the likeliest way for a
-check like this to be quietly useless; without the self-test that would be discovered
-only after paying for it.
+**The grading is itself tested, for free.** `--selftest` builds thirteen synthetic
+reports — a skill that refused, one that guessed a rate, one that went silent, one that
+did both wrong, the two phrasings a live run actually produced, three guesses worded
+with the adjective a few words from its noun ("минималната заплата за 2027 г.",
+"максималния размер на осигурителния доход", "минималното месечно възнаграждение", one
+of them graded "Нарушение" with a capital), and four gaps that are not the gap under
+test ("няма формула за 07.2027", "няма посочена часова ставка", a gap and a rate in two
+unrelated sentences, two years with no rate between them) — and asserts the three checks
+separate them. The third check requires the gap and the rate it concerns in one clause.
+It runs in CI. The reason is that the run it guards costs real money and a quarter of an
+hour, and a grader that passes everything is much the likeliest way for a check like this
+to be quietly useless; without the self-test that would be discovered only after paying
+for it.
 
 **First live run: 3/3, and the grader needed fixing anyway.** Seed 3, July 2027, USD 2.44.
 Six of six rate-free defects found, nothing asserted as `нарушение` on a rate, and the

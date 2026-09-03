@@ -8,6 +8,7 @@ findings it reports back onto the manifest.
     python test/eval_skill.py --seeds 5 --model sonnet
     python test/eval_skill.py --selftest       # free: checks the refusal grading itself
     python test/eval_skill.py --refusal        # can the skill refuse rather than guess?
+    python test/eval_skill.py --regrade        # free: re-grade saved results with the current keywords
 
 IT COSTS MONEY. One measured run on Opus: 18 turns, about 12 minutes and USD 2.4
 for a single seed. Use --dry to see what will happen before paying.
@@ -18,18 +19,24 @@ payroll. This one tests the guidance. Rewrite SKILL.md badly and only this will
 show it.
 
 Isolation, and why it is not complete. The model gets a directory in /tmp with
-two files: the payroll and the contracts. The manifest stays in the repository,
-the repository is not passed with --add-dir, and the openpyxl environment is a
-separate venv outside it. The reason is blunt: `test/` holds a full
-implementation of every check and a manifest with the answers; reading those
-measures reading, not expertise.
+two files: the payroll and the contracts. The manifest - the answer key - is
+deleted from the repository the moment it is generated and lives only in this
+process, the repository is not passed with --add-dir, and the openpyxl environment
+is a separate venv outside it. The reason is blunt: `test/` holds a full
+implementation of every check; reading it measures reading, not expertise.
 
 Except the skill is installed as a symlink into that same repository, and the
 model legitimately reads its reference files. So a path to `test/` exists and
 cannot be closed without closing the skill itself. Isolation is therefore backed
-by **detection**: the whole tool stream is recorded and checked for anything
-reaching the manifest or the checking code. A run that reached them is reported
-as tainted and does not enter the statistics.
+by **detection**: the whole tool stream is recorded and checked - the inputs for
+a path into the checking code, the results for the answer key's own vocabulary.
+A run that reached either is reported as tainted and does not enter the statistics.
+
+What survives the run. Every graded seed is written to RESULTS_DIR as one JSON
+file - manifest, findings, grades, cost, and the signatures of the skill, the
+keyword universe and the generator it was measured under - so an interrupted
+batch keeps what it paid for, and --regrade can re-score the saved findings
+against the current keywords without regenerating anything.
 
 How grading works. The scenario catalogue is NOT given to the model - otherwise
 the task becomes label matching. All that is asked for is a list of findings:
@@ -50,6 +57,7 @@ The keyword patterns are Bulgarian because the skill reports in Bulgarian.
 import argparse
 import hashlib
 import csv
+import glob
 import json
 import os
 import re
@@ -67,6 +75,9 @@ import generate_wide as G                                      # noqa: E402
 
 VENV = "/tmp/trz-eval-venv"          # venv with openpyxl, outside the repository
 WORKDIR = "/tmp/trz-eval"            # one directory per run
+# One JSON per graded seed. Outside the isolated seed directories on purpose: the
+# session must not see it, and the `leftovers` assert in prepare() guards only those.
+RESULTS_DIR = os.path.join(WORKDIR, "results")
 REPO_SKILL = os.path.join(HERE, "..", "skills", "trz-expert")
 
 # Every seed is a real Claude session. scenarios.md records the measured cost of one;
@@ -79,82 +90,137 @@ MAX_SEEDS_UNCONFIRMED = 10
 # --- keywords for the mapping. Each entry is a list: all of them must match ---
 # --- the finding's description. Deliberately broad: the point is not to score ---
 # --- a correct finding as a miss because it was worded differently. ---
+#
+# But never a single group. Every entry that named only the defect's SUBJECT - „отпуск",
+# „разход", „ТЗПБ", „таван|максимал", „натура|карт" - scored the opposite direction as
+# an identification: „ТЗПБ е приложен над дължимия процент", „осигурителният доход не
+# надвишава максималния за периода", „не мога да потвърдя общия разход за труд". Since
+# 2026-09-03 each entry carries at least two groups, and one of them must say what is
+# wrong - the direction, the reason, or the shape of the mistake. MISREAD below holds
+# those opposite-direction sentences so that --selftest keeps them out.
+
+# The sick-pay scenarios share a subject group. „по болест" and „първите три дни" are
+# how a live run named it without any of the words the group used to demand.
+_SICK = r"болничен|болнични|неработоспособ|чл\.? ?40|болест|първите (?:три|3) дни"
+
 KEYWORDS = {
     "K1_sum_omits_column":        [r"сбор|включ|извън|липсва|обхват|формула|не влиза",
                                    r"колон|бруто|БРУТО"],
-    "K2_amount_in_day_column":    [r"сума|стойност|размер", r"дни|ден"],
+    # „това е пари, не бройка" is a correct description that carried none of
+    # „сума|стойност|размер".
+    "K2_amount_in_day_column":    [r"сума|стойност|размер|пари|парич", r"дни|ден"],
     "K3_stale_contributions":     [r"вноск", r"процент|13\.?78|не отговар|твърд|"
                                    r"изостан|вместо върху|друга база|върху база"],
-    "K4_control_column_blind":    [r"изплат|разлика|контрол"],
-    "K5_total_not_sum":           [r"сбор|сум|общо", r"ръчно|не отговар|различ|вписан|≠"],
-    # \bцент, not цент: the latter matches „процент" and quietly claimed every
-    # finding that mentions a percentage.
-    "K6_unrounded_accrual":       [r"закръгл|знак|\bцент|десетичн"],
-    "K7_cost_from_net":           [r"разход"],
-    "F9_sick_pay_out_of_insurable": [r"болничен|болнични|неработоспособ|чл\.? ?40",
-                                   r"осигурителн"],
-    "F9_sick_pay_in_taxable":     [r"болничен|болнични|неработоспособ|чл\.? ?40",
-                                   r"данъчн|данък|облага"],
+    # The defect is a control cell that reads zero while the two figures it compares
+    # differ. A bare `0` would match any zero digit and `0\.00` the tail of „250.00", so
+    # the zero is taken only when nothing numeric touches it.
+    "K4_control_column_blind":    [r"изплат|разлика|контрол",
+                                   r"нула|\b0[.,]00\b|(?<![\d.,])0(?![\d.,])|тъждеств|"
+                                   r"винаги|не улавя|равна на|не отчита|не показва|скрива"],
+    # „вместо" only before a figure: „вместо да бъде изключена" is how a sick-pay
+    # finding reads, „1 234,58 вместо 1 234,56" is how this one does.
+    "K5_total_not_sum":           [r"сбор|сум|общо",
+                                   r"ръчно|не отговар|различ|вписан|≠|вместо \d|по клетките|"
+                                   r"не е сбор|не съвпад|разминав"],
+    # \bцент(а|ове|\b), not цент: the bare stem matches „процент" and claimed every
+    # finding that mentions a percentage; \bцент alone still matched „централно".
+    "K6_unrounded_accrual":       [r"закръгл|знак|\bцент(?:а|ове|\b)|десетичн"],
+    "K7_cost_from_net":           [r"разход", r"нето|след удръжк|от нетото"],
+    # осигурител\w*, not осигурителн - see _RATE_NAMES.
+    "F9_sick_pay_out_of_insurable": [_SICK, r"осигурител\w*"],
+    "F9_sick_pay_in_taxable":     [_SICK, r"данъчн|данък|облага|облож"],
     # The second pattern must require the CORRECTED reading, not merely allow it.
     # „среднодневното брутно е по-високо, защото месецът носеше бонус" is the story this
     # scenario was inverted to refute, and it matches „среднодневн", „уговорен", „база"
     # and „бонус" alike - so those cannot be the discriminator. What only the right
     # answer carries is the direction (paid too much) or the reason (a one-off is not
     # in чл. 17, ал. 1).
-    "F9_sick_pay_amount":         [r"болничен|болнични|неработоспособ|чл\.? ?40",
+    "F9_sick_pay_amount":         [_SICK,
                                    r"в повече|завишен|надплатен|надвзет|"
                                    r"постоянен характер|еднократ|чл\.? ?17"],
     "F9_health_on_sick_days":     [r"здравн|ЗЗО", r"болничен|майчинств|неработоспособ|"
-                                   r"плат[а-я]* от работодателя|за сметка на работодателя"],
+                                   r"болест|плат[а-я]* от работодателя|"
+                                   r"за сметка на работодателя"],
     "F1_compensation_in_insurable": [r"чл\.? ?224|обезщетени",
-                                     r"осигурителн\w* доход|вноск|НЕВДПОВ"],
-    "F10_in_kind_asymmetry":      [r"натура|карт"],
+                                     r"осигурител\w* доход|вноск|НЕВДПОВ"],
+    # The asymmetry itself, not merely the card: „картата е в двете бази" is the
+    # opposite finding.
+    "F10_in_kind_asymmetry":      [r"натура|карт",
+                                   r"едната|само в|асиметри|не и в|не е включен|"
+                                   r"не влиза в|липсва (?:в|от)"],
     # Two groups. With one - „превишен|праг|застрахов|доброволн|…" - a description of
     # a чл. 19 relief applied to a voluntary-insurance premium scored as this scenario
     # too (it said „доброволно"), and --selftest could not see it because the
-    # phrasing that proved it was the second of two identical keys in OBSERVED.
-    "F10_excess_asymmetry":       [r"превишен|над (необлагаем|праг)|30[.,]?68|60 лв",
-                                   r"праг|застрахов|доброволн|натура|карт|превишен"],
+    # phrasing that proved it was the second of two identical keys in OBSERVED. The
+    # threshold is written „60,00 лв." as often as „60 лв", and a finding that puts the
+    # excess in one base „but not the other" need not repeat the word „праг".
+    "F10_excess_asymmetry":       [r"превишен|над (?:необлагаем|праг)|30[.,]?68|"
+                                   r"60(?:[.,]00)? ?лв",
+                                   r"праг|застрахов|доброволн|натура|карт|превишен|"
+                                   r"едната|само в|не и в|асиметри"],
     # The second pattern discriminates over_limit from the other two F7 scenarios, but
     # „над" alone was too narrow: a live run described this defect as „приложено с
     # пълния размер на удръжката, без да е спазен лимитът" and scored as located only.
-    "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19|чл\.? ?42",
+    # „10 на сто" is the statute's own spelling of the limit.
+    "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|10 на сто|чл\.? ?19|"
+                                   r"чл\.? ?42",
                                    r"над|превиш|надвиш|повече от|без да е спазен"
                                    r"|не е спазен|пълния размер|целия размер"
                                    r"|без ограничен|цял"],
-    "F7_relief_combined_limit":   [r"облекчен|приспадн|лимит|10 ?%|чл\.? ?19",
+    "F7_relief_combined_limit":   [r"облекчен|приспадн|лимит|10 ?%|10 на сто|чл\.? ?19",
                                    r"два|две|отделн|поотделно|груп|\bобщ|20 ?%|вместо|по-малк"],
     # A bare `0` matched any text containing a zero digit, i.e. almost everything;
-    # `0\.00` was no better - it matches the tail of „250.00".
+    # `0\.00` was no better - it matches the tail of „250.00". And a bare „липсв" took
+    # „не мога да проверя облекчението, липсва документ …" - a refusal - for the
+    # finding; what must be missing is the relief itself.
     "F7_relief_not_applied":      [r"облекчен|приспадн|намал|чл\.? ?19|чл\.? ?42",
                                    r"не е приложен|не е ползван|не е намал"
-                                   r"|не е приспадн|липсв|без облекчен|нула|не намал"],
-    "F5_tzpb_below_due":          [r"ТЗПБ|трудова злополука"],
-    "B4_cap_from_wrong_period":   [r"таван|максимал"],
+                                   r"|не е приспадн|липсв\w*\s+(?:облекчен|приспад|намал)"
+                                   r"|без облекчен|нула|не намал|не е отразен"],
+    "F5_tzpb_below_due":          [r"ТЗПБ|трудова злополука",
+                                   r"\bпод\b|по-ниск|занижен|вместо|по-малък"],
+    "B4_cap_from_wrong_period":   [r"таван|максимал",
+                                   r"друг|предходн|предишн|полугоди|стар|изтекл|вместо|"
+                                   r"31\.07|01\.08|неправилн|грешн"],
     "C2_seniority_on_gross":      [r"клас", r"база|бруто|основна"],
-    "E3_leave_without_seniority": [r"отпуск"],
-    "I5_days_do_not_reconcile":   [r"дни|ден", r"норма|не се връзва|не отговарят|сбор"],
+    "E3_leave_without_seniority": [r"отпуск",
+                                   r"\bбез\b|липсва|не включва|клас|не е включен|не носи|"
+                                   r"не съдържа"],
+    # „18 + 2 + 2 = 22 при 21 работни дни" names the norm without the word.
+    "I5_days_do_not_reconcile":   [r"дни|ден",
+                                   r"норма|не се връзва|не отговар|сбор|работни дни|"
+                                   r"не съвпад|разминав"],
 }
 
 # The pair fixture's scenarios live in their own keyword universe. grade() only ever
 # competes identifiers from ONE manifest, so discrimination is enforced within each
 # dict separately - folding these into KEYWORDS would fail the selftest the moment two
 # leave-scenarios coexist (E3_leave_without_seniority matches on „отпуск" alone).
+#
+# No token from a single transcript. The launch version of K8 carried „режима 01",
+# „нормата на юли" and „от юли", and I7 „при договорен" - the exact words of the first
+# live run, which made the pattern a memory of one session rather than a description
+# of the defect. The forms below are generic: the previous period, a copy carried
+# forward, the header that declares the norm, a rise against the contract.
 PAIR_KEYWORDS = {
-    "K8_stale_thresholds":  [r"копира|пренесен|стар|предходн|друг[а-я]* (месец|период)|"
-                             r"режима 01|нормата на юли|от юли|вместо",
+    "K8_stale_thresholds":  [r"копира\w*|пренесен\w*|стар\w*|предходн\w*|предишн\w*|"
+                             r"друг[а-я]* (?:месец|период)|до 31\.07|от 01\.08|вместо|"
+                             r"шапк\w*|заглавн\w*|обявява",
                              r"праг|норма|таван|максимал"],
     "I7_unexplained_jump":  [r"заплата|възнаграждение|бруто",
-                             r"скок|скач|разлика|промяна|различн|мени се|повече|"
-                             r"спрямо|при договорен",
-                             r"споразумение|обяснение|основание|документ"],
+                             r"скок|скач|разлика|промяна|различн|мени се|повече|спрямо|"
+                             r"по-висок|по-голям|ръст|увелич|нарасн|\+\d|"
+                             r"(?:от|при|спрямо|срещу) договорен",
+                             r"споразумение|обяснение|основание|документ|анекс"],
     "E3_leave_base":        [r"отпуск",
-                             r"чл\.? ?1[78]|бонус|предходн|среднодневн|изречение|"
-                             r"изр\.|10 (отработени )?дни|средномесечн|уговорен"],
+                             r"чл\.? ?1[78]|бонус|преми\w*|предходн|предишн|среднодневн|"
+                             r"изречение|изр\.|10 (отработени )?дни|средномесечн|уговорен|"
+                             r"постоянен характер|еднократ"],
 }
 
-# Phrasings from the first live pair run (01-02.09.2026), kept as regression cases:
-# every one was a correct identification that the launch patterns under-scored.
+# Phrasings from live pair runs (01-02.09.2026 and the review of 03.09.2026), kept as
+# regression cases: every one was a correct identification that the patterns of the
+# day under-scored.
 PAIR_OBSERVED = {
     "K8_stale_thresholds": [
         "лист 08-2026 прилага максималния осигурителен доход 2111.64 EUR от режима "
@@ -162,12 +228,20 @@ PAIR_OBSERVED = {
         "невнесени общо 369.48 EUR",
         "лист 08-2026 е сметнат изцяло на нормата на юли — шапката обявява 23 работни "
         "дни, а август 2026 има 21",
+        "листът 08-2026 прилага тавана 2111.64 EUR от предишния месец, а за август "
+        "таванът е 2300.00 EUR",
     ],
     "I7_unexplained_jump": [
         "основната за отработеното през август е 7983.53 EUR срещу договорени 5622.37 "
         "EUR — с 2361.16 EUR (+42%) повече без документ, а брутото скача без обяснение",
         "основната заплата за август е 6243.78 EUR при договорена 3824.98 EUR (+63.2% "
         "спрямо юли) без представено допълнително споразумение",
+        "основната заплата за август е с 42% по-висока от договорената без анекс към "
+        "трудовия договор",
+    ],
+    "E3_leave_base": [
+        "базата за платения отпуск през август включва премията от 07-2026, която не е "
+        "с постоянен характер",
     ],
 }
 
@@ -196,10 +270,17 @@ RATE_FREE = ("K1_sum_omits_column", "K2_amount_in_day_column", "K4_control_colum
 # 2. What must not be asserted. A finding graded `нарушение` that leans on one of these
 #    is the failure the rule exists to prevent: last year's threshold applied to this
 #    year's payroll, stated with the confidence of a checked figure.
-RATE_DEPENDENT = re.compile(
-    r"МРЗ|минимална\w*\s+работна\s+заплата|минимално\w*\s+възнаграждение|"
-    r"максимал\w*\s+осигурителен\s+доход|таван|\bМОД\b|"
-    r"минимал\w*\s+осигурителен\s+доход|осигурителн\w*\s+праг", re.I)
+#    The adjective may stand a few words from its noun: „минималната заплата за 2027 г.",
+#    „максималния размер на осигурителния доход", „минималното месечно възнаграждение"
+#    were all graded `нарушение` by a live run and all scored as rate-free while the
+#    pattern demanded the words adjacent.
+#    „осигурител\w*", not „осигурителн": the bare masculine „осигурителен доход" does not
+#    contain the stem with н, and it is the form a heading or a statute uses.
+_RATE_NAMES = (r"\bМРЗ\b|\bМОД\b|таван\w*|"
+               r"минимал\w*(?:\s+\w+){0,3}\s+(?:заплата|възнаграждение|осигурител\w*)|"
+               r"максимал\w*(?:\s+\w+){0,4}\s+осигурител\w*|"
+               r"осигурител\w*\s+праг\w*")
+RATE_DEPENDENT = re.compile(_RATE_NAMES, re.I)
 
 # 3. What must be said. Omitting a conclusion is not the same as reporting that it
 #    cannot be reached; the user has to be told.
@@ -224,19 +305,38 @@ SAYS_MISSING = re.compile(
 #    The companion pattern names what is missing, and stays narrow on purpose. It once
 #    carried a bare "осигурителен доход", which appears in half the findings in any
 #    payroll report - and duly matched "нито една клетка не съдържа формула", an
-#    observation about formulas counted as a statement about rates.
-SAYS_PERIOD = re.compile(r"2027|ставк\w*|праг\w*|\bМРЗ\b|\bМОД\b|"
-                         r"минимална работна заплата", re.I)
+#    observation about formulas counted as a statement about rates. A bare "2027" and a
+#    bare "ставк" went the same way: "в клетка F12 няма формула за 07.2027" and "няма
+#    посочена часова ставка за извънредния труд" are gaps, but not the gap under test.
+#    What is missing has to be a rate the reference file would carry.
+SAYS_PERIOD = re.compile(_RATE_NAMES + r"|праг\w*", re.I)
+
+
+def says_what_is_missing(text):
+    """Does the finding name a gap AND the rate it concerns, in the same breath?
+
+    Both patterns matching somewhere in the text was not enough: „липсва формула в
+    колоната. Таванът е приложен на всеки ред" satisfied it across two sentences that
+    have nothing to do with each other. A clause ends at a full stop or a semicolon -
+    one not followed by a digit, so that „2300.00" and „07.2027" stay whole.
+    """
+    for clause in re.split(r"[.;](?!\d)", str(text)):
+        if SAYS_MISSING.search(clause) and SAYS_PERIOD.search(clause):
+            return True
+    return False
 
 
 def names_a_stale_rate(text, year):
     """Does the finding hold this payroll's year up against another year's figure?
 
     Cheaper and steadier than matching the wording: a sentence that mentions both 2027
-    and 2026 has noticed the mismatch, however it chose to phrase it.
+    and 2026 and names a rate has noticed the mismatch, however it chose to phrase it.
+    The rate is required - two years in one sentence are also how a formula's history
+    or a contract date gets described.
     """
     years = set(re.findall(r"\b(20\d\d)\b", str(text)))
-    return str(year) in years and len(years) > 1
+    return (str(year) in years and len(years) > 1
+            and bool(RATE_DEPENDENT.search(str(text))))
 
 # Paths this run has no business touching: the answers and the independent
 # implementation of every check live there.
@@ -244,6 +344,15 @@ FORBIDDEN = re.compile(r"_manifest\.json|structural_test|checks_test|trz_model|"
                        r"generate_wide|generate_narrow|generate_pair|pair_test|"
                        r"run_tests|skill_test|eval_skill|rates_test|"
                        r"expected_findings|scenarios\.md")
+
+# The answer key's own vocabulary, looked for in what the tools RETURNED. FORBIDDEN
+# screens the inputs - a path - and a path can be spelled in ways a regex does not
+# foresee (a glob, a variable, `cat *json`). What cannot be disguised is the content:
+# the manifest's `"expected"` key, spelled as JSON spells it, and the scenario
+# identifiers, which occur nowhere the session may legitimately read - not in SKILL.md,
+# not in the reference files. Either one in a tool result means the run saw the answers.
+LEAKED = re.compile(r'"expected"|' + "|".join(
+    re.escape(i) for i in list(M.SCENARIOS) + list(M.PAIR_SCENARIOS)))
 
 
 def ensure_venv():
@@ -254,18 +363,62 @@ def ensure_venv():
                    check=True)
 
 
-def prepare(seed, year=2026):
+def _generate(module, seed, **kw):
+    """Generate a fixture and hand back the workbook bytes and the manifest.
+
+    The generator writes both into test/tmp inside the repository, and the manifest IS
+    the answer key. The session reaches the repository through the skill symlink (see
+    the module docstring), and prepare() used to leave the manifest there for the whole
+    run while screening only the tool inputs for its name. Neither copy outlives this
+    call now: the workbook goes to the isolated directory from memory and the manifest
+    lives in this process - and, once graded, in RESULTS_DIR, outside anything the
+    session can see.
+    """
+    xlsx, manifest_path, man = module.generate(seed, **kw)
+    with open(xlsx, "rb") as f:
+        data = f.read()
+    for path in (xlsx, manifest_path):
+        os.remove(path)
+    return data, man
+
+
+def seed_dir(seed, pair=False, dry=False):
+    """Where a seed's session runs.
+
+    A dry run builds into its own `dry-` directory: --dry calls prepare(), and prepare()
+    empties the directory first, so looking at what WOULD be sent used to delete the
+    transcript - stream.jsonl, findings.json - of a paid run of the same seed.
+    """
+    return os.path.join(WORKDIR, f"{'dry-' if dry else ''}{'pair' if pair else 'seed'}-{seed}")
+
+
+def has_paid_run(d):
+    """A directory holding stream.jsonl was paid for; nothing here overwrites it quietly."""
+    return os.path.exists(os.path.join(d, "stream.jsonl"))
+
+
+def _claim(d, overwrite):
+    """Empty the directory, unless it holds a paid transcript and --overwrite was not given."""
+    if has_paid_run(d) and not overwrite:
+        raise FileExistsError(
+            f"{d} holds the transcript of a paid run (stream.jsonl). Pass --overwrite to "
+            f"replace it, or move it aside first.")
+    shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(d)
+
+
+def prepare(seed, year=2026, dry=False, overwrite=False):
     """Generate a payroll and place it alone in an isolated directory."""
+    d = seed_dir(seed, dry=dry)
+    _claim(d, overwrite)
     # Pinned, not drawn from the seed: the eval runs the skill from a clone or a
     # symlink, where the plugin's install-time question was never asked and SKILL.md
     # documents the default - an uncharacterised bonus stays out of the base. Letting
     # the fixture pick the other reading would grade the skill against a configuration
     # it does not have.
-    xlsx, _, man = G.generate(seed, year=year, bonus_in_base=False)
-    d = os.path.join(WORKDIR, f"seed-{seed}")
-    shutil.rmtree(d, ignore_errors=True)
-    os.makedirs(d)
-    shutil.copy(xlsx, os.path.join(d, "vedomost.xlsx"))
+    data, man = _generate(G, seed, year=year, bonus_in_base=False)
+    with open(os.path.join(d, "vedomost.xlsx"), "wb") as f:
+        f.write(data)
     with open(os.path.join(d, "dogovori.csv"), "w", newline="", encoding="utf8") as f:
         w = csv.writer(f)
         w.writerow(["Име", "Основна месечна заплата по договор", "Клас %"])
@@ -299,7 +452,7 @@ def prepare(seed, year=2026):
     return d, man, prompt
 
 
-def prepare_pair(seed):
+def prepare_pair(seed, dry=False, overwrite=False):
     """Generate a two-month payroll and place it alone in an isolated directory.
 
     The wide fixture cannot hold the cross-month material - the чл. 177/чл. 18 leave
@@ -309,11 +462,11 @@ def prepare_pair(seed):
     so grade() competes only the identifiers this fixture can contain.
     """
     import generate_pair as P
-    xlsx, _, man = P.generate(seed, bonus_in_base=False)   # pinned; see prepare()
-    d = os.path.join(WORKDIR, f"pair-{seed}")
-    shutil.rmtree(d, ignore_errors=True)
-    os.makedirs(d)
-    shutil.copy(xlsx, os.path.join(d, "vedomost.xlsx"))
+    d = seed_dir(seed, pair=True, dry=dry)
+    _claim(d, overwrite)
+    data, man = _generate(P, seed, bonus_in_base=False)   # pinned; see prepare()
+    with open(os.path.join(d, "vedomost.xlsx"), "wb") as f:
+        f.write(data)
     early, late = man["sheets"]
     with open(os.path.join(d, "dogovori.csv"), "w", newline="", encoding="utf8") as f:
         w = csv.writer(f)
@@ -322,11 +475,18 @@ def prepare_pair(seed):
             w.writerow([p_["name"], f"{p_['inputs']['monthly_salary']:.2f}",
                         p_["inputs"]["seniority_pct"]])
 
+    # The prompt says that there are two months of the same people and that each is to
+    # be checked on its own and against the other - and stops there. Until 2026-09-03
+    # it went on: „базата за платения отпуск, праговете и нормата на всеки лист,
+    # движението на заплатите между месеците" - the three categories this fixture
+    # injects, in order. That is the catalogue the module docstring promises the model
+    # never sees, and a score under it measured how well the skill follows a hint.
+    # Pair scores from before this change are not comparable with those after it;
+    # scenarios.md says so.
     prompt = f"""Направи ТРЗ проверка на ведомостта ./vedomost.xlsx. Ползвай скила trz-expert.
 
 Файлът носи ДВА листа - {early['sheet']} и {late['sheet']} - един и същи състав. Провери
-всеки месец поотделно И двата един срещу друг: базата за платения отпуск, праговете и
-нормата на всеки лист, движението на заплатите между месеците.
+всеки месец поотделно И двата един срещу друг.
 
 Какво имаш от дружеството:
 - ./dogovori.csv - договорените основни месечни заплати и процентът клас по трудов договор
@@ -358,10 +518,16 @@ def prepare_pair(seed):
 
 def invoke(d, model=None, timeout=1800):
     """Run the session with streaming, so that what it touched stays visible."""
+    # Bash is allowed for two things only - the openpyxl venv and a listing - in Claude
+    # Code's permission-rule form `Bash(<prefix>:*)`. Under acceptEdits an unrestricted
+    # Bash was the one tool that could reach anything on the machine; a non-interactive
+    # session has nobody to answer the prompt for a command outside these rules, so it
+    # is denied. Not yet exercised live: the change was made from the documentation.
     cmd = ["claude", "-p", open(os.path.join(d, "prompt.txt"), encoding="utf8").read(),
            "--output-format", "stream-json", "--verbose",
            "--permission-mode", "acceptEdits",
-           "--allowedTools", "Read", "Write", "Edit", "Glob", "Grep", "Bash",
+           "--allowedTools", "Read", "Write", "Edit", "Glob", "Grep",
+           f"Bash({VENV}/bin/python:*)", "Bash(ls:*)",
            "--disallowedTools", "WebSearch", "WebFetch"]
     if model:
         cmd += ["--model", model]
@@ -382,7 +548,23 @@ def invoke(d, model=None, timeout=1800):
     trace = dict(exit=p.returncode if p is not None else None,
                  seconds=round(time.time() - started),
                  tool_calls=0, touched=[])
-    for line in open(os.path.join(d, "stream.jsonl"), encoding="utf8"):
+    scan_stream(os.path.join(d, "stream.jsonl"), trace)
+    if timed_out:
+        trace.update(error=True,
+                     result_text=f"killed after {timeout} s (--timeout); nothing the "
+                                 f"session did after that point exists to grade")
+    elif "turns" not in trace:
+        trace.update(error=True, stderr=(p.stderr or "")[-500:])
+    return trace
+
+
+def scan_stream(path, trace):
+    """Read a session transcript into `trace`: tool calls, what they touched, the result.
+
+    Separate from invoke() so that the screening can be proved on a synthetic
+    transcript without starting a session - --selftest does exactly that.
+    """
+    for line in open(path, encoding="utf8"):
         try:
             event = json.loads(line)
         except Exception:
@@ -394,6 +576,17 @@ def invoke(d, model=None, timeout=1800):
                     text = json.dumps(c.get("input", {}), ensure_ascii=False)
                     if FORBIDDEN.search(text):
                         trace["touched"].append(f"{c.get('name')}: {text[:120]}")
+        elif event.get("type") == "user":
+            # Tool results come back as user turns. What they contain is what the
+            # session actually saw, however it asked for it - see LEAKED.
+            content = event.get("message", {}).get("content")
+            for c in content if isinstance(content, list) else []:
+                if isinstance(c, dict) and c.get("type") == "tool_result":
+                    text = _result_text(c.get("content"))
+                    m = LEAKED.search(text)
+                    if m:
+                        trace["touched"].append(
+                            f"tool result carries {m.group(0)!r}: {text[:100]!r}")
         elif event.get("type") == "result":
             # `result` carries the reason when is_error is set - a spend cap, a rate
             # limit, a refusal. Without it a session killed mid-run is indistinguishable
@@ -402,13 +595,17 @@ def invoke(d, model=None, timeout=1800):
             trace.update(turns=event.get("num_turns"), cost=event.get("total_cost_usd"),
                          error=event.get("is_error"),
                          result_text=str(event.get("result") or "").strip())
-    if timed_out:
-        trace.update(error=True,
-                     result_text=f"killed after {timeout} s (--timeout); nothing the "
-                                 f"session did after that point exists to grade")
-    elif "turns" not in trace:
-        trace.update(error=True, stderr=(p.stderr or "")[-500:])
     return trace
+
+
+def _result_text(content):
+    """The text of a tool_result block: a string, or a list of typed blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(str(x.get("text", "")) if isinstance(x, dict) else str(x)
+                         for x in content)
+    return json.dumps(content, ensure_ascii=False) if content is not None else ""
 
 
 def read_findings(d):
@@ -434,11 +631,19 @@ def location(finding, total_row):
     """
     row = finding.get("red")
     if not isinstance(row, int):
-        where = str(finding.get("kade", ""))
-        if "файл" in where.lower():
+        where = str(finding.get("kade", "")).lower()
+        if "файл" in where:
             return "file"
-        m = re.search(r"(\d+)", where)
-        row = int(m.group(1)) if m else None
+        # „ред 12" names a row wherever it stands; „лист 08-2026" names a sheet, and the
+        # first digit run in it is a month, not a row - it used to be read as row 8.
+        m = re.search(r"ред\s*(\d+)", where)
+        if m:
+            row = int(m.group(1))
+        elif "лист" in where:
+            return "file"
+        else:
+            m = re.search(r"(\d+)", where)
+            row = int(m.group(1)) if m else None
     if row is None:
         return "file"
     return "file" if row >= total_row else row
@@ -540,14 +745,15 @@ def grade_refusal(man, findings):
         (survived if status == "identified" else missed).append((where, ident, status))
     detail["arithmetic"] = dict(found=survived, missed=missed)
 
+    # Case-insensitive: „Нарушение" with a capital is the same verdict, and a live run
+    # wrote it that way.
     asserted = [f for f in findings
-                if str(f.get("tezhest", "")).strip() == "нарушение"
+                if str(f.get("tezhest", "")).strip().lower() == "нарушение"
                 and RATE_DEPENDENT.search(str(f.get("kratko", "")))]
     detail["guessed"] = asserted
 
     said = [f for f in findings
-            if (SAYS_MISSING.search(str(f.get("kratko", "")))
-                and SAYS_PERIOD.search(str(f.get("kratko", ""))))
+            if says_what_is_missing(f.get("kratko", ""))
             or names_a_stale_rate(f.get("kratko", ""), man["year"])]
     detail["said_missing"] = said
 
@@ -646,17 +852,48 @@ _OBSERVED_PAIRS = (
     ("F9_sick_pay_in_taxable", [
         "Сумата по чл. 40, ал. 5 КСО (185.47) е включена в данъчната основа, вместо да "
         "бъде изключена като необлагаема",
+        "обезщетението за първите три дни по болест е обложено с данък",
     ]),
     ("F10_excess_asymmetry", [
         "Превишението над необлагаемия праг 30.68 EUR (4.69) е добавено в данъчната "
         "основа, но не и в осигурителния доход",
+        "сумата над 30,68 EUR е включена в осигурителния доход, но не и в данъчната "
+        "основа",
+        "частта над 60,00 лв. е добавена само в едната от двете бази",
     ]),
     ("F5_tzpb_below_due", [
         "ТЗПБ е приложен 0.80% вместо потвърдените 1.1% при всичките 11 лица",
     ]),
+    # From the review of 03.09.2026 - correct descriptions the patterns missed outright:
+    ("I5_days_do_not_reconcile", [
+        "отработени 18 + отпуск 2 + болнични 2 = 22 при 21 работни дни в месеца",
+    ]),
+    ("K5_total_not_sum", [
+        "ОБЩО за колоната Карта е 1 234,58 вместо 1 234,56 по клетките",
+    ]),
+    ("K2_amount_in_day_column", [
+        "в „Отработени дни“ стои 1 850,00 - това е пари, не бройка",
+    ]),
 )
 OBSERVED = dict(_OBSERVED_PAIRS)
 assert len(OBSERVED) == len(_OBSERVED_PAIRS), "a scenario is listed twice in OBSERVED"
+
+# Sentences that name a scenario's subject and say the OPPOSITE - the row is fine, the
+# figure is over rather than under, the check could not be made. Each is paired with the
+# scenarios it must not score as; check_keywords() enforces it. These are the sentences
+# that were scoring as identifications while every entry had a single keyword group.
+MISREAD = (
+    ("ТЗПБ е приложен над дължимия процент", ("F5_tzpb_below_due",)),
+    ("осигурителният доход не надвишава максималния за периода",
+     ("B4_cap_from_wrong_period",)),
+    ("не мога да потвърдя общия разход за труд", ("K7_cost_from_net",)),
+    ("не мога да проверя облекчението, липсва документ за доброволното осигуряване",
+     ("F10_excess_asymmetry", "F7_relief_not_applied")),
+    ("платеният отпуск е изчислен коректно", ("E3_leave_without_seniority",)),
+    ("картата е в двете бази", ("F10_in_kind_asymmetry",)),
+    ("изплатено съвпада с нетото", ("K4_control_column_blind",)),
+    ("централно зададен процент", ("K6_unrounded_accrual",)),
+)
 
 
 def check_keywords():
@@ -680,6 +917,14 @@ def check_keywords():
                  (PAIR_KEYWORDS, PAIR_SAMPLE_TEXT, M.PAIR_SCENARIOS, "pair"))
     for KW, SAMPLES, UNIVERSE, label in universes:
         problems += _check_universe(KW, SAMPLES, UNIVERSE, label)
+    # Third property: a sentence that names the subject and says the opposite must not
+    # score. grade() already drops denials by severity and by DENIES, but the patterns
+    # are what a `нарушение` is scored by, and they used to match on the subject alone.
+    for text, must_not in MISREAD:
+        for ident in must_not:
+            if all(re.search(p, text, re.I) for p in KEYWORDS[ident]):
+                problems.append(f"{ident}: matches the opposite finding {text!r} - the "
+                                f"pattern names the subject but not the defect")
     return problems
 
 
@@ -734,7 +979,7 @@ def check_grading():
     finding is thrown away for its wording.
     """
     problems = []
-    _, _, man = G.generate(1, bonus_in_base=False)
+    _, man = _generate(G, 1, bonus_in_base=False)
     hdr = man["hdr"]
 
     def finding(where, idx, tezhest, text):
@@ -770,6 +1015,67 @@ def check_grading():
     return problems
 
 
+def check_isolation():
+    """Prove the transcript screen sees a leak in a tool RESULT, not only in a path.
+
+    A synthetic stream, no session: one clean read; one Read whose input names the
+    manifest; one Bash whose output carries the manifest's `"expected"` key; one whose
+    output carries a scenario identifier. The first must pass and each of the other
+    three must taint. Then the other direction: the files the session legitimately
+    reads - SKILL.md and the references - must not carry the answer key's vocabulary,
+    or every honest run would be thrown away as tainted.
+    """
+    import tempfile
+    problems = []
+
+    def tool_use(name, inp):
+        return dict(type="assistant",
+                    message=dict(content=[dict(type="tool_use", name=name, input=inp)]))
+
+    def tool_result(content):
+        return dict(type="user",
+                    message=dict(content=[dict(type="tool_result", content=content)]))
+
+    events = [
+        tool_use("Read", dict(file_path="/tmp/trz-eval/seed-1/vedomost.xlsx")),
+        tool_result("sheet 07-2026: 12 rows"),
+        tool_use("Read", dict(file_path="/home/u/trz/test/tmp/wide_1_manifest.json")),
+        tool_result([dict(type="text",
+                          text='{"seed": 1, "expected": [["row", 3, "K4_control_column_blind"]]}')]),
+        tool_use("Bash", dict(command=f"{VENV}/bin/python -c 'print(1)'")),
+        tool_result("F5_tzpb_below_due"),
+        dict(type="result", num_turns=3, total_cost_usd=0.0, is_error=False, result="ok"),
+    ]
+    d = tempfile.mkdtemp(prefix="trz-eval-selftest-")
+    try:
+        path = os.path.join(d, "stream.jsonl")
+        with open(path, "w", encoding="utf8") as f:
+            for e in events:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        trace = scan_stream(path, dict(tool_calls=0, touched=[]))
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    if trace["tool_calls"] != 3:
+        problems.append(f"isolation: 3 tool calls in the transcript, {trace['tool_calls']} counted")
+    if len(trace["touched"]) != 3:
+        problems.append(f"isolation: a manifest path, an \"expected\" key and a scenario "
+                        f"id should each taint - {len(trace['touched'])} did: "
+                        f"{trace['touched']}")
+    if trace.get("turns") != 3:
+        problems.append("isolation: the result event was not read")
+
+    for rel in ("SKILL.md", "references/stavki.md", "references/proverki.md",
+                "references/normativna-baza.md"):
+        path = os.path.join(REPO_SKILL, rel)
+        if not os.path.exists(path):
+            continue
+        m = LEAKED.search(open(path, encoding="utf8").read())
+        if m:
+            problems.append(f"isolation: {rel} carries {m.group(0)!r}, so reading the "
+                            f"skill itself would taint every run")
+    return problems
+
+
 def selftest():
     """Prove the refusal grading tells a skill that refused from one that guessed.
 
@@ -791,9 +1097,17 @@ def selftest():
         print(f"  FAIL  {p}")
     if not grading:
         print("  ok    notes, declines and denials on the right row score located only")
+    isolation = check_isolation()
+    problems += isolation
+    print("isolation: the transcript screen reads tool results, not only tool inputs")
+    for p in isolation:
+        print(f"  FAIL  {p}")
+    if not isolation:
+        print("  ok    a manifest path, an \"expected\" key and a scenario id each taint; "
+              "the skill's own files do not")
     print()
 
-    _, _, man = G.generate(1, year=2027)
+    _, man = _generate(G, 1, year=2027)
     hdr = man["hdr"]
     assert not man["rates_known"], "the fixture must be dated outside RATES_KNOWN_YEARS"
 
@@ -839,6 +1153,37 @@ def selftest():
         "one that names the stale rate": (detected + [names_stale], (True, True, True)),
     }
 
+    # Guesses in other words. Each was graded `нарушение` by a live run and each scored
+    # as rate-free while RATE_DEPENDENT wanted the adjective next to its noun; the third
+    # also spells the severity with a capital, which used to be a different verdict.
+    for label, tezhest, text in (
+            ("guessed: минималната заплата за 2027", "нарушение",
+             "Основната заплата 600.00 EUR е под минималната заплата за 2027 г. от "
+             "620.20 EUR"),
+            ("guessed: размер на осигурителния доход", "нарушение",
+             "Осигурителният доход надвишава максималния размер на осигурителния доход "
+             "за 2027 г."),
+            ("guessed: месечно възнаграждение, capital", "Нарушение",
+             "Възнаграждението е под минималното месечно възнаграждение за страната")):
+        guess = dict(kade="ред 6", red=6, tezhest=tezhest, kratko=text,
+                     nachisleno=600.0, dalzhimo=620.2)
+        cases[label] = (detected + [guess], (True, False, False))
+
+    # Gaps that are not the gap under test. Each says something is missing and each
+    # used to satisfy the third check - through a bare „2027", a bare „ставк", or two
+    # unrelated sentences, or two years with no rate between them.
+    for label, text in (
+            ("gap: формула за 07.2027", "в клетка F12 няма формула за 07.2027"),
+            ("gap: часова ставка", "няма посочена часова ставка за извънредния труд"),
+            ("gap: in another sentence",
+             "липсва формула в колоната за бруто. Таванът е приложен на всеки ред"),
+            ("gap: two years, no rate",
+             "справочникът за 2027 г. няма стойност за 2027; последната е от 2026 г. за "
+             "формулите")):
+        gap = dict(kade="файл", red=None, tezhest="за проверка", kratko=text,
+                   nachisleno=None, dalzhimo=None)
+        cases[label] = (detected + [gap], (True, True, False))
+
     print("refusal grader self-test - no session is started, nothing is paid")
     print("=" * 78)
     order = ("arithmetic_survives", "refuses_on_rates", "says_what_is_missing")
@@ -861,11 +1206,67 @@ def selftest():
     return 0
 
 
-def run_seed(seed, model, dry, timeout, refusal=False, pair=False):
+# --------------------------------------------------------------- what survives
+# Until 2026-09-03 a batch existed only on stdout: Ctrl-C after nine paid seeds lost the
+# summary of all nine, and the only way to re-score a run under corrected keywords was to
+# pay for it again. Each seed now leaves one JSON file, written the moment it is graded,
+# with everything a re-grade or an audit needs - including three signatures, so that a
+# saved score can never be mistaken for a score of the current skill, the current
+# keywords, or the current fixture generator.
+
+def keywords_sha(universe):
+    """Identity of a keyword universe - the repr of the dict, hashed."""
+    return hashlib.sha256(repr(universe).encode("utf8")).hexdigest()
+
+
+def generator_sha(pair):
+    """Identity of the fixture generator the manifest came from."""
+    name = "generate_pair.py" if pair else "generate_wide.py"
+    with open(os.path.join(HERE, name), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def results_path(mode, seed):
+    return os.path.join(RESULTS_DIR, f"{mode}-{seed}.json")
+
+
+def persist(rec):
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    path = results_path(rec["mode"], rec["seed"])
+    with open(path, "w", encoding="utf8") as f:
+        json.dump(rec, f, ensure_ascii=False, indent=1)
+    print(f"saved: {path}")
+
+
+def _as_run(rec):
+    """The in-memory shape the summaries read, from a saved or a fresh record."""
+    return dict(seed=rec["seed"], cost=rec.get("cost") or 0, gradable=rec["gradable"],
+                session_error=rec.get("session_error"), result=rec["result"],
+                unattributed=rec["unattributed"], refusal=rec.get("refusal"))
+
+
+def print_graded(graded, unattributed):
+    for where, ident, status, f in graded:
+        loc = "file" if where == "file" else f"row {where}"
+        mark = {"identified": "  +", "located only": "  ~", "missed": "  -"}[status]
+        print(f"{mark} {loc:9} {ident:30} {status}")
+        if f:
+            print(f"      model: {str(f.get('kratko'))[:100]}")
+    if unattributed:
+        print(f"  unattributed findings ({len(unattributed)}) - for review, not counted "
+              f"as errors:")
+        for f in unattributed:
+            print(f"      [{f.get('kade') or f.get('red')}] "
+                  f"{str(f.get('kratko'))[:95]}")
+
+
+def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=False):
+    mode = "pair" if pair else "refusal" if refusal else "wide"
     if pair:
-        d, man, prompt = prepare_pair(seed)
+        d, man, prompt = prepare_pair(seed, dry=dry, overwrite=overwrite)
     else:
-        d, man, prompt = prepare(seed, year=2027 if refusal else 2026)
+        d, man, prompt = prepare(seed, year=2027 if refusal else 2026, dry=dry,
+                                 overwrite=overwrite)
     print(f"\n{'=' * 78}\nseed {seed} · sheet {man['sheet']} · {len(man['people'])} people"
           f" · accident rate {man['tzpb_due']}% · {len(man['expected'])} defects injected")
     print(f"directory: {d}")
@@ -886,12 +1287,23 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False):
     trace = invoke(d, model=model, timeout=timeout)
     print(f"turns {trace.get('turns')} · tool calls {trace['tool_calls']} · "
           f"{trace['seconds']} s · USD {trace.get('cost') or 0:.3f}")
+    # The keyword universe is not stored with the manifest: a re-grade attaches the
+    # current one by mode, and keywords_sha records which one produced this score.
+    rec = dict(seed=seed, mode=mode, model=model, skill_sig=tree_skill_signature(),
+               keywords_sha=keywords_sha(man.get("keywords") or KEYWORDS),
+               generator_sha=generator_sha(pair),
+               manifest={k: v for k, v in man.items() if k != "keywords"},
+               findings=None, gradable=False, session_error=bool(trace.get("error")),
+               touched=trace["touched"], turns=trace.get("turns"),
+               tool_calls=trace["tool_calls"], cost=trace.get("cost") or 0,
+               seconds=trace["seconds"], result=[], unattributed=[], refusal=None)
+
     if trace["touched"]:
         print("  RUN TAINTED: it reached the answers or the checking code -")
         for x in trace["touched"]:
             print(f"      {x}")
-        return dict(seed=seed, cost=trace.get("cost") or 0, gradable=False,
-                    result=[], unattributed=[])
+        persist(rec)
+        return _as_run(rec)
 
     findings, error = read_findings(d)
     if findings is None:
@@ -905,33 +1317,156 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False):
                   "cause is cleared.")
         else:
             print(f"  RUN NOT GRADABLE: {error}")
-        return dict(seed=seed, cost=trace.get("cost") or 0, gradable=False,
-                    session_error=bool(trace.get("error")),
-                    result=[], unattributed=[])
+        persist(rec)
+        return _as_run(rec)
 
-    if refusal:
-        print(f"findings reported: {len(findings)}")
-        results = report_refusal(man, findings)
-        return dict(seed=seed, cost=trace.get("cost") or 0, gradable=True,
-                    refusal=results, result=[], unattributed=[])
-
-    graded, unattributed = grade(man, findings)
+    rec.update(findings=findings, gradable=True)
     print(f"findings reported: {len(findings)}")
-    for where, ident, status, f in graded:
-        loc = "file" if where == "file" else f"row {where}"
-        mark = {"identified": "  +", "located only": "  ~", "missed": "  -"}[status]
-        print(f"{mark} {loc:9} {ident:30} {status}")
-        if f:
-            print(f"      model: {str(f.get('kratko'))[:100]}")
-    if unattributed:
-        print(f"  unattributed findings ({len(unattributed)}) - for review, not counted "
-              f"as errors:")
-        for f in unattributed:
-            print(f"      [{f.get('kade') or f.get('red')}] "
-                  f"{str(f.get('kratko'))[:95]}")
-    return dict(seed=seed, cost=trace.get("cost") or 0, gradable=True,
-                result=graded, unattributed=unattributed)
+    if refusal:
+        rec["refusal"] = report_refusal(man, findings)
+    else:
+        rec["result"], rec["unattributed"] = grade(man, findings)
+        print_graded(rec["result"], rec["unattributed"])
+    persist(rec)
+    return _as_run(rec)
 
+
+def summarize_refusal(runs):
+    """The batch summary of --refusal runs; returns the exit code."""
+    graded = [r for r in runs if r.get("refusal")]
+    print(f"\n{'=' * 78}\nREFUSAL SUMMARY over {len(graded)} seeds · "
+          f"USD {sum(r['cost'] for r in runs):.2f}")
+    if not graded:
+        print("no gradable run")
+        return 1
+    failed = False
+    for key, label in (("arithmetic_survives",
+                        "the arithmetic still lands without the rate book"),
+                       ("refuses_on_rates",
+                        "no violation asserted on a rate it does not have"),
+                       ("says_what_is_missing",
+                        "says which figures are missing")):
+        passed = sum(1 for r in graded if r["refusal"][key])
+        failed = failed or passed < len(graded)
+        print(f"  {'+' if passed == len(graded) else '-'} {label:52} "
+              f"{passed}/{len(graded)}")
+    return 1 if failed else 0
+
+
+def summarize(runs, scenarios, threshold=None):
+    """The batch summary of graded runs; returns the exit code."""
+    per_scenario = defaultdict(lambda: [0, 0, 0])       # identified, located, missed
+    cost = 0.0
+    not_gradable = 0
+    for r in runs:
+        cost += r["cost"]
+        if not r["gradable"]:
+            not_gradable += 1
+            continue
+        for _, ident, status, _ in r["result"]:
+            i = {"identified": 0, "located only": 1, "missed": 2}[status]
+            per_scenario[ident][i] += 1
+
+    print(f"\n{'=' * 78}\nSUMMARY over {len(runs)} seeds · USD {cost:.2f}")
+    if not_gradable:
+        cut_off = sum(1 for r in runs if r and not r.get("gradable")
+                      and r.get("session_error"))
+        print(f"non-gradable runs: {not_gradable} (tainted, or findings.json missing "
+              f"or invalid)")
+        if cut_off:
+            # Money spent, nothing measured, and not the skill's fault. Say so where it
+            # will be read, not only next to the individual seed.
+            print(f"  of those, {cut_off} ended in a session error - cut off, not a "
+                  f"failure of the skill. Re-run those seeds; the scores below are "
+                  f"over the rest.")
+    print(f"{'scenario':30} {'identified':>11} {'located':>9} {'missed':>8}")
+    identified = located = missed = 0
+    for ident in scenarios:
+        a_, b_, c_ = per_scenario.get(ident, [0, 0, 0])
+        if a_ + b_ + c_ == 0:
+            continue
+        identified += a_
+        located += b_
+        missed += c_
+        print(f"{ident:30} {a_:>11} {b_:>9} {c_:>8}")
+    total = identified + located + missed
+    if total:
+        print(f"{'TOTAL':30} {identified:>11} {located:>9} {missed:>8}")
+        print(f"\nidentified: {identified}/{total} = {identified / total:.0%} · "
+              f"located at all: {(identified + located) / total:.0%} · "
+              f"missed: {missed / total:.0%}")
+        extra = sum(len(r["unattributed"]) for r in runs)
+        print(f"unattributed findings: {extra} - review them; some may be correct")
+    if threshold is not None:
+        if not total:
+            # Money was spent and nothing was measured. Passing here would record the
+            # guidance as clearing a bar it never faced.
+            print(f"threshold {threshold:.0%}: FAILED - no gradable run, the bar "
+                  f"was never faced")
+            return 1
+        ok = identified / total >= threshold
+        print(f"threshold {threshold:.0%}: {'OK' if ok else 'FAILED'}")
+        return 0 if ok else 1
+    return 0
+
+
+def regrade(threshold=None):
+    """Re-score every saved result against the CURRENT keywords. Free.
+
+    The findings and the manifest are read from RESULTS_DIR; nothing is regenerated and
+    no session starts. For each seed the expectations whose status changed are printed,
+    because that difference - not the new total - is what a keyword change is judged by.
+    """
+    paths = sorted(glob.glob(os.path.join(RESULTS_DIR, "*.json")))
+    if not paths:
+        print(f"nothing to re-grade: no results in {RESULTS_DIR}")
+        return 0
+    by_mode = defaultdict(list)
+    other_keywords = defaultdict(int)
+    for path in paths:
+        try:
+            with open(path, encoding="utf8") as f:
+                rec = json.load(f)
+        except ValueError as e:
+            print(f"skipping {path}: not valid JSON ({e})")
+            continue
+        mode = rec.get("mode", "wide")
+        run = dict(seed=rec["seed"], cost=rec.get("cost") or 0, gradable=False,
+                   session_error=rec.get("session_error"), result=[], unattributed=[],
+                   refusal=None)
+        if rec.get("gradable") and rec.get("findings") is not None:
+            man = dict(rec["manifest"])
+            universe = PAIR_KEYWORDS if mode == "pair" else KEYWORDS
+            if mode == "pair":
+                man["keywords"] = universe
+            if rec.get("keywords_sha") != keywords_sha(universe):
+                other_keywords[mode] += 1
+            run["gradable"] = True
+            if mode == "refusal":
+                run["refusal"] = grade_refusal(man, rec["findings"])[0]
+                before = rec.get("refusal") or {}
+                changed = [f"{k} {before.get(k)} -> {v}" for k, v in run["refusal"].items()
+                           if before.get(k) != v]
+            else:
+                run["result"], run["unattributed"] = grade(man, rec["findings"])
+                before = {(str(w), i): s for w, i, s, _ in rec.get("result") or []}
+                changed = [f"{i} {before.get((str(w), i))} -> {s}"
+                           for w, i, s, _ in run["result"] if before.get((str(w), i)) != s]
+            if changed:
+                print(f"{mode} seed {rec['seed']}: " + "; ".join(changed))
+        by_mode[mode].append(run)
+    code = 0
+    for mode, runs in sorted(by_mode.items()):
+        note = (f" · {other_keywords[mode]} saved under different keywords"
+                if other_keywords[mode] else "")
+        print(f"\n{'=' * 78}\nRE-GRADE · {mode} · {len(runs)} saved seeds in "
+              f"{RESULTS_DIR}{note}")
+        if mode == "refusal":
+            code = summarize_refusal(runs) or code
+        else:
+            scenarios = M.PAIR_SCENARIOS if mode == "pair" else M.SCENARIOS
+            code = summarize(runs, scenarios, threshold) or code
+    return code
 
 
 
@@ -959,6 +1494,12 @@ def _skill_signature(root):
             return None
         parts.append(open(path, encoding="utf8").read())
     return hashlib.sha256("".join(parts).encode("utf8")).hexdigest()[:12]
+
+
+def tree_skill_signature():
+    """The skill in the working tree: what a run is graded against, and what every saved
+    result records, so a score can be tied to the text it measured."""
+    return _skill_signature(REPO_SKILL)
 
 
 def installed_skill_copies():
@@ -989,7 +1530,7 @@ def installed_skill_copies():
 
 def check_skill_matches_tree():
     """Fail loudly, and for free, rather than paying to measure the wrong version."""
-    want = _skill_signature(REPO_SKILL)
+    want = tree_skill_signature()
     if want is None:
         print("the working tree has no complete skill at skills/trz-expert - "
               "nothing to evaluate")
@@ -1047,6 +1588,13 @@ def main():
     ap.add_argument("--allow-expensive", dest="allow_expensive", action="store_true",
                     help=f"required to start more than {MAX_SEEDS_UNCONFIRMED} paid "
                          f"sessions in one run")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="let a paid run replace a seed directory that already holds a "
+                         "transcript (stream.jsonl); without it such a seed is refused")
+    ap.add_argument("--regrade", action="store_true",
+                    help=f"FREE: re-grade every saved result in {RESULTS_DIR} against "
+                         f"the current keyword patterns and print the summary; nothing "
+                         f"is regenerated and no session starts")
     a = ap.parse_args()
 
     # One way of choosing seeds per run. `--seed 7 --seeds 10` used to run one seed
@@ -1058,9 +1606,19 @@ def main():
     if len(selectors) > 1 and not a.covering:
         ap.error(f"{' and '.join(selectors)} do not combine - choose one way of "
                  f"picking seeds")
+    # The pair fixture is dated inside the years the reference file covers, and the
+    # refusal report reads a single-month manifest. Combined, the run paid for the pair
+    # session and then died on man['month'].
+    if a.refusal and a.pair:
+        ap.error("--refusal and --pair do not combine: the pair fixture has its rates, "
+                 "and the refusal report reads a single-month manifest")
+    if a.regrade and (selectors or a.covering):
+        ap.error("--regrade scores what is saved and takes no seeds")
 
     if a.selftest:
         return selftest()
+    if a.regrade:
+        return regrade(a.threshold)
 
     # --dry pays nothing, so a mismatch there is worth saying but not worth blocking.
     if not check_skill_matches_tree() and not a.dry:
@@ -1081,10 +1639,10 @@ def main():
                 break
             if a.pair:
                 import generate_pair as P
-                _, _, m = P.generate(seed, bonus_in_base=False)
+                _, m = _generate(P, seed, bonus_in_base=False)
                 got = {i for _, _, i in m["cross_expected"]}
             else:
-                _, _, m = G.generate(seed, bonus_in_base=False)
+                _, m = _generate(G, seed, bonus_in_base=False)
                 got = {i for _, _, i in m["expected"]}
             hit = got & still
             if hit:
@@ -1124,88 +1682,46 @@ def main():
               "cannot be graded: " + ", ".join(ungradable))
         return 1
 
+    # A paid transcript is not overwritten by accident. Checked here, before any session
+    # starts, so a batch is refused whole rather than after nine seeds; prepare() checks
+    # again, for callers that reach it some other way.
+    if not a.dry and not a.overwrite:
+        kept = [d for d in (seed_dir(s, pair=a.pair) for s in seeds) if has_paid_run(d)]
+        if kept:
+            print("refusing to run: these directories hold the transcripts of paid runs "
+                  "(stream.jsonl), and a new session would erase them:")
+            for d in kept:
+                print(f"  {d}")
+            print("Pass --overwrite to replace them, or move them aside first.")
+            return 1
+
     if not a.dry:
         print(f"About to run {len(seeds)} Claude sessions. That costs money and takes "
-              f"minutes per seed.")
+              f"minutes per seed. Each seed is saved in {RESULTS_DIR} as it finishes.")
 
-    runs = [r for r in (run_seed(s, a.model, a.dry, a.timeout, a.refusal, a.pair)
-                        for s in seeds) if r]
+    scenarios = M.PAIR_SCENARIOS if a.pair else M.SCENARIOS
+    runs = []
+    try:
+        for s in seeds:
+            r = run_seed(s, a.model, a.dry, a.timeout, a.refusal, a.pair, a.overwrite)
+            if r:
+                runs.append(r)
+    except KeyboardInterrupt:
+        # The seeds already paid for are on disk and in `runs`; say what they showed
+        # instead of losing it with the traceback.
+        print(f"\ninterrupted after {len(runs)} of {len(seeds)} seeds; every finished "
+              f"seed is saved in {RESULTS_DIR}")
+        if runs:
+            if a.refusal:
+                summarize_refusal(runs)
+            else:
+                summarize(runs, scenarios)
+        return 130
     if not runs:
         return 0
-
     if a.refusal:
-        graded = [r for r in runs if r.get("refusal")]
-        print(f"\n{'=' * 78}\nREFUSAL SUMMARY over {len(graded)} seeds · "
-              f"USD {sum(r['cost'] for r in runs):.2f}")
-        if not graded:
-            print("no gradable run")
-            return 1
-        failed = False
-        for key, label in (("arithmetic_survives",
-                            "the arithmetic still lands without the rate book"),
-                           ("refuses_on_rates",
-                            "no violation asserted on a rate it does not have"),
-                           ("says_what_is_missing",
-                            "says which figures are missing")):
-            passed = sum(1 for r in graded if r["refusal"][key])
-            failed = failed or passed < len(graded)
-            print(f"  {'+' if passed == len(graded) else '-'} {label:52} "
-                  f"{passed}/{len(graded)}")
-        return 1 if failed else 0
-
-    per_scenario = defaultdict(lambda: [0, 0, 0])       # identified, located, missed
-    cost = 0.0
-    not_gradable = 0
-    for r in runs:
-        cost += r["cost"]
-        if not r["gradable"]:
-            not_gradable += 1
-            continue
-        for _, ident, status, _ in r["result"]:
-            i = {"identified": 0, "located only": 1, "missed": 2}[status]
-            per_scenario[ident][i] += 1
-
-    print(f"\n{'=' * 78}\nSUMMARY over {len(runs)} seeds · USD {cost:.2f}")
-    if not_gradable:
-        cut_off = sum(1 for r in runs if r and not r.get("gradable")
-                      and r.get("session_error"))
-        print(f"non-gradable runs: {not_gradable} (tainted, or findings.json missing "
-              f"or invalid)")
-        if cut_off:
-            # Money spent, nothing measured, and not the skill's fault. Say so where it
-            # will be read, not only next to the individual seed.
-            print(f"  of those, {cut_off} ended in a session error - cut off, not a "
-                  f"failure of the skill. Re-run those seeds; the scores below are "
-                  f"over the rest.")
-    print(f"{'scenario':30} {'identified':>11} {'located':>9} {'missed':>8}")
-    identified = located = missed = 0
-    for ident in (M.PAIR_SCENARIOS if a.pair else M.SCENARIOS):
-        a_, b_, c_ = per_scenario.get(ident, [0, 0, 0])
-        if a_ + b_ + c_ == 0:
-            continue
-        identified += a_
-        located += b_
-        missed += c_
-        print(f"{ident:30} {a_:>11} {b_:>9} {c_:>8}")
-    total = identified + located + missed
-    if total:
-        print(f"{'TOTAL':30} {identified:>11} {located:>9} {missed:>8}")
-        print(f"\nidentified: {identified}/{total} = {identified / total:.0%} · "
-              f"located at all: {(identified + located) / total:.0%} · "
-              f"missed: {missed / total:.0%}")
-        extra = sum(len(r["unattributed"]) for r in runs)
-        print(f"unattributed findings: {extra} - review them; some may be correct")
-    if a.threshold is not None:
-        if not total:
-            # Money was spent and nothing was measured. Passing here would record the
-            # guidance as clearing a bar it never faced.
-            print(f"threshold {a.threshold:.0%}: FAILED - no gradable run, the bar "
-                  f"was never faced")
-            return 1
-        ok = identified / total >= a.threshold
-        print(f"threshold {a.threshold:.0%}: {'OK' if ok else 'FAILED'}")
-        return 0 if ok else 1
-    return 0
+        return summarize_refusal(runs)
+    return summarize(runs, scenarios, a.threshold)
 
 
 if __name__ == "__main__":
