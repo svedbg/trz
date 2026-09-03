@@ -169,7 +169,7 @@ Answer key: [`test/expected_findings.md`](test/expected_findings.md).
 **Suite 2 — file construction and base composition.** Payrolls in a wide layout, generated
 from a seed. Every seed changes the company, the people, the salaries, the month, the rate
 regime, the occupational-accident insurance rate (ТЗПБ) and which defects are injected —
-twenty-two scenarios drawn from real audits: the sick-pay compensation sitting in the
+twenty-eight scenarios drawn from real audits: the sick-pay compensation sitting in the
 social-security base and outside the tax base at the same time, an amount typed into a day
 column, a control column that reads zero while money is missing, a total typed by hand, the
 cost of labour computed from net after deductions, the cap from the wrong half of the year, a
@@ -199,8 +199,8 @@ A run passes only when **every** injected defect is found and **no** finding is 
 beyond them. False positives fail the suite exactly like misses: a skill that sees
 violations everywhere is as useless as one that sees none.
 
-Current state, the three generated suites at 3000 seeds: 25 658 injected defects in
-suite 2, 6 866 in suite 3 and 8 994 in suite 4, every one of them found, zero false
+Current state, the three generated suites at 3000 seeds: 25 048 injected defects in
+suite 2, 6 883 in suite 3 and 8 994 in suite 4, every one of them found, zero false
 positives.
 Randomisation earned its keep — it exposed three bugs in the checks themselves, including
 one where five separately rounded contributions drift up to 0.03 from 13.78% of the base and

@@ -190,6 +190,32 @@ KEYWORDS = {
     "I5_days_do_not_reconcile":   [r"дни|ден",
                                    r"норма|не се връзва|не отговар|сбор|работни дни|"
                                    r"не съвпад|разминав"],
+    # The six scenarios that got their mutations on 03.09.2026 (they had checkers and
+    # no generator). Each carries its subject and the shape of the defect; the shape
+    # group is what keeps them apart from the F9/F7/K entries that share a subject.
+    "I1_vertical":                [r"нето|за получаване|изплат",
+                                   r"минус|−|не се връзва|не отговар|не съвпад|разминав|"
+                                   r"различ|аритмет|сверк|не следва от"],
+    # The rate, not a generic mismatch word: an I1 sentence also says „данък" and
+    # „разминаване", and would be credited here. A tax-amount finding names the rate.
+    "F6_tax_amount":              [r"данък|ДДФЛ",
+                                   r"10 ?%|10 на сто|ставк|не е 10|десет на сто|процент"],
+    "A6_base_vs_contract":        [r"договор|споразумени|уговорен",
+                                   r"основн|заплата|възнаграждени",
+                                   r"разминав|различ|не отговар|по-ниск|по-висок|\bпод\b|"
+                                   r"\bнад\b|вместо|друга заплата|друг размер"],
+    "F1_insurable_unexplained":   [r"осигурител\w* доход",
+                                   r"не се обяснява|необясним|никаква комбинация|"
+                                   r"нито една комбинация|не се получава|не следва|"
+                                   r"не може да се изведе|няма обяснение|не отговаря на"],
+    "F6_taxable_unexplained":     [r"данъчн\w* основа",
+                                   r"не се обяснява|необясним|никаква комбинация|"
+                                   r"нито една комбинация|не се получава|не следва|"
+                                   r"не може да се изведе|няма обяснение|никакво третиране"],
+    "F6_compensation_out_of_taxable": [r"чл\.? ?224|обезщетени",
+                                       r"данъчн|облага|данък",
+                                       r"извън|вън от|не е включен|липсва|изключен|"
+                                       r"необлага|не влиза|пропусн|оставен"],
 }
 
 # The pair fixture's scenarios live in their own keyword universe. grade() only ever
@@ -262,7 +288,8 @@ PAIR_SAMPLE_TEXT = {
 # 1. What must still be found. These rest on the file agreeing with itself and with the
 #    contract, so taking the rate book away must not silence them. A skill that goes
 #    quiet when it loses its rates is not being careful, it is being useless.
-RATE_FREE = ("K1_sum_omits_column", "K2_amount_in_day_column", "K4_control_column_blind",
+RATE_FREE = ("I1_vertical",
+             "K1_sum_omits_column", "K2_amount_in_day_column", "K4_control_column_blind",
              "K5_total_not_sum", "K6_unrounded_accrual", "K7_cost_from_net",
              "I5_days_do_not_reconcile", "C2_seniority_on_gross",
              "E3_leave_without_seniority")
@@ -821,6 +848,12 @@ SAMPLE_TEXT = {
     "F7_relief_combined_limit": "приспаднато е само 108.04 EUR облекчение вместо дължимите 216.08 EUR",
     "F5_tzpb_below_due": "изведеният процент ТЗПБ е под приложимия за икономическата дейност",
     "B4_cap_from_wrong_period": "приложен е максималният осигурителен доход от другото полугодие",
+    "I1_vertical": "нетото не е брутно минус лични осигуровки, данък и удръжки - разминаването е 10.30 EUR",
+    "F6_tax_amount": "удържаният данък е 61.08 при 10% от данъчната основа 618.55 = 61.86",
+    "A6_base_vs_contract": "основната заплата за отработеното време е 1 320.00 при договорена 1 500.00 - разминава се с договора",
+    "F1_insurable_unexplained": "осигурителният доход 1 640.00 не се получава от никаква комбинация от начисленията и придобивките на лицето",
+    "F6_taxable_unexplained": "данъчната основа 1 402.10 не се получава от облагаемия доход минус вноските при никакво третиране на елементите",
+    "F6_compensation_out_of_taxable": "обезщетението по чл. 224 КТ е оставено извън данъчната основа, а то е облагаем доход - чл. 24, ал. 2, т. 8 ЗДДФЛ не го освобождава",
 }
 
 
