@@ -169,6 +169,13 @@ def check(xlsx, manifest, quiet=False):
     ws = wb[man["sheet"]]
     HDR, TOTAL = man["hdr"], man["total_row"]
     norm = man["norm_days"]
+    # The manifest's norm is the generator's arithmetic, not the calendar's. Reading it
+    # back unchecked made this checker agree with a wrong working_days() as readily as
+    # with a right one. A mismatch here is a broken calendar, not a payroll finding.
+    calendar = M.working_days(man["year"], man["month"])
+    if norm != calendar:
+        raise AssertionError(f"manifest norm {norm} for {man['month']:02d}.{man['year']} "
+                             f"disagrees with the чл. 154 КТ calendar ({calendar})")
     max_insurable = man["max_insurable"]
     min_insurable_self = man["min_insurable_self"]
     tzpb_due = man["tzpb_due"]
