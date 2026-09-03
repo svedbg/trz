@@ -1673,8 +1673,10 @@ def main():
     if a.regrade:
         return regrade(a.threshold)
 
-    # --dry pays nothing, so a mismatch there is worth saying but not worth blocking.
-    if not check_skill_matches_tree() and not a.dry:
+    # --dry and --covering pay nothing, so a mismatch there is worth saying but not
+    # worth blocking: --covering is how seeds are chosen BEFORE the install is
+    # refreshed, and refusing it left the choice to guesswork.
+    if not check_skill_matches_tree() and not (a.dry or a.covering):
         return 1
 
     ensure_venv()

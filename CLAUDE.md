@@ -16,7 +16,7 @@ convert one from another year.
 **The reference file leads; the test model follows.** `test/trz_model.py` keeps its
 own copy of the rates because Python cannot compute without them. When the two
 disagree, `stavki.md` is right and the model is wrong — never the reverse.
-`test/rates_test.py` enforces this and is the only test that reads the skill.
+`test/rates_test.py` enforces this and is the only test that reads the rates.
 
 **No real payroll data, anywhere.** Payrolls are personal data under the GDPR and
 sick-leave records are health data. Every fixture is invented and derived from a
@@ -30,7 +30,7 @@ plainly that it rests on arithmetic. Do not invent an article to fill the field.
 ```sh
 python test/rates_test.py     # rates vs. the reference file. No dependencies. Run on any skill edit.
 python test/skill_test.py     # packaging: frontmatter, references, manifests, licences, dates
-python test/checks_test.py    # suite 1: static payroll, asserts its own answer key
+python test/checks_test.py    # suite 1: static payroll against the key in expected_findings.md
 python test/eval_skill.py --selftest      # free: checks the refusal grading itself
 python test/run_tests.py      # all five, 50 seeds
 python test/run_tests.py --seeds 300      # what CI runs
@@ -67,13 +67,15 @@ A false positive fails exactly like a miss.
   drift, or if the mirror does.
 - **Two READMEs.** `README.md` and `README.bg.md` are the same document. A change to
   one that skips the other is a defect; the figures in them must agree.
-- **The verification date is in eight places** (stavki.md, SKILL.md `compatibility`
-  and `metadata`, plugin.json, a badge plus a sentence in each README, and
-  `.github/social-preview.html`). `skill_test.py` checks all eight — let it, rather
-  than updating by hand and hoping.
+- **The verification date is in the source plus eight copies** (stavki.md is the
+  source; SKILL.md `compatibility` and `metadata`, plugin.json, a badge plus a sentence
+  in each README, and `.github/social-preview.html` are the copies). `skill_test.py`
+  checks all of them — let it, rather than updating by hand and hoping.
 - **The suite-1 fixture is generated.** If `test/generate_narrow.py` changes, rerun it
-  to rebuild `test/vedomost_05_2026.xlsx`, and keep `test/expected_findings.md` in
-  step — `checks_test.py` asserts that key exactly.
+  to rebuild `test/vedomost_05_2026.xlsx` — `checks_test.py` rebuilds the fixture and
+  fails on a stale file — and keep the machine-readable key in
+  `test/expected_findings.md` in step: `checks_test.py` parses that table and asserts
+  row, check, severity, stated and due to the cent.
 - **Adding a check or a scenario** has a checklist in `CONTRIBUTING.md`. Prove a new
   check has teeth: break something on purpose, confirm the suite goes red, revert.
 - **Hooks are opt-in:** `git config core.hooksPath .githooks` once.

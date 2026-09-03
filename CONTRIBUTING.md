@@ -68,8 +68,12 @@ To add one:
    checks. `Findings.add` refuses an id without one, and the citation must already
    stand in `references/` — add it there first, with a source and a status.
 4. Document it in [`test/scenarios.md`](test/scenarios.md).
-5. If the skill should also find it, add keyword patterns to `KEYWORDS` in
-   `test/eval_skill.py`.
+5. Add keyword patterns to `KEYWORDS` and a sample sentence to `SAMPLE_TEXT` in
+   `test/eval_skill.py` — not optional: `--selftest` (which CI runs) fails for a scenario
+   without them, and a paid run is refused. Then bring the counts along: the scenario
+   figure on `.github/social-preview.html` (re-render the PNG, see the comment at its
+   top) and the "twenty-eight scenarios" sentence in both READMEs; `skill_test.py`
+   asserts the card against `trz_model.SCENARIOS`.
 6. Run `python test/run_tests.py --seeds 300`. A run passes only when every
    injected defect is found and **no** finding is raised beyond them. False
    positives fail the suite like misses.
@@ -94,8 +98,10 @@ What runs when:
 | Trigger | Runs |
 | --- | --- |
 | every commit (hook) | the rates cross-check |
+| commit touching the skill, a manifest, a licence, a README, the social card, `eval_skill.py`, `skill_test.py` or `trz_model.py` | plus the packaging test |
 | commit touching `test/*.py` | plus all five suites (0–4), 25 seeds |
-| push and pull request (CI) | packaging, leak guard, the five suites (0–4) at 300 seeds on Python 3.10–3.13 |
+| push and pull request (CI) | rates, packaging, the grader's self-test, the leak guards (text files and inside every tracked workbook), the five suites (0–4) at 300 seeds on Python 3.10–3.13 |
+| weekly (CI) | the five suites at 3000 seeds; monthly, the verification-date freshness check |
 | by hand | `eval_skill.py` — it calls Claude and costs about USD 2.4 per seed |
 
 `eval_skill.py` is the only test that exercises the skill rather than the rules.

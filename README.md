@@ -235,14 +235,17 @@ git config core.hooksPath .githooks   # once
 python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt
 ```
 
-Every commit runs the rate check. Commits that touch `test/*.py` also run all five suites
-(0–4) at 25 seeds. Nothing is skipped silently: if the environment cannot run a check, the
-hook says so and stops rather than passing quietly. `--no-verify` overrides it.
+Every commit runs the rate check. Commits that touch the skill, a manifest, a licence, a
+README or the social card also run the packaging test; commits that touch `test/*.py` also
+run all five suites (0–4) at 25 seeds. Nothing is skipped silently: if the environment
+cannot run a check, the hook says so and stops rather than passing quietly. `--no-verify`
+overrides it.
 
-CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs all five suites (0–4)
-at 300 seeds on push and pull request, plus a scheduled monthly run — not because the code
-changes by itself but because the rates do, and the reference file carries a verification
-date that goes stale.
+CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs the rate check, the
+packaging test, the grader's self-test, the personal-data guards (text files and the inside
+of every tracked workbook) and all five suites (0–4) at 300 seeds on push and pull request;
+a weekly run repeats the suites at 3000 seeds, and a monthly one checks that the verification
+date has not gone stale — not because the code changes by itself but because the rates do.
 
 ### What none of this tests
 
@@ -264,8 +267,9 @@ not in `run_tests.py` and not in CI. Run it when the guidance in `SKILL.md` chan
 the only thing that can move its result.
 
 Three decisions in it are worth knowing. The model gets a directory in `/tmp` holding the
-workbook and a contracts CSV — what an auditor legitimately has — while the manifest stays
-in the repo, the repo is never passed with `--add-dir`, and the openpyxl environment is a
+workbook and a contracts CSV — what an auditor legitimately has — while the manifest is
+deleted the moment it is generated and lives only in the harness process, the repo is never
+passed with `--add-dir`, and the openpyxl environment is a
 separate venv outside it: `test/` contains a full implementation of every check and an answer
 key, and a run that reads those measures reading, not expertise. The scenario catalogue is
 not given to the model either, or the task becomes label matching. And the result is three
