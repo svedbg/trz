@@ -697,9 +697,21 @@ DENIES = re.compile(
     r"|(?<!не )(?:е в съответствие|съответств(?:а|ува) на)", re.I)
 
 
-def asserts_a_defect(finding):
-    """Does this finding claim a defect, rather than note, deny or decline one?"""
-    if str(finding.get("tezhest", "")).strip().lower() not in ASSERTING:
+# Scenarios whose correct finding IS a `за проверка`: the figure matches no composition
+# of the row, so the honest report says the file does not explain it and asks - it does
+# not assert a violation. Demanding `нарушение` there would score the right answer as
+# „located only" and reward a skill that guesses a cause.
+UNRESOLVED_IS_RIGHT = {"F1_insurable_unexplained", "F6_taxable_unexplained"}
+
+
+def asserts_a_defect(finding, ident=None):
+    """Does this finding claim a defect, rather than note, deny or decline one?
+
+    For the scenarios in UNRESOLVED_IS_RIGHT a `за проверка` counts as the claim.
+    """
+    tezhest = str(finding.get("tezhest", "")).strip().lower()
+    if tezhest not in ASSERTING and not (tezhest == "за проверка"
+                                         and ident in UNRESOLVED_IS_RIGHT):
         return False
     return not DENIES.search(str(finding.get("kratko", "")))
 
@@ -739,7 +751,7 @@ def grade(man, findings):
         patterns = keywords[ident]
         hit = None
         for i in here:
-            if not asserts_a_defect(findings[i]):
+            if not asserts_a_defect(findings[i], ident):
                 continue
             text = str(findings[i].get("kratko", ""))
             if all(re.search(p, text, re.I) for p in patterns):
@@ -1045,6 +1057,14 @@ def check_grading():
                  "не мога да потвърдя ставката", "сумата е в съответствие с чл. 262"):
         if asserts_a_defect(dict(tezhest="нарушение", kratko=text)):
             problems.append(f"a denial was read as an assertion: {text!r}")
+    # The two "unexplained" scenarios are correctly reported as `за проверка`; every
+    # other scenario is not.
+    for ident in sorted(UNRESOLVED_IS_RIGHT):
+        if not asserts_a_defect(dict(tezhest="за проверка", kratko=SAMPLE_TEXT[ident]), ident):
+            problems.append(f"{ident}: a `за проверка` must count as the finding")
+    if asserts_a_defect(dict(tezhest="за проверка", kratko=SAMPLE_TEXT["K1_sum_omits_column"]),
+                        "K1_sum_omits_column"):
+        problems.append("K1_sum_omits_column: a `за проверка` must not count as the finding")
     return problems
 
 

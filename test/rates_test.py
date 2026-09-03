@@ -146,6 +146,13 @@ CHECKS = [
     ("4.8% of the self-employed minimum, 01.08-31.12.2026 - worked example",
      r"От 01\.08\.2026: 4\.8% × 620\.20 = \*\*([\d.]+) EUR\*\*",
      M.r2(M.HEALTH_ON_INCAPACITY / 100.0 * M.REGIMES["H2"]["min_insurable_self"])),
+    # The band the checker refuses a manifest outside of - both ends.
+    ("accident and occupational disease rate - lower end of the band",
+     r"\| Трудова злополука и професионална болест \| \*\*([\d.]+) – [\d.]+%\*\*",
+     M.TZPB_RANGE[0]),
+    ("accident and occupational disease rate - upper end of the band",
+     r"\| Трудова злополука и професионална болест \| \*\*[\d.]+ – ([\d.]+)%\*\*",
+     M.TZPB_RANGE[1]),
     ("limit of the чл. 19 ЗДДФЛ relief",
      r"удържани от работодателя \| до \*\*([\d.]+)%\*\*",
      M.RELIEF_LIMIT * 100),
