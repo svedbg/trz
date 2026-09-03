@@ -1205,6 +1205,35 @@ def generate(seed, month=None, year=2026, bonus_in_base=None):
         # so visibility cannot still be missing here.
         assert b4_visible(), "B4 visibility lost even on pristine rows"
 
+    # The practice gate in the loop ran at each mutation's turn, over rows that later
+    # mutations could still change: a K1 that blanks a figure or an A6 that moves the
+    # base takes a row out of the checker's sample without being counted as spoiling
+    # it. At 3000 seeds two F1_insurable_unexplained rows were left with a practice the
+    # checker could no longer infer - a missed finding that blamed nobody. Re-check over
+    # the FINAL rows: a NEEDS_PRACTICE defect needs three clean usable rows per element
+    # its row carries, beyond the rows already spoiled; otherwise it is reverted and the
+    # scenario lives in another seed.
+    def unsupported():
+        clean = _usable_rows([people[i] for i in free], regime["max_insurable"],
+                             cap_effective)
+        for e in expected:
+            if e[0] != "row" or e[2] not in NEEDS_PRACTICE:
+                continue
+            if any(_carries(people[e[1]]["row"], el) and clean[el] < 3 + spoiled[el]
+                   for el in ("in_kind", "excess")):
+                return e[1]
+        return None
+
+    while (i := unsupported()) is not None:
+        if any(d in SPOILS_SAMPLE for d in people[i]["defects"]):
+            for el in ("in_kind", "excess"):
+                if _carries(pristine[i], el):
+                    spoiled[el] -= 1
+        people[i]["row"] = dict(pristine[i], _norm=norm)
+        people[i]["defects"] = []
+        expected = [e for e in expected if not (e[0] == "row" and e[1] == i)]
+        free.append(i)
+
     # --- write --------------------------------------------------------------
     os.makedirs(TMP, exist_ok=True)
     wb = openpyxl.Workbook()

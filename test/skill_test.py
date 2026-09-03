@@ -519,10 +519,10 @@ else:
 SOCIAL_PREVIEW = os.path.join(ROOT, ".github", "social-preview.html")
 CARD_FACT = re.compile(r'<div class="n">([^<]*)</div>\s*<div class="l">([^<]*)</div>')
 CHECK_BULLET = re.compile(r"^- \*\*[A-K]\d+\.", re.M)
-# "the three generated suites at 3000 seeds: 25 658 injected defects in suite 2,
-# 6 866 in suite 3 and 8 994 in suite 4" - hard-wrapped, so matched on collapsed
-# whitespace. The card carries the first figure: suite 2 is the one the 22 scenarios
-# next to it on the card feed.
+# "the three generated suites at 3000 seeds: N injected defects in suite 2,
+# N in suite 3 and N in suite 4" - hard-wrapped, so matched on collapsed
+# whitespace. The card carries the first figure: suite 2 is the one the scenarios
+# counted next to it on the card feed.
 README_TOTALS = (
     ("README.md", r"3000 seeds: ([\d ]+?) injected defects in suite 2, ([\d ]+?) in "
                   r"suite 3 and ([\d ]+?) in suite 4"),
