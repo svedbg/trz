@@ -62,7 +62,7 @@ sys.path.insert(0, HERE)
 import trz_model as M                                    # noqa: E402
 import generate_wide as G                                 # noqa: E402
 import generate_pair as P                                 # noqa: E402
-from structural_test import check                         # noqa: E402
+from structural_test import check, selftest_sick_base     # noqa: E402
 from pair_test import check as check_pair                 # noqa: E402
 from pair_test import selftest_leave_base                 # noqa: E402
 import generate_formula as GF                              # noqa: E402
@@ -155,6 +155,11 @@ def suite_structural(start, count, quiet=True):
         cases = selftest_model()
         print(f"  calendar, regime guard and relief clamp, {cases} facts pinned "
               f"against arithmetic: ok")
+        # Shared by generator and checker, hence invisible to every seed - see the
+        # docstring. Pinned here the way suite 3 pins the чл. 18 leave base.
+        cases = selftest_sick_base()
+        print(f"  чл. 40, ал. 5 КСО daily base, {cases} cases pinned against "
+              f"arithmetic: ok")
     except AssertionError as exc:
         print(f"  model selftest: FAILED - {exc}")
         return False
