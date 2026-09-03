@@ -114,7 +114,17 @@ def selftest_model():
     pin the regime-year guard (a 2025 payroll must not silently get 2026 thresholds)
     and the relief clamp (a negative base earns zero relief, not a negative one).
     """
-    for (y, m), want in {(2026, 5): 18, (2026, 8): 21, (2027, 5): 17,
+    # All twelve months of 2026, not a sample. The generator writes the norm it computed
+    # into the manifest and the checker read it back from there, so a wrong month passed
+    # both sides identically: September at 21 and November at 20 (real: 20 and 21) left
+    # 120 seeds green, and the yearly-average pin in suite 3 was satisfied by the
+    # compensating pair. Derived by hand from чл. 154, ал. 1 and ал. 2 КТ: weekdays
+    # minus the holidays that fall on them, with a Sunday holiday moved to the next
+    # working day (24 May, 6 September, 26 December). Sum 249, average 20.75.
+    for (y, m), want in {(2026, 1): 21, (2026, 2): 20, (2026, 3): 21, (2026, 4): 20,
+                         (2026, 5): 18, (2026, 6): 22, (2026, 7): 23, (2026, 8): 21,
+                         (2026, 9): 20, (2026, 10): 22, (2026, 11): 21, (2026, 12): 20,
+                         (2027, 5): 17,
                          (2028, 12): 18, (2033, 12): 19, (2034, 12): 18}.items():
         got = M.working_days(y, m)
         if got != want:
@@ -143,7 +153,7 @@ def selftest_model():
     if got != set():
         raise AssertionError(f"a figure two placements explain must stay silent, "
                              f"got {got}")
-    return 6 + 2 + 4
+    return 16 + 2 + 4
 
 
 def suite_structural(start, count, quiet=True):
