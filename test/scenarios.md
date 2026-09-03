@@ -206,7 +206,10 @@ a defect in `trz_model.py`, which had implemented the "не по-малко от
 generator and the checker computed the sick pay with the same formula, so they agreed
 with each other and agreed wrongly. A round trip cannot find a mistake in its own
 premise, and that is the one thing an independent reader can. The rule is now in
-`sick_daily_base()` and `F9_sick_pay_amount` guards it.
+`sick_daily_base()` and `F9_sick_pay_amount` guards it — and because generator and
+checker both call that function, `selftest_sick_base()` in `structural_test.py` pins it
+against closed-form arithmetic before suite 2 runs a single seed. It had to: a copy of the
+model returning 110% of the right daily base passed every payroll suite at 60 seeds.
 
 **Then the same round trip hid the correction's own mistake.** The fix put every accrual
 into the "брутно" measure, bonus included, and that is not what the base is. чл. 17, ал. 1

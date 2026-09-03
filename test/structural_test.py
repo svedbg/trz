@@ -86,6 +86,80 @@ def statutory_misplacements(work_base, insurable, el, tol=None):
     return out
 
 
+def selftest_sick_base():
+    """Pin чл. 40, ал. 5 КСО against arithmetic, not against the generator.
+
+    M.sick_daily_base is called by generate_wide.py and by check() alike, so a change
+    to it moves both sides of the round trip together and 300 seeds stay green. A copy
+    of the model returning 110% of the right figure passed every payroll suite before
+    this existed - the same blindness that hid the чл. 18, ал. 2 coefficient, which
+    selftest_leave_base in pair_test.py now pins. Same remedy here.
+
+    The statute names two measures and owes the larger: 70% of the average daily
+    GROSS remuneration for the month the incapacity arose in, „но не по-малко от" 70%
+    of the average daily AGREED remuneration. Both are made of the remuneration of
+    permanent character - permanent_work_pay - so on an unchanged contract they
+    coincide, and the daily base IS the contracted daily rate: salary with the
+    seniority uplift over the month's norm, whatever the number of days worked. The
+    other cases are where the two part: permanent pay above the contract (the gross
+    measure wins), below it (the agreed measure is the floor), and no days worked
+    (only the agreed measure exists). A one-off bonus never enters - the helper adds
+    only what it is handed as wage-system pay, and the caller decides that.
+    """
+    salary, pct = 1740.0, 7.2
+    uplift = 1 + pct / 100.0
+    cases = 0
+    # One cent of tolerance: the row's base and supplement are each rounded to cents
+    # before they are divided by the days worked, and with one day worked that rounding
+    # is the whole difference. The defect this guards against is ten percent.
+    tol = 0.01
+    for norm in (18, 20, 21, 23):
+        for worked in (norm, norm - 2, 10, 1):
+            cases += 1
+            base = r2(salary / norm * worked)
+            permanent = M.permanent_work_pay(base, r2(base * pct / 100.0), 0.0)
+            got = M.sick_daily_base(salary, pct, norm, permanent, worked)
+            want = salary * uplift / norm
+            if abs(got - want) > tol:
+                raise AssertionError(
+                    f"чл. 40, ал. 5 КСО: norm {norm}, {worked} worked, unchanged "
+                    f"contract - daily base {got:.4f}, contracted daily {want:.4f}")
+    norm, worked = 21, 19
+    base = r2(salary / norm * worked)
+    seniority = r2(base * pct / 100.0)
+    agreed = salary * uplift / norm
+    # Permanent pay above the contract - wage-system pay in the base, or a raise: the
+    # gross measure is the larger and is owed.
+    cases += 1
+    permanent = M.permanent_work_pay(base, seniority, 300.0)
+    got = M.sick_daily_base(salary, pct, norm, permanent, worked)
+    want = permanent / worked
+    if want <= agreed or abs(got - want) > tol:
+        raise AssertionError(f"чл. 40, ал. 5 КСО: permanent pay above the contract - "
+                             f"daily base {got:.4f}, gross measure {want:.4f}")
+    # Permanent pay below the contract: „но не по-малко от" - the agreed measure floors it.
+    cases += 1
+    got = M.sick_daily_base(salary, pct, norm, r2((base + seniority) / 2), worked)
+    if abs(got - agreed) > tol:
+        raise AssertionError(f"чл. 40, ал. 5 КСО: permanent pay below the contract - "
+                             f"daily base {got:.4f}, agreed floor {agreed:.4f}")
+    # No days worked: there is no gross measure, only the agreed one.
+    cases += 1
+    got = M.sick_daily_base(salary, pct, norm, 0.0, 0)
+    if abs(got - agreed) > tol:
+        raise AssertionError(f"чл. 40, ал. 5 КСО: no days worked - daily base "
+                             f"{got:.4f}, agreed {agreed:.4f}")
+    # The helper adds exactly what it is handed and nothing else: a bonus the caller
+    # reads as a one-off (0.0) leaves the base at salary plus supplement.
+    cases += 1
+    if abs(M.permanent_work_pay(base, seniority, 0.0) - r2(base + seniority)) > tol \
+            or abs(M.permanent_work_pay(base, seniority, 250.0)
+                   - r2(base + seniority + 250.0)) > tol:
+        raise AssertionError("permanent_work_pay must be base + supplement + the "
+                             "wage-system pay it is handed, and nothing else")
+    return cases
+
+
 def check(xlsx, manifest, quiet=False):
     man = json.load(open(manifest, encoding="utf8"))
     # The configured reading of чл. 17, ал. 1 for an uncharacterised bonus column.
