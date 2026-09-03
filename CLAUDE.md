@@ -43,7 +43,10 @@ the user decide. Free modes: `--dry` shows what would be sent, `--selftest` prov
 grader discriminates, `--covering "id,id"` picks the cheapest seeds that inject the
 scenarios you want measured. `--pair` runs the two-month fixture (the чл. 177/чл. 18
 material no single sheet can hold); `--seeds-list "6,7,32"` runs exactly those seeds.
-More than 10 seeds in one run is refused without `--allow-expensive`.
+More than 10 seeds in one run is refused without `--allow-expensive`. Every graded seed
+is saved to `/tmp/trz-eval/results/`; `--regrade` re-scores those files against the
+current keywords for free, and a seed directory that holds a paid transcript is not
+rebuilt without `--overwrite`.
 
 Suites pass only when every injected defect is found and **nothing else is raised**.
 A false positive fails exactly like a miss.
