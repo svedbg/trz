@@ -4,11 +4,12 @@
     python test/skill_test.py
 
 What this guards. A skill is distributed as text: a SKILL.md with frontmatter,
-reference files loaded on demand, and two JSON manifests that let people install
-it with one command. None of that is exercised by the payroll suites, and all of
-it breaks silently - a renamed reference file, a version bumped in one manifest
-but not the other, a frontmatter field that Claude Code accepts but claude.ai
-rejects. This file fails instead.
+reference files loaded on demand, and the JSON manifests that let people install
+it with one command - a Claude Code plugin manifest, an Agent Plugins 1.0 manifest
+for GitHub Copilot, and a marketplace file that exists at two paths. None of that
+is exercised by the payroll suites, and all of it breaks silently - a renamed
+reference file, a version bumped in one manifest but not the others, a frontmatter
+field that Claude Code accepts but claude.ai rejects. This file fails instead.
 
 The frontmatter is deliberately restricted to the fields that travel: `name`,
 `description`, `license`, `compatibility`, `metadata` and `allowed-tools` are the
@@ -30,6 +31,11 @@ SKILL_MD = os.path.join(SKILL_DIR, "SKILL.md")
 # copies the skill and nothing else - not `test/`, not a local `.venv`.
 PLUGIN = os.path.join(SKILL_DIR, ".claude-plugin", "plugin.json")
 MARKETPLACE = os.path.join(ROOT, ".claude-plugin", "marketplace.json")
+# The same plugin in the Agent Plugins 1.0 shape, which GitHub Copilot and the
+# awesome-copilot marketplace gate read; and the same marketplace at the path VS Code
+# and Copilot CLI check before `.claude-plugin/`.
+AGENT_MANIFEST = os.path.join(SKILL_DIR, "plugin.json")
+MARKETPLACE_MIRROR = os.path.join(ROOT, ".github", "plugin", "marketplace.json")
 
 # Fields that survive outside Claude Code. Anything else narrows distribution.
 PORTABLE_FIELDS = {"name", "description", "license", "compatibility", "metadata",
@@ -267,6 +273,120 @@ if plugin and marketplace:
         fail("marketplace.json has no description - users see it when browsing")
     if not (marketplace.get("owner") or {}).get("name"):
         fail("marketplace.json has no owner.name")
+
+# Copilot CLI looks for the marketplace at `.github/plugin/marketplace.json` before
+# `.claude-plugin/`, and VS Code looks only there. One marketplace, two paths: the copy
+# is byte-identical, in the manner of LICENSE-DOCS, so there is nothing to keep in step
+# by hand - a version bumped in one and not the other would pin Copilot users to the
+# old release while Claude Code users move on.
+if not os.path.exists(MARKETPLACE_MIRROR):
+    fail(".github/plugin/marketplace.json is missing - VS Code finds the marketplace "
+         "nowhere else; copy .claude-plugin/marketplace.json there")
+elif os.path.exists(MARKETPLACE) and read(MARKETPLACE_MIRROR) != read(MARKETPLACE):
+    fail(".github/plugin/marketplace.json has drifted from .claude-plugin/marketplace.json "
+         "- they are one marketplace at two paths, and Copilot reads the .github copy")
+
+# ------------------------------------------- the Agent Plugins 1.0 manifest
+# Copilot CLI installs the plugin from `.claude-plugin/plugin.json` on its own, but the
+# awesome-copilot marketplace gate never looks there: it wants `plugin.json` at the
+# plugin root in the Agent Plugins 1.0 shape - `$schema` first and a closed field set,
+# so `metadata` and `userConfig` cannot travel in it. The file sits inside the skill
+# directory, which keeps the plugin root where it was and the install carrying nothing
+# but the skill. Every field it repeats from the Claude manifest is compared here: two
+# manifests describing one bundle drift exactly the way two READMEs do.
+AGENT_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+AGENT_FIELDS = {"$schema", "name", "version", "description", "author", "homepage",
+                "repository", "license", "keywords", "extensions"}
+AGENT_AUTHOR_FIELDS = {"name", "email", "url"}
+AGENT_NAME = re.compile(r"(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?")
+# The external-plugin gate caps the listing description at 500 and accepts only
+# lowercase kebab-case keywords, at most ten of at most 30 characters. A submission is
+# copied from this file, so the file obeys the gate rather than Copilot's looser 1024.
+AGENT_DESCRIPTION_CAP = 500
+AGENT_KEYWORD = re.compile(r"[a-z0-9-]{1,30}")
+
+agent = None
+if not os.path.exists(AGENT_MANIFEST):
+    fail("skills/trz-expert/plugin.json is missing - without it the plugin has no Agent "
+         "Plugins manifest, and the awesome-copilot gate reports no manifest at all")
+else:
+    try:
+        agent = json.loads(read(AGENT_MANIFEST))
+    except json.JSONDecodeError as e:
+        fail(f"skills/trz-expert/plugin.json is not valid JSON: {e}")
+
+if agent is not None and not isinstance(agent, dict):
+    fail("skills/trz-expert/plugin.json is not a JSON object")
+    agent = None
+
+if agent:
+    if agent.get("$schema") != AGENT_SCHEMA:
+        fail(f"skills/trz-expert/plugin.json $schema is {agent.get('$schema')!r}; the "
+             f"Agent Plugins gate wants exactly {AGENT_SCHEMA!r}, and Copilot reads the "
+             f"field to opt into spec semantics")
+    extra = set(agent) - AGENT_FIELDS
+    if extra:
+        fail(f"skills/trz-expert/plugin.json carries {sorted(extra)}, which the Agent "
+             f"Plugins 1.0 schema does not allow - it closes the field set, so a validator "
+             f"rejects the file. `metadata` and `userConfig` live in "
+             f".claude-plugin/plugin.json only")
+    for field in ("name", "version", "description"):
+        if not isinstance(agent.get(field), str) or not agent[field].strip():
+            fail(f"skills/trz-expert/plugin.json has no {field}")
+
+    agent_name = agent.get("name")
+    if isinstance(agent_name, str) and (len(agent_name) > 64
+                                        or not AGENT_NAME.fullmatch(agent_name)):
+        fail(f"skills/trz-expert/plugin.json name {agent_name!r} breaks the Agent Plugins "
+             f"pattern: 1-64 characters of lowercase letters, digits, dots and hyphens, "
+             f"no leading or trailing separator, no `--` or `..`")
+
+    agent_description = agent.get("description")
+    if isinstance(agent_description, str) and len(agent_description) > AGENT_DESCRIPTION_CAP:
+        fail(f"skills/trz-expert/plugin.json description is {len(agent_description)} "
+             f"characters; the marketplace listing caps it at {AGENT_DESCRIPTION_CAP}")
+
+    author = agent.get("author")
+    if not isinstance(author, dict) or not author.get("name"):
+        fail("skills/trz-expert/plugin.json has no author.name - the external-plugin gate "
+             "requires it")
+    elif set(author) - AGENT_AUTHOR_FIELDS:
+        fail(f"skills/trz-expert/plugin.json author carries "
+             f"{sorted(set(author) - AGENT_AUTHOR_FIELDS)}; the schema allows only "
+             f"{sorted(AGENT_AUTHOR_FIELDS)}")
+
+    for field in ("repository", "homepage"):
+        value = agent.get(field)
+        if value is not None and not str(value).startswith("https://github.com/"):
+            fail(f"skills/trz-expert/plugin.json {field} {value!r} is not an https "
+                 f"github.com URL, which is what the external-plugin gate accepts")
+    if "repository" not in agent:
+        fail("skills/trz-expert/plugin.json has no repository - the external-plugin gate "
+             "requires it")
+
+    keywords = agent.get("keywords")
+    if not isinstance(keywords, list) or not keywords:
+        fail("skills/trz-expert/plugin.json has no keywords - the external-plugin gate "
+             "requires at least one")
+    else:
+        if len(keywords) > 10:
+            fail(f"skills/trz-expert/plugin.json lists {len(keywords)} keywords; the gate "
+                 f"allows ten")
+        bad = [k for k in keywords if not isinstance(k, str) or not AGENT_KEYWORD.fullmatch(k)]
+        if bad:
+            fail(f"skills/trz-expert/plugin.json keywords {bad} are not lowercase "
+                 f"kebab-case ASCII of at most 30 characters - the gate rejects them; "
+                 f"Cyrillic keywords belong in .claude-plugin/plugin.json")
+
+    if plugin:
+        for field in ("name", "version", "description", "author", "homepage",
+                      "repository", "license"):
+            if agent.get(field) != plugin.get(field):
+                fail(f"manifest drift: skills/trz-expert/plugin.json {field} is "
+                     f"{agent.get(field)!r}, .claude-plugin/plugin.json says "
+                     f"{plugin.get(field)!r} - they describe the same bundle, and "
+                     f"Copilot users are pinned by the first, Claude Code users by "
+                     f"the second")
 
 # ------------------------------------- the rates-verification date, everywhere
 # `references/stavki.md` is the source of truth for the date, and seven other places

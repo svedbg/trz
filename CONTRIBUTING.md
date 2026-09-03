@@ -131,11 +131,12 @@ lose history.
 
 ## Releasing
 
-Bump `version` in **both** `skills/trz-expert/.claude-plugin/plugin.json` and
-`.claude-plugin/marketplace.json` — users are pinned by it, and `skill_test.py`
-fails if the two drift. If the rates changed, update `metadata.rates_verified` in
-`plugin.json` to match the verification date in `stavki.md`; the same test checks
-that too.
+Bump `version` in **all three** manifests — `skills/trz-expert/.claude-plugin/plugin.json`,
+`skills/trz-expert/plugin.json` and `.claude-plugin/marketplace.json` — then copy
+`.claude-plugin/marketplace.json` over `.github/plugin/marketplace.json`. Users are
+pinned by the version, and `skill_test.py` fails if any of the four drift. If the
+rates changed, update `metadata.rates_verified` in `.claude-plugin/plugin.json` to
+match the verification date in `stavki.md`; the same test checks that too.
 
 The plugin manifest lives inside the skill directory because that directory *is*
 the plugin: `marketplace.json` points `source` at `./skills/trz-expert`, and an
@@ -144,3 +145,13 @@ of `.` would hand every user `test/`, the fixtures and any local `.venv`. That i
 also why `LICENSE-DOCS` is duplicated into the skill directory: an installed user
 never sees the repository root, and CC BY 4.0 asks for its terms to travel with
 the text. `skill_test.py` fails if the copy drifts from the root one.
+
+`skills/trz-expert/plugin.json` is the same plugin in the
+[Agent Plugins 1.0](https://agent-plugins.org) shape that GitHub Copilot and the
+awesome-copilot marketplace gate read. Copilot CLI installs the plugin from the
+Claude manifest on its own; the gate does not look in `.claude-plugin/`, and the 1.0
+schema closes its field set, so this file carries no `metadata` or `userConfig` and
+only ASCII kebab-case keywords. `skill_test.py` compares every field it shares with
+the Claude manifest. `.github/plugin/marketplace.json` is where VS Code — and Copilot
+CLI, before it falls back to `.claude-plugin/` — look for the marketplace; it is a
+byte-identical copy, and the same test says so when it stops being one.

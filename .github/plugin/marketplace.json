@@ -1,0 +1,30 @@
+{
+  "name": "trz-bg",
+  "description": "Bulgarian payroll (ТРЗ) compliance tooling for Claude Code. One plugin: an audit skill for payroll registers, payslips, employment contracts and work schedules, with a dated reference file for every rate.",
+  "owner": {
+    "name": "Svetoslav Rankov",
+    "url": "https://github.com/svedbg"
+  },
+  "plugins": [
+    {
+      "name": "trz-expert",
+      "source": "./skills/trz-expert",
+      "description": "Bulgarian payroll (ТРЗ) audit: checks a payroll register, payslip, employment contract or work schedule against the Labour Code (КТ), the Social Security Code (КСО), the income tax act (ЗДДФЛ) and the wage-structure ordinance (НСОРЗ). No rate from memory — every figure comes from a dated, status-marked reference file.",
+      "version": "2.6.0",
+      "author": {
+        "name": "Svetoslav Rankov",
+        "url": "https://github.com/svedbg"
+      },
+      "license": "CC-BY-4.0",
+      "homepage": "https://github.com/svedbg/trz",
+      "category": "compliance",
+      "keywords": [
+        "payroll",
+        "bulgaria",
+        "трз",
+        "compliance",
+        "audit"
+      ]
+    }
+  ]
+}

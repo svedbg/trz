@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "trz-expert",
+  "version": "2.6.0",
+  "description": "Audits Bulgarian payroll documents against the Labour Code, the Social Security Code, the income tax act and the wage-structure ordinance. Never applies a rate from memory: every figure comes from a dated reference file with a verification status, and a missing rate downgrades the finding instead of being guessed.",
+  "author": {
+    "name": "Svetoslav Rankov",
+    "url": "https://github.com/svedbg"
+  },
+  "homepage": "https://github.com/svedbg/trz",
+  "repository": "https://github.com/svedbg/trz",
+  "license": "CC-BY-4.0",
+  "keywords": [
+    "payroll",
+    "bulgaria",
+    "trz",
+    "labour-law",
+    "social-security",
+    "compliance",
+    "audit",
+    "hr"
+  ]
+}

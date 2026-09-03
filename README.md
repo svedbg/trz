@@ -101,6 +101,19 @@ In Claude Code, two commands:
 you just want the skill: it costs about 270 tokens of context per session and loads the rest
 only when it runs.
 
+In GitHub Copilot CLI, the same marketplace and the same skill:
+
+```
+copilot plugin marketplace add svedbg/trz
+copilot plugin install trz-expert@trz-bg
+```
+
+`copilot plugin update trz-expert` brings updated rates there. The plugin also carries an
+[Agent Plugins 1.0](https://agent-plugins.org) manifest, so any client that reads that
+format finds it, and VS Code reads the marketplace from `.github/plugin/marketplace.json`,
+which is the same file. Copilot asks no question when enabling, so the default described
+next applies — and the report says so.
+
 **Enabling it asks one question.** Whether a „Бонус“ column the file does not characterise
 should be read as a one-off payment — outside the base for paid leave and sick pay — or as
 pay under an applied wage system, which чл. 17, ал. 1, т. 2 НСОРЗ puts inside it. The

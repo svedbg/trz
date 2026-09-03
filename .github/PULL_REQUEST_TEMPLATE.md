@@ -14,9 +14,10 @@
       the suite goes red
 - [ ] If the **guidance in SKILL.md** changed: I ran `python test/eval_skill.py`
       (or I am saying here why not — it costs about USD 2.4 per seed)
-- [ ] If a **release**: `version` bumped in both
-      `skills/trz-expert/.claude-plugin/plugin.json` and
-      `.claude-plugin/marketplace.json`
+- [ ] If a **release**: `version` bumped in all three of
+      `skills/trz-expert/.claude-plugin/plugin.json`, `skills/trz-expert/plugin.json`
+      and `.claude-plugin/marketplace.json`, and the latter copied over
+      `.github/plugin/marketplace.json`
 
 ## Anything you are unsure about
 
