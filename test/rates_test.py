@@ -35,9 +35,20 @@ with open(RATES_FILE, encoding="utf8") as f:
 
 
 def extract(pattern):
-    """The first captured group as a number, or None."""
-    m = re.search(pattern, TEXT)
-    return float(m.group(1).replace(",", ".")) if m else None
+    """The captured group as a number, or None when the pattern matches nowhere.
+
+    Exactly one match is required. re.search took the first, so a row added above the
+    one a pattern was written for - a decoy period line, a second table with the same
+    label - was read as the rate, silently, and the "correspondence" pointed at the
+    wrong figure. Two matches is a restructured reference file, and that is a loud
+    failure, not a guess.
+    """
+    found = [m.group(1) for m in re.finditer(pattern, TEXT)]
+    if len(found) > 1:
+        raise SystemExit(f"pattern matches {len(found)} places in stavki.md, so which "
+                         f"figure it means is undecidable: {pattern!r} -> {found[:4]}. "
+                         f"Narrow the pattern or the file.")
+    return float(found[0].replace(",", ".")) if found else None
 
 
 # Default tolerance: recorded values are compared, not computed ones. A larger

@@ -57,6 +57,23 @@ TOL = 0.02
 HERE = os.path.dirname(os.path.abspath(__file__))
 wb = openpyxl.load_workbook(os.path.join(HERE, "vedomost_05_2026.xlsx"), data_only=True)
 ws = wb.active
+
+# The committed fixture must be what generate_narrow.py builds today. Nothing checked
+# that before: an edit to ROWS without a rerun left the suite passing on the stale
+# binary, and the answer key describing rows the file did not have.
+import generate_narrow as GN                                            # noqa: E402
+fresh = GN.build().active
+if (fresh.max_row, fresh.max_column) != (ws.max_row, ws.max_column):
+    raise SystemExit(f"vedomost_05_2026.xlsx is stale: {ws.max_row}x{ws.max_column} cells "
+                     f"committed, generate_narrow.py builds {fresh.max_row}x"
+                     f"{fresh.max_column} - run python test/generate_narrow.py")
+for fresh_row in fresh.iter_rows():
+    for cell in fresh_row:
+        committed = ws.cell(row=cell.row, column=cell.column).value
+        if cell.value != committed:
+            raise SystemExit(f"vedomost_05_2026.xlsx is stale at {cell.coordinate}: "
+                             f"committed {committed!r}, generate_narrow.py builds "
+                             f"{cell.value!r} - run python test/generate_narrow.py")
 HDR = 5
 COL = {ws.cell(row=HDR, column=c).value: c for c in range(1, ws.max_column + 1)}
 
@@ -185,13 +202,27 @@ for r in rows:
                    "another base, recompute on the basic salary plus the supplement.")
 
     # --- D6 night work ---
+    # The norm gives a rate per hour (0.15% of МРЗ = 0.9303 EUR); what gets rounded to
+    # the cent is the month's sum, not the rate. A payroll that rounds the rate to 0.93
+    # first pays up to 0.03 cents an hour less - systematic rounding in the employer's
+    # favour, a `бележка` when that is the whole gap (stavki.md, night work). Short of
+    # even the rounded rate is a нарушение.
     if night_hours:
         due = r2(NIGHT_HOUR * night_hours)
-        if night_premium + TOL < due:
+        rounded_rate = r2(r2(NIGHT_HOUR) * night_hours)
+        if night_premium + TOL < min(due, rounded_rate):
             report("нарушение", r, name,
                    f"D6 {night_hours} night hours without the supplement",
                    "чл. 8 НСОРЗ", night_premium, due,
                    "Accrue the night supplement (0.15% of the minimum wage per hour).")
+        elif night_premium + 0.005 < due:
+            # Half a cent, not TOL: the gap this tier exists for is one or two cents.
+            report("бележка", r, name,
+                   f"D6 {night_hours} night hours paid at the hourly rate rounded to the "
+                   f"cent before multiplying",
+                   "чл. 8 НСОРЗ", night_premium, due,
+                   "Multiply the hours by 0.15% of the minimum wage and round the sum, "
+                   "not the rate.")
 
     # --- D7 work on a public holiday ---
     # Same two tiers. The base of the чл. 264 double pay has no norm like чл. 7 НСОРЗ
@@ -330,25 +361,44 @@ if MIN_INSURABLE_ACTIVITY is None:
 # a false positive are equally disqualifying.
 #
 # Nine defects were injected; two more follow from them and are documented as such in
-# expected_findings.md. Row 13 is the control row and must stay clean.
-EXPECTED = {
-    6:  {"B1"},          # base pay below the minimum wage
-    7:  {"C1"},          # no length-of-service supplement for 12 years
-    8:  {"D4"},          # overtime without the premium
-    9:  {"B4", "F2"},    # cap never applied - and so the contributions are wrong too
-    10: {"D6"},          # night hours without the supplement
-    11: {"C2", "F9"},    # 3 employer-paid sick days - and 3.6% stated, 0.00 accrued
-    12: {"I1"},          # net does not reconcile
-    14: {"D7"},          # public holiday at single rate
-    15: {"G2"},          # attachment against an unknown protected minimum
-}
+# expected_findings.md. The key itself lives THERE, in the machine-readable table, and
+# is parsed here - one source, so the prose and the assertion cannot drift. It carries
+# the amounts too: until 03.09.2026 only codes and severity were asserted, and a checker
+# whose "due" was wrong passed as long as it fired on the right row.
+KEY_PATH = os.path.join(HERE, "expected_findings.md")
+
+
+def load_key():
+    text = open(KEY_PATH, encoding="utf8").read()
+    if "## Machine-readable key" not in text:
+        raise SystemExit("expected_findings.md has no '## Machine-readable key' section")
+    section = text.split("## Machine-readable key", 1)[1]
+    rows = re.findall(r"^\|\s*(\d+)\s*\|\s*([A-K]\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*"
+                      r"\|\s*([^|]+?)\s*\|", section, re.M)
+
+    def amount(s):
+        return None if s.strip() in ("—", "-", "") else float(s)
+
+    key = {}
+    for row, code, severity, stated, due in rows:
+        if (int(row), code) in key:
+            raise SystemExit(f"expected_findings.md lists row {row} {code} twice")
+        key[(int(row), code)] = (severity.strip(), amount(stated), amount(due))
+    if not key:
+        raise SystemExit("expected_findings.md: the machine-readable key parsed empty")
+    return key
+
+
+KEY = load_key()
+
 # Row 13 is correct with nothing to check beyond the basics; row 16 is correct AND pays
 # overtime, night and holiday work at exactly the statutory minimum on the чл. 7 НСОРЗ
 # base, so a rate or a base drifting upward in this file shows up there as a false
 # positive. Without it every row with those hours paid nothing above the single rate,
 # and a checker with the wrong rate passed exactly like one with the right rate.
 CONTROL_ROWS = {13, 16}
-EXPECTED_SEVERITY = {"G2": "за проверка"}       # everything else: нарушение
+if any(row in CONTROL_ROWS for row, _ in KEY):
+    raise SystemExit("expected_findings.md lists a finding on a control row")
 
 # Every check string starts with its id by convention. Assert the convention rather
 # than trusting it: a renamed check would otherwise silently drop out of the key.
@@ -362,22 +412,29 @@ def code_of(finding):
 
 found = {}
 for f in findings:
-    found.setdefault(f["row"], set()).add(code_of(f))
+    if (f["row"], code_of(f)) in found:
+        raise SystemExit(f"row {f['row']}: {code_of(f)} reported twice")
+    found[(f["row"], code_of(f))] = f
 
 problems = []
-for row in sorted(set(EXPECTED) | set(found) | CONTROL_ROWS):
-    due = EXPECTED.get(row, set())
-    got = found.get(row, set())
-    for code in sorted(due - got):
+for row, code in sorted(set(KEY) | set(found)):
+    if (row, code) not in found:
         problems.append(f"row {row}: MISSED {code}")
-    for code in sorted(got - due):
-        problems.append(f"row {row}: FALSE POSITIVE {code}")
-
-for f in findings:
-    want = EXPECTED_SEVERITY.get(code_of(f), "нарушение")
-    if f["severity"] != want:
-        problems.append(f"row {f['row']}: {code_of(f)} reported as "
-                        f"„{f['severity']}“, expected „{want}“")
+        continue
+    if (row, code) not in KEY:
+        problems.append(f"row {row}: FALSE POSITIVE {code}"
+                        + (" (control row)" if row in CONTROL_ROWS else ""))
+        continue
+    severity, stated, due = KEY[(row, code)]
+    f = found[(row, code)]
+    if f["severity"] != severity:
+        problems.append(f"row {row}: {code} reported as „{f['severity']}“, expected "
+                        f"„{severity}“")
+    for name, want, got in (("stated", stated, f["stated"]), ("due", due, f["due"])):
+        if (want is None) != (got is None) or (want is not None
+                                               and abs(want - got) > 0.005):
+            problems.append(f"row {row}: {code} {name} {got} differs from the key's "
+                            f"{want}")
 
 print("=" * 100)
 if problems:
@@ -386,5 +443,5 @@ if problems:
     print(f"FAILED: {len(problems)} difference(s) from test/expected_findings.md")
     raise SystemExit(1)
 print(f"OK: {len(findings)} findings, exactly the answer key in expected_findings.md "
-      f"(9 injected + 2 consequential), rows {sorted(CONTROL_ROWS)} clean, "
+      f"({len(KEY)} entries, amounts to the cent), rows {sorted(CONTROL_ROWS)} clean, "
       f"the attachment reported as „за проверка“")

@@ -85,6 +85,31 @@ So the correct total is **11 findings: 9 injected + 2 consequential.**
   to say exactly what it lacks. Declaring it a violation is a defect in the skill,
   even when the conclusion happens to be right.
 
+## Machine-readable key
+
+`checks_test.py` parses this table and asserts it exactly — row, check, severity, stated
+and due, to the cent. The prose above explains; this table decides. Until 03.09.2026 the
+suite asserted only the check codes and the severity, so a checker whose "due" was wrong
+passed as long as it fired on the right row. A dash means the finding carries no amount.
+
+| Row | Check | Severity | Stated | Due |
+| --- | --- | --- | --- | --- |
+| 6 | B1 | нарушение | 610.00 | 620.20 |
+| 7 | C1 | нарушение | 0.00 | 64.80 |
+| 8 | D4 | нарушение | 55.56 | 87.33 |
+| 9 | B4 | нарушение | 3815.00 | 2111.64 |
+| 9 | F2 | нарушение | 525.71 | 290.98 |
+| 10 | D6 | нарушение | 0.00 | 55.82 |
+| 11 | C2 | нарушение | 0.00 | 26.42 |
+| 11 | F9 | нарушение | 102.73 | 68.48 |
+| 12 | I1 | нарушение | 560.00 | 549.70 |
+| 14 | D7 | нарушение | 43.33 | 88.75 |
+| 15 | G2 | за проверка | 500.00 | — |
+
+Row 8's due is on the чл. 7 НСОРЗ base (800.00 + 38.40) / 144 × 10 h × 1.5; row 14's is
+(780.00 + 18.72) / 144 × 8 h × 2; row 10's is 60 h × 0.9303 — the month's sum rounded,
+not the hourly rate (see `stavki.md`, night work).
+
 ## Known limitations of this suite
 
 - The check on overtime limits (D3) is inapplicable, because a single month was
