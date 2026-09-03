@@ -49,12 +49,18 @@ A false positive fails exactly like a miss.
 
 ## Things that break quietly
 
-- **Two manifests, in two places.** `version` lives in both
-  `skills/trz-expert/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
-  and must match. The plugin manifest sits *inside* the skill directory on purpose:
-  installing copies the source directory whole and honours no ignore file, so a
-  `source` of `.` would ship `test/`, the fixtures and any local `.venv` to deliver
-  one SKILL.md. `skill_test.py` fails if `source` stops being `./skills/trz-expert`.
+- **Three manifests and a mirror.** `version` lives in
+  `skills/trz-expert/.claude-plugin/plugin.json` (Claude Code),
+  `skills/trz-expert/plugin.json` (Agent Plugins 1.0 — GitHub Copilot and the
+  awesome-copilot gate) and `.claude-plugin/marketplace.json`, and all three must
+  match. `.github/plugin/marketplace.json` is a byte-identical copy of the marketplace
+  for VS Code and Copilot CLI, which look there first. The Agent Plugins manifest has a
+  closed field set — no `metadata`, no `userConfig`, ASCII kebab-case keywords only.
+  Both plugin manifests sit *inside* the skill directory on purpose: installing copies
+  the source directory whole and honours no ignore file, so a `source` of `.` would
+  ship `test/`, the fixtures and any local `.venv` to deliver one SKILL.md.
+  `skill_test.py` fails if `source` stops being `./skills/trz-expert`, if the versions
+  drift, or if the mirror does.
 - **Two READMEs.** `README.md` and `README.bg.md` are the same document. A change to
   one that skips the other is a defect; the figures in them must agree.
 - **The verification date is in eight places** (stavki.md, SKILL.md `compatibility`
