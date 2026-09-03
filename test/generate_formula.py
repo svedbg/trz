@@ -29,9 +29,16 @@ from openpyxl.utils import get_column_letter
 
 import trz_model as M
 from trz_model import r2
+import generate_wide as G
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TMP = os.path.join(HERE, "tmp")
+
+# The sheet is August 2026, so its parameters are the H2 regime's. From the model, not
+# typed: the cap, the employee control sum and the tax rate below used to be literals,
+# which is the one rule this repository does not bend on.
+YEAR, MONTH = 2026, 8
+CAP = M.REGIMES[M.regime_for(YEAR, MONTH)]["max_insurable"]
 
 # A deliberately narrow layout: enough columns to carry every formula shape the
 # suite tests, few enough that the shapes stay readable in a diff.
@@ -99,7 +106,7 @@ def m_hard_value_in_formula_column(fm, r, rnd):
     The number can even be RIGHT today - the defect is that it stops following."""
     fm = dict(fm)
     del fm["Осигурителен доход"]
-    return fm, {"Осигурителен доход": 2300.0}, "KF3_hard_value_in_formula_column"
+    return fm, {"Осигурителен доход": CAP}, "KF3_hard_value_in_formula_column"
 
 
 def m_tautological_control(fm, r, rnd):
@@ -113,15 +120,34 @@ def m_constant_in_formula(fm, r, rnd):
     which = rnd.choice(["cap", "rate"])
     fm = dict(fm)
     if which == "cap":
-        fm["Осигурителен доход"] = f"=MIN({_L('БРУТО')}{r},2300)"
+        fm["Осигурителен доход"] = f"=MIN({_L('БРУТО')}{r},{CAP:g})"
     else:
         fm["Лични вноски общо"] = \
-            f"=ROUND({_L('Осигурителен доход')}{r}*13.78/100,2)"
+            f"=ROUND({_L('Осигурителен доход')}{r}*{M.EMPLOYEE_TOTAL}/100,2)"
     return fm, {}, "KF5_constant_in_formula"
 
 
+def m_shape_deviates(fm, r, rnd):
+    """One row's formula has a different shape and no literal in it.
+
+    The shape-uniformity pass sorts a deviating row into three bins: a typed value
+    (KF3), a literal where the others reference a parameter (KF5), and everything else
+    - a formula that is simply not the column's formula. Two such shapes, both seen in
+    real files: an insurable income that skips the MIN against the cap, and a net that
+    forgets to subtract the tax. Until this mutation existed that third bin had never
+    been reached.
+    """
+    fm = dict(fm)
+    if rnd.random() < 0.5:
+        fm["Осигурителен доход"] = f"={_L('БРУТО')}{r}"                  # no cap
+    else:
+        fm["НЕТО за изплащане"] = (f"={_L('БРУТО')}{r}"
+                                   f"-{_L('Лични вноски общо')}{r}")        # no tax
+    return fm, {}, "KF_shape_deviates"
+
+
 MUTATIONS = [m_sum_omits_column, m_days_in_money_sum, m_hard_value_in_formula_column,
-             m_tautological_control, m_constant_in_formula]
+             m_tautological_control, m_constant_in_formula, m_shape_deviates]
 
 
 def generate(seed):
@@ -129,12 +155,12 @@ def generate(seed):
     n = rnd.randint(8, 14)
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "08-2026"
+    ws.title = f"{MONTH:02d}-{YEAR}"
     ws["A1"] = 'ВЕДОМОСТ ЗА РАБОТНИ ЗАПЛАТИ — "Формулен тест" ЕООД (изцяло измислена)'
-    ws["A2"] = "Месец: август 2026 г.  |  Валута: EUR"
-    ws["C3"], ws["D3"] = "Таван:", 2300.0
-    ws["E3"], ws["F3"] = "Лични %:", 13.78
-    ws["G3"], ws["H3"] = "Данък:", 0.10
+    ws["A2"] = f"Месец: {G.MONTHS_BG[MONTH]} {YEAR} г.  |  Валута: EUR"
+    ws["C3"], ws["D3"] = "Таван:", CAP
+    ws["E3"], ws["F3"] = "Лични %:", M.EMPLOYEE_TOTAL
+    ws["G3"], ws["H3"] = "Данък:", M.TAX_RATE
     for i, c in enumerate(COLUMNS, start=1):
         ws.cell(row=HDR, column=i, value=c)
 
@@ -142,13 +168,18 @@ def generate(seed):
     victims = rnd.sample(range(n), how_many)
     muts = rnd.sample(MUTATIONS, how_many)
     expected = []
+    norm = M.working_days(YEAR, MONTH)
 
     for idx in range(n):
         r = HDR + 1 + idx
         ws.cell(row=r, column=COL["№"], value=idx + 1)
         ws.cell(row=r, column=COL["Име"], value=f"Лице {idx + 1:02d} (измислено)")
-        worked = rnd.randint(15, 21)
+        worked = rnd.randint(15, norm)
         sick = rnd.choice([0, 0, 0, 2])
+        # Days worked plus sick days cannot exceed the month. Clamped after both draws
+        # rather than drawn within the room left, so that the rows this never touched
+        # keep the values every existing seed already had.
+        worked = min(worked, norm - sick)
         base = r2(rnd.uniform(900, 4200))
         ws.cell(row=r, column=COL["Отраб. дни"], value=worked)
         ws.cell(row=r, column=COL["Дни болничен"], value=sick)
@@ -181,7 +212,7 @@ def generate(seed):
 
     os.makedirs(TMP, exist_ok=True)
     path = os.path.join(TMP, f"formula_{seed}.xlsx")
-    wb.save(path)
+    G.save_frozen(wb, path)
     man = dict(seed=seed, file=os.path.basename(path), hdr=HDR, total_row=total,
                people=n, expected=expected)
     mpath = os.path.join(TMP, f"formula_{seed}_manifest.json")

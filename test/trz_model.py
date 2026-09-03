@@ -79,7 +79,9 @@ EMPLOYER = {                  # the employer's shares of the same funds
 EMPLOYER_SOCIAL = r2(sum(EMPLOYER.values()))    # 10.92, excluding the accident rate
 EMPLOYER_UPF = 2.80
 EMPLOYER_HEALTH = 4.80
-TZPB_RANGE = (0.40, 1.10)                 # чл. 6, ал. 1, т. 5 КСО; exact % per КИД
+TZPB_RANGE = (0.40, 1.10)                 # чл. 6, ал. 1, т. 5 КСО; exact % per КИД in the
+                                          # ЗБДОО annexes. structural_test refuses a
+                                          # fixture whose accident rate is outside it.
 
 TAX_RATE = 0.10                           # ЗДДФЛ
 SENIORITY_RATE = 0.6                      # ПМС № 147 - % per year of service
@@ -564,6 +566,12 @@ SCENARIOS = {
     "E3_leave_without_seniority": ("E3", "paid leave computed without the supplement"),
     "F1_compensation_in_insurable": ("F1", "the чл. 224 КТ compensation inside the insurable income"),
     "I5_days_do_not_reconcile":   ("I5", "day counts do not add up to the month's norm"),
+    "I1_vertical":                ("I1", "the net columns do not follow gross, contributions, tax and deductions"),
+    "F6_tax_amount":              ("F6", "the tax is not the rate applied to the taxable base the row states"),
+    "A6_base_vs_contract":        ("A6", "the row is computed from a salary other than the contracted one"),
+    "F1_insurable_unexplained":   ("F1", "insurable income that no composition of the row's elements reaches"),
+    "F6_taxable_unexplained":     ("F6", "taxable base that no catalogued deviation reaches"),
+    "F6_compensation_out_of_taxable": ("F6", "the чл. 224 КТ compensation left out of the taxable base"),
 }
 
 # Suite 4's scenarios: defects that live in the FORMULAS, invisible in any value
@@ -577,6 +585,7 @@ FORMULA_SCENARIOS = {
                              ("K4", "a control column that is algebraically always zero"),
     "KF5_constant_in_formula":
                              ("K", "a parameter inlined as a literal on one row"),
+    "KF_shape_deviates":     ("K", "a formula shaped unlike the column's other rows, with no literal in it"),
 }
 
 # Scenarios that need two months in one file. They live in the pair fixture

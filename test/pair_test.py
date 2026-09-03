@@ -172,9 +172,19 @@ def check(xlsx, manifest, quiet=False):
 
     # The thresholds carried with it. The cap of the wrong period is visible whenever a
     # row sits on it, which is the case the copy actually costs money.
-    applicable = {name: M.REGIMES[M.regime_for(year, month)]["max_insurable"]
-                  for name, year, month in ((early_name, early_year, early_month),
-                                            (late_name, late_year, late_month))}
+    applicable = {}
+    for name, year, month in ((early_name, early_year, early_month),
+                              (late_name, late_year, late_month)):
+        regime_id = M.regime_for(year, month)
+        if regime_id is None:
+            # No threshold for that period, so no cap check - and no borrowing another
+            # year's figure to make one. Said plainly instead of a KeyError.
+            raise ValueError(
+                f"sheet „{name}“ is dated {month:02d}.{year}, a period the model has no "
+                f"thresholds for (RATES_KNOWN_YEARS = "
+                f"{sorted(M.RATES_KNOWN_YEARS)}); the cap of the other period cannot be "
+                f"judged and must not be guessed from another year")
+        applicable[name] = M.REGIMES[regime_id]["max_insurable"]
     for name, rows in ((early_name, early), (late_name, late)):
         due = applicable[name]
         other = applicable[early_name if name == late_name else late_name]
