@@ -125,9 +125,12 @@ your branch falls behind:
 git fetch origin && git rebase origin/main
 ```
 
-Force-pushing to `main` and deleting it are blocked outright, as is rewriting a
-`v*` release tag. Those are the rules that exist so that a bad afternoon cannot
-lose history.
+Force-pushing to `main` and deleting it are blocked outright, and so is rewriting or
+deleting a release tag. Release tags here are unprefixed — `2.6.1`, not `v2.6.1` —
+so the tag ruleset must match `refs/tags/[0-9]*`; a ruleset written for `v*` alone
+protects none of the tags this repository actually has, which is how a tag once got
+moved after landing on a stale `main`. Those are the rules that exist so that a bad
+afternoon cannot lose history.
 
 ## Releasing
 
