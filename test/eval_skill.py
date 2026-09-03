@@ -69,6 +69,13 @@ VENV = "/tmp/trz-eval-venv"          # venv with openpyxl, outside the repositor
 WORKDIR = "/tmp/trz-eval"            # one directory per run
 REPO_SKILL = os.path.join(HERE, "..", "skills", "trz-expert")
 
+# Every seed is a real Claude session. scenarios.md records the measured cost of one;
+# a run of more than this many needs --allow-expensive, because `--seeds 300` is what
+# every other suite in this directory takes and here it would be a four-figure bill
+# after one printed line.
+EST_USD_PER_SEED = 2.4
+MAX_SEEDS_UNCONFIRMED = 10
+
 # --- keywords for the mapping. Each entry is a list: all of them must match ---
 # --- the finding's description. Deliberately broad: the point is not to score ---
 # --- a correct finding as a miss because it was worded differently. ---
@@ -102,7 +109,12 @@ KEYWORDS = {
     "F1_compensation_in_insurable": [r"чл\.? ?224|обезщетени",
                                      r"осигурителн\w* доход|вноск|НЕВДПОВ"],
     "F10_in_kind_asymmetry":      [r"натура|карт"],
-    "F10_excess_asymmetry":       [r"превишен|праг|застрахов|доброволн|30\.?6|60 лв"],
+    # Two groups. With one - „превишен|праг|застрахов|доброволн|…" - a description of
+    # a чл. 19 relief applied to a voluntary-insurance premium scored as this scenario
+    # too (it said „доброволно"), and --selftest could not see it because the
+    # phrasing that proved it was the second of two identical keys in OBSERVED.
+    "F10_excess_asymmetry":       [r"превишен|над (необлагаем|праг)|30[.,]?68|60 лв",
+                                   r"праг|застрахов|доброволн|натура|карт|превишен"],
     # The second pattern discriminates over_limit from the other two F7 scenarios, but
     # „над" alone was too narrow: a live run described this defect as „приложено с
     # пълния размер на удръжката, без да е спазен лимитът" and scored as located only.
@@ -432,12 +444,44 @@ def location(finding, total_row):
     return "file" if row >= total_row else row
 
 
+# Severities that assert a defect. A finding is a claim that something is wrong; a
+# `бележка` is an observation and, in a payroll whose year the reference file covers,
+# `за проверка` is a finding the skill declined to commit to. Neither identifies an
+# injected defect - until 2026-09-03 grade() never read this field, and a note saying
+# the row was computed correctly scored as an identification because it stood on the
+# right row and mentioned the right word.
+ASSERTING = {"нарушение", "риск", "дефект"}
+
+# Sentences that deny a defect while naming it. „коректно"/„правилно" are denials
+# unless negated (неправилно, не е коректно), and „не мога да проверя" is a refusal,
+# not a finding. Kept narrow on purpose: Bulgarian negation is easy to over-match, and
+# the structured field above is the primary signal.
+_VERB = r"(?:изчислен|начислен|приложен|определен|отразен|сметнат|внесен|удържан)"
+DENIES = re.compile(
+    r"(?<!не)(?<!не )(?<!не е )(?<!не са )(?<!не бе )"
+    rf"(?:{_VERB}\w*\s+(?:е\s+|са\s+)?(?:коректн|правилн)|(?:коректн|правилн)\w*\s+{_VERB})"
+    r"|не мога да (?:проверя|потвърдя|установя|преценя)"
+    r"|не (?:е|представлява|съставлява) нарушение|няма (?:нарушение|разминаване|отклонение)"
+    r"|(?<!не )(?:е в съответствие|съответств(?:а|ува) на)", re.I)
+
+
+def asserts_a_defect(finding):
+    """Does this finding claim a defect, rather than note, deny or decline one?"""
+    if str(finding.get("tezhest", "")).strip().lower() not in ASSERTING:
+        return False
+    return not DENIES.search(str(finding.get("kratko", "")))
+
+
 def grade(man, findings):
     """Map the findings onto what was injected.
 
     A single finding may satisfy several expectations at the same location: all
     expectations on one row come from one mutation, and a model that reports both
     aspects in one sentence should not be penalised for being concise.
+
+    Only a finding that asserts a defect can identify one - see asserts_a_defect. A
+    note or a denial on the right row leaves the expectation „located only": the
+    skill looked there and did not commit.
     """
     HDR, TOTAL = man["hdr"], man["total_row"]
     keywords = man.get("keywords") or KEYWORDS
@@ -463,6 +507,8 @@ def grade(man, findings):
         patterns = keywords[ident]
         hit = None
         for i in here:
+            if not asserts_a_defect(findings[i]):
+                continue
             text = str(findings[i].get("kratko", ""))
             if all(re.search(p, text, re.I) for p in patterns):
                 hit = i
@@ -576,35 +622,41 @@ SAMPLE_TEXT = {
 # stops matching one of these has lost recall on wording a model actually produced -
 # which is how the tightening in the previous commit turned a correct finding into
 # „located only" and cost a seed's worth of signal.
-OBSERVED = {
+#
+# A list of pairs, not a dict literal: a dict literal with the same key twice keeps
+# the second value and says nothing, and that is exactly what happened here - the
+# „238.61 EUR при лимит 10%" phrasing below was silently dropped and the
+# discrimination failure it exposes (it also matched F10_excess_asymmetry) went
+# unreported by --selftest.
+_OBSERVED_PAIRS = (
     # From the 01-02.09.2026 targeted run - correct identifications the launch
     # patterns under-scored, kept so the recall cannot regress:
-    "F7_relief_not_applied": [
+    ("F7_relief_not_applied", [
         "удържаната лична вноска 65.66 EUR не е приспадната от месечната данъчна "
         "основа",
         "удържаната премия (129.00) не е намалила данъчната основа - облекчението "
         "не е приложено",
-    ],
-    "F7_relief_over_limit": [
+    ]),
+    ("F7_relief_over_limit", [
         "данъчната основа е намалена с цялата удръжка за доброволно осигуряване "
         "238.61 EUR при лимит 10%",
-    ],
-    "F7_relief_over_limit": [
         "Облекчението по чл. 19, ал. 2 ЗДДФЛ е приложено с пълния размер на удръжката "
         "276.21 EUR, без да е спазен лимитът",
-    ],
-    "F9_sick_pay_in_taxable": [
+    ]),
+    ("F9_sick_pay_in_taxable", [
         "Сумата по чл. 40, ал. 5 КСО (185.47) е включена в данъчната основа, вместо да "
         "бъде изключена като необлагаема",
-    ],
-    "F10_excess_asymmetry": [
+    ]),
+    ("F10_excess_asymmetry", [
         "Превишението над необлагаемия праг 30.68 EUR (4.69) е добавено в данъчната "
         "основа, но не и в осигурителния доход",
-    ],
-    "F5_tzpb_below_due": [
+    ]),
+    ("F5_tzpb_below_due", [
         "ТЗПБ е приложен 0.80% вместо потвърдените 1.1% при всичките 11 лица",
-    ],
-}
+    ]),
+)
+OBSERVED = dict(_OBSERVED_PAIRS)
+assert len(OBSERVED) == len(_OBSERVED_PAIRS), "a scenario is listed twice in OBSERVED"
 
 
 def check_keywords():
@@ -670,6 +722,54 @@ def _check_universe(KEYWORDS, SAMPLE_TEXT, SCENARIOS, label):
     return problems
 
 
+def check_grading():
+    """Prove grade() credits only findings that assert a defect. Free, starts no session.
+
+    Seed 1 of the wide fixture supplies the expectations. For each, a finding on the
+    right row whose text is the scenario's own sample sentence must score „identified"
+    when its severity asserts a defect, and „located only" when it is a `бележка`, a
+    `за проверка` the skill did not commit to, or a sentence that names the defect and
+    denies it. Until 2026-09-03 all four scored identified. Negated denials -
+    „неправилно", „не е коректно" - must still count as assertions, or a correct
+    finding is thrown away for its wording.
+    """
+    problems = []
+    _, _, man = G.generate(1, bonus_in_base=False)
+    hdr = man["hdr"]
+
+    def finding(where, idx, tezhest, text):
+        row = hdr + 1 + idx if where == "row" else None
+        return dict(kade=(f"ред {row}" if row else "файл"), red=row, tezhest=tezhest,
+                    kratko=text, nachisleno=None, dalzhimo=None)
+
+    for where, idx, ident in man["expected"]:
+        sample = SAMPLE_TEXT[ident]
+        variants = (
+            ("asserted", "дефект", sample, "identified"),
+            ("a note", "бележка", sample, "located only"),
+            ("declined", "за проверка", sample, "located only"),
+            ("a denial", "нарушение", sample + " - проверено, изчислението е коректно",
+             "located only"),
+            ("a negated denial", "нарушение", sample + " - изчислено е неправилно",
+             "identified"),
+        )
+        for label, tezhest, text, want in variants:
+            got = [s for _, i, s, _ in grade(man, [finding(where, idx, tezhest, text)])[0]
+                   if i == ident]
+            if got != [want]:
+                problems.append(f"{ident}: {label} on the right row scored {got}, "
+                                f"expected ['{want}']")
+    for text in ("класът е неправилно изчислен", "базата не е коректно определена",
+                 "облекчението не е приложено коректно", "сумата не съответства на дължимата"):
+        if not asserts_a_defect(dict(tezhest="нарушение", kratko=text)):
+            problems.append(f"a negated denial was read as a denial: {text!r}")
+    for text in ("класът е изчислен коректно", "болничните са правилно определени",
+                 "не мога да потвърдя ставката", "сумата е в съответствие с чл. 262"):
+        if asserts_a_defect(dict(tezhest="нарушение", kratko=text)):
+            problems.append(f"a denial was read as an assertion: {text!r}")
+    return problems
+
+
 def selftest():
     """Prove the refusal grading tells a skill that refused from one that guessed.
 
@@ -684,6 +784,13 @@ def selftest():
         print(f"  FAIL  {p}")
     if not problems:
         print("  ok    every sample matches its own patterns and no others")
+    grading = check_grading()
+    problems += grading
+    print(f"grading: only a finding that asserts a defect identifies one")
+    for p in grading:
+        print(f"  FAIL  {p}")
+    if not grading:
+        print("  ok    notes, declines and denials on the right row score located only")
     print()
 
     _, _, man = G.generate(1, year=2027)
@@ -937,7 +1044,20 @@ def main():
                     help="seconds per seed; measured runs take 5-15 minutes")
     ap.add_argument("--threshold", type=float, default=None,
                     help="exit 1 if the identified share falls below this (0-1)")
+    ap.add_argument("--allow-expensive", dest="allow_expensive", action="store_true",
+                    help=f"required to start more than {MAX_SEEDS_UNCONFIRMED} paid "
+                         f"sessions in one run")
     a = ap.parse_args()
+
+    # One way of choosing seeds per run. `--seed 7 --seeds 10` used to run one seed
+    # and say nothing about the other nine, and `--seeds-list` silently won over both.
+    selectors = [name for name, used in (("--seed", a.seed is not None),
+                                         ("--seeds/--from", a.seeds != 1 or a.start != 1),
+                                         ("--seeds-list", a.seeds_list is not None))
+                 if used]
+    if len(selectors) > 1 and not a.covering:
+        ap.error(f"{' and '.join(selectors)} do not combine - choose one way of "
+                 f"picking seeds")
 
     if a.selftest:
         return selftest()
@@ -979,11 +1099,20 @@ def main():
         return 0
 
     if a.seeds_list:
-        seeds = [int(x) for x in a.seeds_list.split(",") if x.strip()]
+        # Deduplicated, order kept: prepare() rebuilds the seed's directory, so a seed
+        # listed twice would run twice and the second run would erase the first.
+        seeds = list(dict.fromkeys(int(x) for x in a.seeds_list.split(",") if x.strip()))
     elif a.seed is not None:
         seeds = [a.seed]
     else:
         seeds = list(range(a.start, a.start + a.seeds))
+
+    if not a.dry and len(seeds) > MAX_SEEDS_UNCONFIRMED and not a.allow_expensive:
+        print(f"refusing to run: {len(seeds)} paid sessions in one go, about USD "
+              f"{len(seeds) * EST_USD_PER_SEED:.0f} at the measured ~USD "
+              f"{EST_USD_PER_SEED} per seed. Up to {MAX_SEEDS_UNCONFIRMED} start without "
+              f"asking; pass --allow-expensive for more.")
+        return 1
 
     # Refuse to spend money on a run the grader cannot score. Complete today; this
     # exists for the day a scenario is added without its KEYWORDS entry - the checklist
