@@ -1,12 +1,13 @@
-# trz — Bulgarian payroll audit skill for Claude Code
+# trz — Bulgarian payroll audit skill for Claude Code and GitHub Copilot
 
 [![tests](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![licence: MIT + CC BY 4.0](https://img.shields.io/badge/licence-MIT%20%2B%20CC--BY--4.0-blue)](#licence)
 [![rates verified](https://img.shields.io/badge/rates%20verified-2026--09--01-green)](skills/trz-expert/references/stavki.md)
 
-A [Claude Code](https://claude.com/claude-code) skill that turns Claude into a senior payroll
-specialist for Bulgaria — ТРЗ, as the payroll-and-wages function is called there. Give it a
-payroll register (ведомост), a payslip (фиш), an employment contract or a work schedule, and
+An agent skill for [Claude Code](https://claude.com/claude-code) and
+[GitHub Copilot](https://github.com/features/copilot) that turns the assistant into a senior
+payroll specialist for Bulgaria — ТРЗ, as the payroll-and-wages function is called there. Give it
+a payroll register (ведомост), a payslip (фиш), an employment contract or a work schedule, and
 it checks the numbers against the Labour Code (КТ), the Social Security Code (КСО), the
 Personal Income Taxes Act (ЗДДФЛ) and the Ordinance on the Structure and Organisation of Wages
 (НСОРЗ).

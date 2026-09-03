@@ -1,6 +1,6 @@
 {
   "name": "trz-bg",
-  "description": "Bulgarian payroll (ТРЗ) compliance tooling for Claude Code. One plugin: an audit skill for payroll registers, payslips, employment contracts and work schedules, with a dated reference file for every rate.",
+  "description": "Bulgarian payroll (ТРЗ) compliance tooling for Claude Code and GitHub Copilot. One plugin: an audit skill for payroll registers, payslips, employment contracts and work schedules, with a dated reference file for every rate.",
   "owner": {
     "name": "Svetoslav Rankov",
     "url": "https://github.com/svedbg"
