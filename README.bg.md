@@ -1,10 +1,11 @@
-# trz — скил за одит на ТРЗ документи в Claude Code
+# trz — скил за одит на ТРЗ документи в Claude Code и GitHub Copilot
 
 [![тестове](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![лиценз: MIT + CC BY 4.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7-MIT%20%2B%20CC--BY--4.0-blue)](#лиценз)
 [![ставки сверени](https://img.shields.io/badge/%D1%81%D1%82%D0%B0%D0%B2%D0%BA%D0%B8%20%D1%81%D0%B2%D0%B5%D1%80%D0%B5%D0%BD%D0%B8-2026--09--01-green)](skills/trz-expert/references/stavki.md)
 
-Скил за [Claude Code](https://claude.com/claude-code), който превръща Claude в старши ТРЗ
+Скил за [Claude Code](https://claude.com/claude-code) и
+[GitHub Copilot](https://github.com/features/copilot), който превръща асистента в старши ТРЗ
 експерт за България. Подаваш ведомост, фиш, трудов договор или график — той сверява
 числата срещу Кодекса на труда, КСО, ЗДДФЛ и Наредбата за структурата и организацията на
 работната заплата.
