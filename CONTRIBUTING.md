@@ -62,7 +62,11 @@ To add one:
    thing, recompute the dependent cells the way a wrong file would. Return the
    row and the set of expected finding ids.
 2. Register it in `SCENARIOS` in `test/trz_model.py` and in `ROW_MUTATIONS`.
-3. Implement the detection in `test/structural_test.py`.
+3. Implement the detection in `test/structural_test.py`, and give the finding id a
+   basis in `BASIS` (`test/findings.py`): a citation quoted verbatim from the
+   reference files for groups A–J, `arithmetic` for K, I and the F10 consistency
+   checks. `Findings.add` refuses an id without one, and the citation must already
+   stand in `references/` — add it there first, with a source and a status.
 4. Document it in [`test/scenarios.md`](test/scenarios.md).
 5. If the skill should also find it, add keyword patterns to `KEYWORDS` in
    `test/eval_skill.py`.
