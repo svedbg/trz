@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """Builds the static test payroll for suite 1: `vedomost_05_2026.xlsx`.
 
+    python test/generate_narrow.py          # rebuild the committed fixture
+
 Eleven people, May 2026, nine deliberately injected defects and two clean control
 rows. The answer key is in `expected_findings.md`.
+
+The period is chosen on purpose: May 2026 falls in the 01.01-31.07.2026 regime
+and its norm is 18 working days / 144 hours - 21 weekdays minus 1, 6 and 25 May,
+because 24 May is a Sunday (чл. 154, ал. 2 КТ).
 
 The second control row (row 16) is paid at exactly the statutory minimum for
 overtime, night work and a public holiday, on the чл. 7 НСОРЗ base (basic salary
@@ -11,9 +17,10 @@ those hours pays nothing above the single rate, so any positive rate in the chec
 fired and a wrong rate was indistinguishable from the right one; a row paid exactly
 at the minimum goes red the moment a rate or a base in the checker drifts upward.
 
-The period is chosen on purpose: May 2026 falls in the 01.01-31.07.2026 regime
-and its norm is 18 working days / 144 hours - 21 weekdays minus 1, 6 and 25 May,
-because 24 May is a Sunday (чл. 154, ал. 2 КТ).
+`build()` returns the workbook without saving it: checks_test.py builds the fixture
+afresh and compares it cell by cell with the committed file, so an edit to ROWS
+that is not followed by a rerun of this script fails suite 1 instead of leaving
+the two to drift.
 
 Everything here is invented. Column headers and names are Bulgarian because they
 are data; the code is English.
@@ -23,15 +30,8 @@ import os
 import openpyxl
 from openpyxl.styles import Alignment, Font
 
-wb = openpyxl.Workbook()
-ws = wb.active
-ws.title = "Ведомост 05.2026"
-
-ws["A1"] = 'ВЕДОМОСТ ЗА РАБОТНИ ЗАПЛАТИ — "Примерна Логистика" ЕООД'
-ws["A2"] = "Месец: май 2026 г.   |   Работни дни в месеца: 18   |   Норма часове: 144"
-ws["A3"] = "Икономическа дейност: 52.10 Складиране и съхраняване на товари"
-for r in (1, 2, 3):
-    ws.cell(row=r, column=1).font = Font(bold=(r == 1), size=12 if r == 1 else 10)
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "vedomost_05_2026.xlsx")
 
 COLUMNS = ["№", "Име", "Длъжност", "Дата постъпване", "Стаж (г.)",
            "Раб. време (ч/ден)", "Отраб. дни", "Отраб. часове",
@@ -43,10 +43,6 @@ COLUMNS = ["№", "Име", "Длъжност", "Дата постъпване",
            "Лични осигуровки", "Данъчна основа", "ДДФЛ", "Удръжки", "НЕТО"]
 
 HDR = 5
-for i, column in enumerate(COLUMNS, start=1):
-    cell = ws.cell(row=HDR, column=i, value=column)
-    cell.font = Font(bold=True, size=9)
-    cell.alignment = Alignment(wrap_text=True, vertical="top")
 
 # №, name, position, hired, years, hours/day, days, hours, overtime, holiday hrs,
 # night hrs, sick days, base pay, seniority %, seniority sum, overtime premium,
@@ -89,24 +85,46 @@ ROWS = [
      900.00, 3.6, 32.40, 77.70, 103.60, 14.88, 0, 1128.58, 1128.58, 155.52, 973.06, 97.31, 0, 875.75),
 ]
 
-for r, row in enumerate(ROWS, start=HDR + 1):
-    for c, value in enumerate(row, start=1):
-        ws.cell(row=r, column=c, value=value)
+TOTAL_COLUMNS = (13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)
+WIDTHS = [4, 20, 22, 13, 7, 8, 8, 9, 11, 10, 9, 12,
+          11, 7, 9, 11, 11, 10, 12, 10, 11, 11, 11, 9, 9, 10]
 
-TOTAL = HDR + len(ROWS) + 1
-ws.cell(row=TOTAL, column=2, value="ОБЩО").font = Font(bold=True)
-for c in (13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26):
-    total = sum(row[c - 1] for row in ROWS)
-    cell = ws.cell(row=TOTAL, column=c, value=round(total, 2))
-    cell.font = Font(bold=True)
 
-ws.cell(row=TOTAL + 2, column=1,
-        value="Валута: EUR. Изготвил: ТРЗ отдел. Дата: 05.06.2026 г.")
+def build():
+    """The fixture as a workbook, not yet saved."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ведомост 05.2026"
 
-for i, width in enumerate([4, 20, 22, 13, 7, 8, 8, 9, 11, 10, 9, 12,
-                           11, 7, 9, 11, 11, 10, 12, 10, 11, 11, 11, 9, 9, 10], start=1):
-    ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+    ws["A1"] = 'ВЕДОМОСТ ЗА РАБОТНИ ЗАПЛАТИ — "Примерна Логистика" ЕООД'
+    ws["A2"] = "Месец: май 2026 г.   |   Работни дни в месеца: 18   |   Норма часове: 144"
+    ws["A3"] = "Икономическа дейност: 52.10 Складиране и съхраняване на товари"
+    for r in (1, 2, 3):
+        ws.cell(row=r, column=1).font = Font(bold=(r == 1), size=12 if r == 1 else 10)
 
-out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vedomost_05_2026.xlsx")
-wb.save(out)
-print("written:", out, "|", len(ROWS), "rows")
+    for i, column in enumerate(COLUMNS, start=1):
+        cell = ws.cell(row=HDR, column=i, value=column)
+        cell.font = Font(bold=True, size=9)
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    for r, row in enumerate(ROWS, start=HDR + 1):
+        for c, value in enumerate(row, start=1):
+            ws.cell(row=r, column=c, value=value)
+
+    total = HDR + len(ROWS) + 1
+    ws.cell(row=total, column=2, value="ОБЩО").font = Font(bold=True)
+    for c in TOTAL_COLUMNS:
+        cell = ws.cell(row=total, column=c, value=round(sum(row[c - 1] for row in ROWS), 2))
+        cell.font = Font(bold=True)
+
+    ws.cell(row=total + 2, column=1,
+            value="Валута: EUR. Изготвил: ТРЗ отдел. Дата: 05.06.2026 г.")
+
+    for i, width in enumerate(WIDTHS, start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+    return wb
+
+
+if __name__ == "__main__":
+    build().save(OUT)
+    print("written:", OUT, "|", len(ROWS), "rows")
