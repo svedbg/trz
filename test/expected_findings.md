@@ -15,7 +15,7 @@ because 24 May is a Sunday — чл. 154, ал. 2 КТ).
 | --- | --- | --- | --- | --- |
 | 6 | Иван Петров | Base pay 610.00 against a minimum wage of 620.20 | B1 | ПМС № 243, ДВ бр. 98/2025 |
 | 7 | Мария Георгиева | 0% supplement for 12 years of service (7.2% due) | C1 | ПМС № 147; чл. 12 НСОРЗ |
-| 8 | Георги Иванов | 10 overtime hours paid without the premium | D4 | чл. 262, ал. 1, т. 1 КТ |
+| 8 | Георги Иванов | 10 overtime hours paid without the premium | D4 | чл. 262, ал. 1, т. 1 КТ; чл. 7 НСОРЗ for the base |
 | 9 | Елена Димитрова | Insurable income 3815.00, the cap never applied | B4 | чл. 9 ЗБДОО 2026 |
 | 10 | Петър Стоянов | 60 night hours with no supplement | D6 | чл. 8 НСОРЗ |
 | 11 | Анна Тодорова | 3 sick days at the employer's expense instead of 2 | F9 | чл. 40, ал. 5 КСО |

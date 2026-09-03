@@ -102,7 +102,14 @@ for r in rows:
     net = get(r, "НЕТО")
 
     part_time = hours_per_day / FULL_DAY
-    hourly = base_pay / (days_worked * hours_per_day) if days_worked else None
+    hours_worked = days_worked * hours_per_day
+    hourly = base_pay / hours_worked if days_worked else None
+    # чл. 7 НСОРЗ: the overtime increase is computed on the basic salary PLUS the
+    # supplements of permanent character under the contract - the length-of-service
+    # supplement is one (чл. 15, ал. 1) - unless the contract provides another base.
+    # Until 2026-09-03 this file, the formula block in proverki.md and the skill's
+    # prose all divided the basic salary alone, against the norm stavki.md quoted.
+    hourly_perm = (base_pay + seniority_sum) / hours_worked if days_worked else None
 
     # --- B1 minimum wage ---
     # „Основна заплата“ holds what was accrued for the days actually worked, not the
@@ -145,13 +152,27 @@ for r in rows:
                        "Recompute the supplement on the base salary.")
 
     # --- D4 overtime ---
+    # Two tiers. Short of the increase on the basic salary alone is short under any
+    # base: нарушение. Clearing that but not the чл. 7 НСОРЗ base is a finding that
+    # depends on the contract's clause on the base, and this suite ships no contracts:
+    # за проверка, naming what is missing.
     if overtime_hours:
-        due = r2(hourly * overtime_hours * (1 + OVERTIME_WORKDAY))
-        if overtime_premium + TOL < due:
+        floor = r2(hourly * overtime_hours * (1 + OVERTIME_WORKDAY))
+        due = r2(hourly_perm * overtime_hours * (1 + OVERTIME_WORKDAY))
+        if overtime_premium + TOL < floor:
             report("нарушение", r, name,
                    f"D4 {overtime_hours} overtime hours on working days without the premium",
-                   "чл.262 ал.1 т.1 КТ (+50%)", overtime_premium, due,
-                   "Accrue the premium.")
+                   "чл.262 ал.1 т.1 КТ (+50%); чл.7 НСОРЗ (базата)", overtime_premium, due,
+                   "Accrue the premium on the basic salary plus the permanent supplements.")
+        elif overtime_premium + TOL < due:
+            report("за проверка", r, name,
+                   f"D4 {overtime_hours} overtime hours: the premium is computed on the "
+                   f"basic salary alone",
+                   "чл.7 НСОРЗ - the base is the basic salary plus the supplements of "
+                   "permanent character unless the contract provides another base; the "
+                   "contract is not supplied", overtime_premium, due,
+                   "Supply the contract clause on the base; failing another base, "
+                   "recompute on the basic salary plus the supplement.")
 
     # --- D6 night work ---
     if night_hours:
@@ -163,12 +184,24 @@ for r in rows:
                    night_premium, due, "Accrue the night supplement.")
 
     # --- D7 work on a public holiday ---
+    # Same two tiers. The base of the чл. 264 double pay has no norm like чл. 7 НСОРЗ
+    # behind it and stands `за потвърждение` in stavki.md, so the second tier is capped
+    # at за проверка by the status rule, not only by the missing contract.
     if holiday_hours:
-        due = r2(hourly * holiday_hours * HOLIDAY_MULTIPLIER)
-        if holiday_premium + TOL < due:
+        floor = r2(hourly * holiday_hours * HOLIDAY_MULTIPLIER)
+        due = r2(hourly_perm * holiday_hours * HOLIDAY_MULTIPLIER)
+        if holiday_premium + TOL < floor:
             report("нарушение", r, name,
                    f"D7 {holiday_hours} hours on a public holiday below the double rate",
                    "чл.264 КТ", holiday_premium, due, "Top up to the double rate.")
+        elif holiday_premium + TOL < due:
+            report("за проверка", r, name,
+                   f"D7 {holiday_hours} hours on a public holiday doubled on the basic "
+                   f"salary alone",
+                   "чл.264 КТ; the composition of the base is `за потвърждение` in "
+                   "references/stavki.md (чл.66 ал.1 т.7 КТ)", holiday_premium, due,
+                   "Confirm the base of the double pay; on the basic salary plus the "
+                   "supplement the difference is as stated.")
 
     # --- F9 sick days ---
     if sick_days > SICK_DAYS_EMPLOYER:
