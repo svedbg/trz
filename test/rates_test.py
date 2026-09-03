@@ -124,6 +124,17 @@ CHECKS = [
     ("health insurance during incapacity and maternity",
      r"\| Размер \|\s*\*\*([\d.]+)%\*\* — т\. 5: вноските са за сметка на работодателя",
      M.HEALTH_ON_INCAPACITY),
+    # The two worked examples the reference states for that contribution, recomputed
+    # from the model's own rate and thresholds. A rate or a threshold that drifts in
+    # the model while its row above still matches (a typo in the multiplication, a
+    # regime mix-up) shows up here; the payroll suites cannot see it, because the
+    # generator and the checker compute this figure with the same constants.
+    ("4.8% of the self-employed minimum, 01.01-31.07.2026 - worked example",
+     r"режим 01\.01–31\.07: 4\.8% × 550\.66 = \*\*([\d.]+) EUR\*\*",
+     M.r2(M.HEALTH_ON_INCAPACITY / 100.0 * M.REGIMES["H1"]["min_insurable_self"])),
+    ("4.8% of the self-employed minimum, 01.08-31.12.2026 - worked example",
+     r"От 01\.08\.2026: 4\.8% × 620\.20 = \*\*([\d.]+) EUR\*\*",
+     M.r2(M.HEALTH_ON_INCAPACITY / 100.0 * M.REGIMES["H2"]["min_insurable_self"])),
     ("limit of the чл. 19 ЗДДФЛ relief",
      r"удържани от работодателя \| до \*\*([\d.]+)%\*\*",
      M.RELIEF_LIMIT * 100),
