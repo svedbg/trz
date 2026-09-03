@@ -1,8 +1,8 @@
 # Answer key for the static payroll
 
-`vedomost_05_2026.xlsx` is entirely invented. It holds 10 people for May 2026 —
-nine with deliberately injected defects and one wholly correct row, which serves
-as the control against false positives. Row 11 carries a second control of a
+`vedomost_05_2026.xlsx` is entirely invented. It holds 11 people for May 2026 —
+nine with deliberately injected defects and two wholly correct rows, which serve
+as the controls against false positives. Row 11 carries a control of a
 different kind: a treatment that *looks* inconsistent and is correct — see below.
 
 The period is chosen on purpose: May 2026 falls in the 01.01–31.07.2026 regime,
@@ -23,11 +23,20 @@ because 24 May is a Sunday — чл. 154, ал. 2 КТ).
 | 14 | Николай Христов | 8 hours on a public holiday paid at single rate | D7 | чл. 264 КТ |
 | 15 | Виктор Маринов | An attachment of 500.00 against a net of 723.53 | G2 | чл. 446 ГПК |
 
-## The control row
+## The control rows
 
 | Row | Person | What is special |
 | --- | --- | --- |
 | 13 | Стефка Ангелова | Part time, 4 hours, salary 310.10 = half the minimum wage. Everything correct. Must produce no finding. |
+| 16 | Росица Кънчева | Overtime, night work and a public holiday paid at **exactly** the statutory minimum: 8 overtime hours at 6.475 × 1.5 = 77.70, 8 holiday hours at 6.475 × 2 = 103.60, 16 night hours at 0.9303 = 14.88 — on the чл. 7 НСОРЗ base, (900.00 + 32.40) / 144. Everything correct. Must produce no finding. |
+
+Row 16 is the anchor for the rates the checker applies. Every other row with those
+hours pays nothing above the single rate, so a checker with a wrong premium, a wrong
+night rate or a wrong base fired on them exactly like a right one — a copy of the test
+model with overtime at +25% and the holiday multiplier at 1.5 passed this suite. A row
+paid to the cent at the minimum turns any upward drift into a false positive here.
+Downward drift is `rates_test.py`'s job: the constants are read against `stavki.md`,
+and the worked examples the reference states are recomputed from them.
 
 ## The second control: the sick-pay asymmetry on row 11
 
@@ -69,7 +78,7 @@ So the correct total is **11 findings: 9 injected + 2 consequential.**
 ## What a correct result looks like
 
 - **Nine out of nine** injected defects found, plus the two consequential ones.
-- **Zero** findings on row 13.
+- **Zero** findings on rows 13 and 16.
 - Row 15 comes out as **`за проверка`, not `нарушение`.** The чл. 446 ГПК
   thresholds are not in `references/stavki.md`, and the number of dependants is
   missing from the payroll. The skill is obliged to refuse a firm conclusion and

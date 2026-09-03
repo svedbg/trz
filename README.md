@@ -157,11 +157,12 @@ python test/skill_test.py             # packaging: frontmatter, references, mani
 ```
 
 **Suite 1 — rates and working-time regimes.** A static payroll in a narrow layout with nine
-deliberate defects and one clean control row: below-minimum wage, a missing length-of-service
+deliberate defects and two clean control rows, one of them paid at exactly the statutory
+minimum for overtime, night and holiday work: below-minimum wage, a missing length-of-service
 supplement, unpaid overtime premium, an uncapped social-security base, night hours with no
 supplement, three employer-paid sick days instead of two, a net that does not reconcile, a
 public holiday paid at single rate, and an attachment. Expected: nine of nine found, zero
-findings on the control row, and the attachment reported as `за проверка` rather than
+findings on the control rows, and the attachment reported as `за проверка` rather than
 `нарушение` — because the чл. 446 ГПК thresholds are deliberately absent from the rate file.
 Answer key: [`test/expected_findings.md`](test/expected_findings.md).
 

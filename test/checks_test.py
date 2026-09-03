@@ -331,7 +331,12 @@ EXPECTED = {
     14: {"D7"},          # public holiday at single rate
     15: {"G2"},          # attachment against an unknown protected minimum
 }
-CONTROL_ROW = 13
+# Row 13 is correct with nothing to check beyond the basics; row 16 is correct AND pays
+# overtime, night and holiday work at exactly the statutory minimum on the чл. 7 НСОРЗ
+# base, so a rate or a base drifting upward in this file shows up there as a false
+# positive. Without it every row with those hours paid nothing above the single rate,
+# and a checker with the wrong rate passed exactly like one with the right rate.
+CONTROL_ROWS = {13, 16}
 EXPECTED_SEVERITY = {"G2": "за проверка"}       # everything else: нарушение
 
 # Every check string starts with its id by convention. Assert the convention rather
@@ -349,7 +354,7 @@ for f in findings:
     found.setdefault(f["row"], set()).add(code_of(f))
 
 problems = []
-for row in sorted(set(EXPECTED) | set(found) | {CONTROL_ROW}):
+for row in sorted(set(EXPECTED) | set(found) | CONTROL_ROWS):
     due = EXPECTED.get(row, set())
     got = found.get(row, set())
     for code in sorted(due - got):
@@ -370,5 +375,5 @@ if problems:
     print(f"FAILED: {len(problems)} difference(s) from test/expected_findings.md")
     raise SystemExit(1)
 print(f"OK: {len(findings)} findings, exactly the answer key in expected_findings.md "
-      f"(9 injected + 2 consequential), row {CONTROL_ROW} clean, "
+      f"(9 injected + 2 consequential), rows {sorted(CONTROL_ROWS)} clean, "
       f"the attachment reported as „за проверка“")

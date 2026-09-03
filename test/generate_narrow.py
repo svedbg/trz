@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
 """Builds the static test payroll for suite 1: `vedomost_05_2026.xlsx`.
 
-Ten people, May 2026, nine deliberately injected defects and one clean control
-row. The answer key is in `expected_findings.md`.
+Eleven people, May 2026, nine deliberately injected defects and two clean control
+rows. The answer key is in `expected_findings.md`.
+
+The second control row (row 16) is paid at exactly the statutory minimum for
+overtime, night work and a public holiday, on the чл. 7 НСОРЗ base (basic salary
+plus the length-of-service supplement). It exists because every other row with
+those hours pays nothing above the single rate, so any positive rate in the checker
+fired and a wrong rate was indistinguishable from the right one; a row paid exactly
+at the minimum goes red the moment a rate or a base in the checker drifts upward.
 
 The period is chosen on purpose: May 2026 falls in the 01.01-31.07.2026 regime
 and its norm is 18 working days / 144 hours - 21 weekdays minus 1, 6 and 25 May,
@@ -71,6 +78,15 @@ ROWS = [
      780.00, 2.4, 18.72, 0, 43.33, 0, 0, 842.05, 842.05, 116.03, 726.02, 72.60, 0, 653.42),
     (10, "Виктор Маринов", "Специалист транспорт", "2020-02-17", 6, 8, 18, 144, 0, 0, 0, 0,
      900.00, 3.6, 32.40, 0, 0, 0, 0, 932.40, 932.40, 128.48, 803.92, 80.39, 500.00, 223.53),
+    # Second control row: everything at exactly the statutory minimum, nothing above.
+    # Hourly base under чл. 7 НСОРЗ = (900.00 + 32.40) / 144 = 6.475. Overtime 8 h on
+    # working days: 6.475 × 8 × 1.5 = 77.70. Public holiday 8 h at double: 6.475 × 8 × 2
+    # = 103.60. Night 16 h at 0.15% of МРЗ: 0.9303 × 16 = 14.88 (0.93 × 16 gives the
+    # same cents, so the per-hour rounding question does not decide this row). Gross
+    # 1128.58; contributions 13.78% = 155.52; taxable 973.06; tax 97.31; net 875.75.
+    # No rounding step here lands on a half cent.
+    (11, "Росица Кънчева", "Оператор склад", "2019-10-01", 6, 8, 18, 160, 8, 8, 16, 0,
+     900.00, 3.6, 32.40, 77.70, 103.60, 14.88, 0, 1128.58, 1128.58, 155.52, 973.06, 97.31, 0, 875.75),
 ]
 
 for r, row in enumerate(ROWS, start=HDR + 1):
