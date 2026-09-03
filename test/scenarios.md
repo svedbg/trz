@@ -284,7 +284,7 @@ measurement, and are reported as such:
 | Measure | What it means |
 | --- | --- |
 | located | was a defect reported on this row at all — objective |
-| identified | does the description match what was injected — by keyword, visible in `eval_skill.py` |
+| identified | does the description match what was injected — by keyword, visible in `eval_skill.py` — **and** does the finding assert a defect: severity `нарушение`, `риск` or `дефект`, and a sentence that does not deny it. A `бележка` saying the row is correct stands on the right row and mentions the right word; it is „located", not „identified" |
 | unattributed | everything the model found that was not injected |
 
 The unattributed ones are **not counted automatically as false positives**; they
