@@ -37,7 +37,9 @@ python test/run_tests.py --seeds 300      # what CI runs
 ```
 
 **Never run `test/eval_skill.py` unprompted.** It starts real Claude sessions and
-costs about USD 2.4 per seed. It is the only test that exercises the *guidance* in
+costs about USD 5 per seed on Claude Fable 5.1 (the default), about USD 2 on Claude
+Sonnet 5 (`--model claude-sonnet-5`) — see `test/scenarios.md` for the comparison.
+It is the only test that exercises the *guidance* in
 `SKILL.md` rather than the rules, so mention it when that guidance changes — and let
 the user decide. Free modes: `--dry` shows what would be sent, `--selftest` proves the
 grader discriminates, `--covering "id,id"` picks the cheapest seeds that inject the
