@@ -215,10 +215,14 @@ python test/eval_skill.py --regrade       # re-score the saved results, paying n
 for one seed. Hence it is not in `run_tests.py` and not in CI.
 
 **What a run leaves behind.** Each seed's session runs in `/tmp/trz-eval/seed-<n>`
-(`pair-<n>` for the two-month fixture) and leaves its transcript there — `stream.jsonl`,
+(`pair-<n>` for the two-month fixture, `refusal-seed-<n>` for a refusal run - it shared
+`seed-<n>` with the wide run until the first paid batch collided on seed 3) and leaves its
+transcript there — `stream.jsonl`,
 `findings.json`. A directory holding a transcript was paid for, so a new run of the same
 seed is refused unless `--overwrite` is given; `--dry` builds into `dry-seed-<n>` and
-never touches it. Since 2026-09-03 every seed is also written, the moment it is graded, to
+never touches it. A session that ends with the account's spend or rate limit stops the
+batch at once - the first paid batch hit the limit inside seed 1 and then paid a turn for
+each remaining seed to be told the same thing. Since 2026-09-03 every seed is also written, the moment it is graded, to
 `/tmp/trz-eval/results/<mode>-<seed>.json`: the manifest, the findings, the grades, the
 cost, and three signatures — of the skill in the working tree, of the keyword universe
 and of the fixture generator — so a saved score cannot be mistaken for a score of the
