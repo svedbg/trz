@@ -409,14 +409,29 @@ def _generate(module, seed, **kw):
     return data, man
 
 
-def seed_dir(seed, pair=False, dry=False):
+def seed_dir(seed, pair=False, dry=False, refusal=False):
     """Where a seed's session runs.
 
     A dry run builds into its own `dry-` directory: --dry calls prepare(), and prepare()
     empties the directory first, so looking at what WOULD be sent used to delete the
-    transcript - stream.jsonl, findings.json - of a paid run of the same seed.
+    transcript - stream.jsonl, findings.json - of a paid run of the same seed. A refusal
+    run has its own `refusal-` prefix for the same reason: it shared `seed-N` with the
+    wide run of the same seed, and the first paid batch ended with `--refusal --seed 3`
+    refusing to start because the wide seed 3 had just been paid for in that directory.
     """
-    return os.path.join(WORKDIR, f"{'dry-' if dry else ''}{'pair' if pair else 'seed'}-{seed}")
+    return os.path.join(WORKDIR, f"{'dry-' if dry else ''}{'refusal-' if refusal else ''}"
+                                 f"{'pair' if pair else 'seed'}-{seed}")
+
+
+# A session that could not start or was cut short for a reason outside the skill: the
+# account's spend limit, a rate limit, no credits. The first paid batch hit the spend
+# limit inside seed 1 and then paid a turn for each remaining seed to be told the same
+# thing; the batch stops at the first such answer instead.
+LIMIT_HIT = re.compile(r"spend limit|rate limit|usage limit|out of credits|quota", re.I)
+
+
+class SessionUnavailable(RuntimeError):
+    pass
 
 
 def has_paid_run(d):
@@ -436,7 +451,7 @@ def _claim(d, overwrite):
 
 def prepare(seed, year=2026, dry=False, overwrite=False):
     """Generate a payroll and place it alone in an isolated directory."""
-    d = seed_dir(seed, dry=dry)
+    d = seed_dir(seed, dry=dry, refusal=year not in M.RATES_KNOWN_YEARS)
     _claim(d, overwrite)
     # Pinned, not drawn from the seed: the eval runs the skill from a clone or a
     # symlink, where the plugin's install-time question was never asked and SKILL.md
@@ -1371,6 +1386,8 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
         else:
             print(f"  RUN NOT GRADABLE: {error}")
         persist(rec)
+        if trace.get("error") and LIMIT_HIT.search(str(trace.get("result_text") or "")):
+            raise SessionUnavailable(str(trace.get("result_text"))[:200])
         return _as_run(rec)
 
     rec.update(findings=findings, gradable=True)
@@ -1741,7 +1758,8 @@ def main():
     # starts, so a batch is refused whole rather than after nine seeds; prepare() checks
     # again, for callers that reach it some other way.
     if not a.dry and not a.overwrite:
-        kept = [d for d in (seed_dir(s, pair=a.pair) for s in seeds) if has_paid_run(d)]
+        kept = [d for d in (seed_dir(s, pair=a.pair, refusal=a.refusal) for s in seeds)
+                if has_paid_run(d)]
         if kept:
             print("refusing to run: these directories hold the transcripts of paid runs "
                   "(stream.jsonl), and a new session would erase them:")
@@ -1758,7 +1776,15 @@ def main():
     runs = []
     try:
         for s in seeds:
-            r = run_seed(s, a.model, a.dry, a.timeout, a.refusal, a.pair, a.overwrite)
+            try:
+                r = run_seed(s, a.model, a.dry, a.timeout, a.refusal, a.pair, a.overwrite)
+            except SessionUnavailable as exc:
+                print(f"\nstopping after {len(runs)} of {len(seeds)} seeds: the account "
+                      f"cannot run sessions right now - {exc}. The remaining seeds would "
+                      f"each pay for a turn and measure nothing; re-run them with "
+                      f"--overwrite once the limit resets. Finished seeds are saved in "
+                      f"{RESULTS_DIR}.")
+                break
             if r:
                 runs.append(r)
     except KeyboardInterrupt:
