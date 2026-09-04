@@ -1431,13 +1431,28 @@ def generator_sha(pair):
         return hashlib.sha256(f.read()).hexdigest()
 
 
-def results_path(mode, seed):
-    return os.path.join(RESULTS_DIR, f"{mode}-{seed}.json")
+def _model_slug(model):
+    """A filesystem-safe stand-in for the model, "default" when none was given."""
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", model) if model else "default"
+
+
+def results_path(mode, seed, model=None):
+    """Where one seed's result is saved.
+
+    The model is part of the path since 04.09.2026: a held-out validation batch ran
+    Fable and Sonnet on the SAME seed numbers on purpose, for direct comparison, and
+    Sonnet's --overwrite run silently clobbered Fable's already-graded wide-30.json -
+    same mode, same seed, different model, one path. That result is not recoverable;
+    this is why. Existing files from before this change keep their old two-part name
+    and are still found and read by --regrade, which globs *.json rather than
+    parsing the name.
+    """
+    return os.path.join(RESULTS_DIR, f"{mode}-{seed}-{_model_slug(model)}.json")
 
 
 def persist(rec):
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    path = results_path(rec["mode"], rec["seed"])
+    path = results_path(rec["mode"], rec["seed"], rec.get("model"))
     with open(path, "w", encoding="utf8") as f:
         json.dump(rec, f, ensure_ascii=False, indent=1)
     print(f"saved: {path}")
