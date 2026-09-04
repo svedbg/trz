@@ -1,13 +1,17 @@
-# trz — Bulgarian payroll audit skill for Claude Code, GitHub Copilot and Codex CLI
+# trz — Bulgarian payroll audit skill for Claude Code, GitHub Copilot, Codex CLI, Gemini CLI, Grok Build, DeepSeek, OpenClaw and Cursor
 
 [![tests](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![licence: MIT + CC BY 4.0](https://img.shields.io/badge/licence-MIT%20%2B%20CC--BY--4.0-blue)](#licence)
 [![rates verified](https://img.shields.io/badge/rates%20verified-2026--09--01-green)](skills/trz-expert/references/stavki.md)
 
 An agent skill for [Claude Code](https://claude.com/claude-code),
-[GitHub Copilot](https://github.com/features/copilot) and
-[OpenAI Codex CLI](https://developers.openai.com/codex) that turns the assistant into a senior
-payroll specialist for Bulgaria — ТРЗ, as the payroll-and-wages function is called there. Give it
+[GitHub Copilot](https://github.com/features/copilot),
+[OpenAI Codex CLI](https://developers.openai.com/codex) and any other coding agent that
+reads the shared `.agents/skills/` convention — Google Gemini CLI, xAI Grok Build,
+DeepSeek's Deep Code/Harness, OpenClaw and [Cursor](https://cursor.com/docs/skills) all
+discover it the same way — that turns the
+assistant into a senior payroll specialist for Bulgaria — ТРЗ, as the payroll-and-wages
+function is called there. Give it
 a payroll register (ведомост), a payslip (фиш), an employment contract or a work schedule, and
 it checks the numbers against the Labour Code (КТ), the Social Security Code (КСО), the
 Personal Income Taxes Act (ЗДДФЛ) and the Ordinance on the Structure and Organisation of Wages
@@ -134,6 +138,12 @@ file is a short pointer, not a second copy — it tells Codex to read the same
 copy of the guidance to keep current. Invoke it with `$trz-expert` or let a payroll
 question select it. For a personal skill available in every repository you work in,
 copy the same directory to `~/.agents/skills/trz-expert/` instead.
+
+The same `.agents/skills/` path is not Codex-specific — it has become the shared
+discovery convention across coding agents, so this one pointer also covers Google
+Gemini CLI, xAI Grok Build, DeepSeek's Deep Code/Harness, OpenClaw and Cursor (editor
+and CLI both) with no extra setup: clone the repository and any of them finds the skill
+the same way Codex does.
 
 **If you want to work on it**, clone and symlink instead, so your edits are live:
 
@@ -348,7 +358,7 @@ Two licences, because the repository holds two kinds of thing:
 
 | What | Licence |
 | --- | --- |
-| the skill directory `skills/trz-expert/` — `SKILL.md`, `references/*.md`, the two plugin manifests and `LICENSE-DOCS` itself — plus the Codex pointer, `.agents/skills/trz-expert/SKILL.md` | [CC BY 4.0](LICENSE-DOCS) |
+| the skill directory `skills/trz-expert/` — `SKILL.md`, `references/*.md`, the two plugin manifests and `LICENSE-DOCS` itself — plus the shared `.agents/skills` pointer, `.agents/skills/trz-expert/SKILL.md` (Codex CLI, Gemini CLI, Grok Build, DeepSeek, OpenClaw and Cursor) | [CC BY 4.0](LICENSE-DOCS) |
 | the source repository around it — all Python under `test/`, the git hook, the CI workflow | [MIT](LICENSE) |
 
 **What an install carries is CC BY 4.0 alone.** The plugin's source is

@@ -1,13 +1,16 @@
-# trz — скил за одит на ТРЗ документи в Claude Code, GitHub Copilot и Codex CLI
+# trz — скил за одит на ТРЗ документи в Claude Code, GitHub Copilot, Codex CLI, Gemini CLI, Grok Build, DeepSeek, OpenClaw и Cursor
 
 [![тестове](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![лиценз: MIT + CC BY 4.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7-MIT%20%2B%20CC--BY--4.0-blue)](#лиценз)
 [![ставки сверени](https://img.shields.io/badge/%D1%81%D1%82%D0%B0%D0%B2%D0%BA%D0%B8%20%D1%81%D0%B2%D0%B5%D1%80%D0%B5%D0%BD%D0%B8-2026--09--01-green)](skills/trz-expert/references/stavki.md)
 
 Скил за [Claude Code](https://claude.com/claude-code),
-[GitHub Copilot](https://github.com/features/copilot) и
-[OpenAI Codex CLI](https://developers.openai.com/codex), който превръща асистента в старши
-ТРЗ експерт за България. Подаваш ведомост, фиш, трудов договор или график — той сверява
+[GitHub Copilot](https://github.com/features/copilot),
+[OpenAI Codex CLI](https://developers.openai.com/codex) и всеки друг агент, който чете
+споделената конвенция `.agents/skills/` — Google Gemini CLI, xAI Grok Build, DeepSeek
+(Deep Code/Harness), OpenClaw и [Cursor](https://cursor.com/docs/skills) го откриват по
+същия начин — който превръща асистента в старши ТРЗ експерт за България. Подаваш
+ведомост, фиш, трудов договор или график — той сверява
 числата срещу Кодекса на труда, КСО, ЗДДФЛ и Наредбата за структурата и организацията на
 работната заплата.
 
@@ -131,6 +134,12 @@ Codex да прочете същия `skills/trz-expert/`, от който ин�
 така че указанията остават на едно място. Извиква се с `$trz-expert` или сам се избира
 при въпрос за заплати. За личен скил, наличен във всяко репо, копирай същата директория
 в `~/.agents/skills/trz-expert/`.
+
+Пътят `.agents/skills/` не е специфичен за Codex — той се утвърди като споделена
+конвенция за откриване между агентите, така че този единствен указател покрива и Google
+Gemini CLI, xAI Grok Build, DeepSeek (Deep Code/Harness), OpenClaw и Cursor (и в
+редактора, и в CLI-я му) без допълнителна настройка: клонираш репото и всеки от тях
+намира скила по същия начин като Codex.
 
 **Ако ще работиш по него**, клонирай и направи symlink, за да са живи промените ти:
 
@@ -344,7 +353,7 @@ python test/eval_skill.py --seeds 3   # три семена
 
 | Какво | Лиценз |
 | --- | --- |
-| директорията на скила `skills/trz-expert/` — `SKILL.md`, `references/*.md`, двата манифеста на плъгина и самият `LICENSE-DOCS` — плюс указателят за Codex, `.agents/skills/trz-expert/SKILL.md` | [CC BY 4.0](LICENSE-DOCS) |
+| директорията на скила `skills/trz-expert/` — `SKILL.md`, `references/*.md`, двата манифеста на плъгина и самият `LICENSE-DOCS` — плюс споделеният указател `.agents/skills/trz-expert/SKILL.md` (Codex CLI, Gemini CLI, Grok Build, DeepSeek, OpenClaw и Cursor) | [CC BY 4.0](LICENSE-DOCS) |
 | репото около нея — Python-ът в `test/`, git hook-ът, CI-ят | [MIT](LICENSE) |
 
 **Инсталацията носи само CC BY 4.0.** Източникът на плъгина е `./skills/trz-expert`, а не
