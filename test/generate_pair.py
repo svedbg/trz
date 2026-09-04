@@ -56,6 +56,15 @@ def _inputs_july(rnd, norm, regime):
     fallback existed in the statute and nowhere in the fixtures.
     """
     inp = G.random_inputs(rnd, norm, regime)
+    # чл. 224 КТ pays out UNUSED LEAVE ON TERMINATION. This fixture's whole premise is
+    # the opposite: „same roster, same contracts" continuing across both sheets - see
+    # the module docstring. random_inputs() draws it anyway (it is meant for the
+    # single-month fixture, where a leaver is one of many people), and _inputs_august
+    # below copies every July field forward unchanged, so a nonzero draw here becomes
+    # the SAME payout recurring in both months for someone who never left - found by a
+    # live Sonnet 5 --pair run (04.09.2026), which correctly read that as a defect. No
+    # scenario in PAIR_SCENARIOS touches this base, so there is no reason to draw it.
+    inp["compensation_224"] = 0.0
     inp["days_leave"] = 0
     if rnd.random() < 0.12:
         inp["days_sick"] = norm - rnd.choice([6, 8])
