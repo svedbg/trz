@@ -171,6 +171,27 @@ def _carries(row, element):
     return bool(premium) and r2(premium - M.SOCIAL_EXPENSE_THRESHOLD) > 0
 
 
+def _taxable_alternatives(before, contribution, life, elements):
+    """The taxable bases the checker's OTHER candidates would produce.
+
+    A mirror of structural_test.resolve_taxable: each element of the row moved in or out
+    of the base, under the lawful relief, no relief, or both groups squeezed under one
+    limit. A mutation whose base lands within SEPARATION of any of these is ambiguous by
+    construction and the checker is right to say so.
+    """
+    deltas = {0.0}
+    for v in elements:
+        if v:
+            deltas |= {v, -v}
+    out = []
+    for delta in deltas:
+        b = r2(before + delta)
+        out.append(r2(b - M.relief_for(b, contribution, life)))
+        out.append(b)
+        out.append(r2(b - min(r2(contribution + life), r2(b * M.RELIEF_LIMIT))))
+    return out
+
+
 def _elements(row):
     premium = row["Доброволно здравно осигуряване (премия)"]
     return [row["Карта (за сметка на работодателя)"],
@@ -207,7 +228,12 @@ def random_inputs(rnd, norm, regime):
         # row carrying one, F1_compensation_in_insurable was a detection with no
         # generator: a check that had never once been allowed to fail. The rate is
         # COMPENSATION_RATE, and the comment there says why it is what it is.
-        compensation_224=(r2(rnd.uniform(150, 800))
+        # Whole days of unused leave at the contracted daily rate with the supplement -
+        # the чл. 177 base of an unchanged contract, which is what чл. 224 pays. It was
+        # a uniform amount once, and the first paid run of 2.7.0 said so on every seed:
+        # „не съответства на цял брой дни по никоя база" - a correct observation about
+        # the fixture, not about the payroll it stands for.
+        compensation_224=(r2(rnd.randint(1, 10) * salary * (1 + pct / 100.0) / norm)
                           if rnd.random() < COMPENSATION_RATE else 0.0),
         card_employer=r2(rnd.uniform(38, 72)) if has_card else 0.0,
         card_employee=r2(rnd.uniform(3, 12)) if has_card else 0.0,
@@ -634,10 +660,22 @@ def m_relief_over_limit(row, inp, regime, tzpb, policy, rnd):
                 - row["Лични вноски общо"])
     # The limit is ignored altogether: every withheld amount is deducted in full,
     # whichever group it belongs to. That is the defect - not the two-group split.
-    contribution = r2(before * M.RELIEF_LIMIT + rnd.uniform(30, 150))
-    row["Удръжка доброволно осиг. (лична)"] = contribution
     life = row["Удръжка застраховка Живот (лична)"]
-    applied = r2(contribution + life)
+    for _ in range(20):
+        contribution = r2(before * M.RELIEF_LIMIT + rnd.uniform(30, 150))
+        applied = r2(contribution + life)
+        # The base this defect produces must not coincide with the base another of the
+        # checker's candidates would produce: at seed 2249 „the whole deduction without
+        # the limit" and „the card outside the base plus the lawful relief" landed two
+        # cents apart, the checker saw two explanations and reported
+        # F6_taxable_unexplained instead.
+        taxable = r2(before - applied)
+        if all(abs(taxable - alt) > SEPARATION
+               for alt in _taxable_alternatives(before, contribution, life, _elements(row))):
+            break
+    else:
+        return None
+    row["Удръжка доброволно осиг. (лична)"] = contribution
     row["Данъчна основа"] = r2(before - applied)
     row["ДДФЛ"] = r2(row["Данъчна основа"] * M.TAX_RATE)
     row["НЕТО преди удръжки"] = r2(row["БРУТО"] - row["Лични вноски общо"] - row["ДДФЛ"])
@@ -1213,13 +1251,24 @@ def generate(seed, month=None, year=2026, bonus_in_base=None):
     # the FINAL rows: a NEEDS_PRACTICE defect needs three clean usable rows per element
     # its row carries, beyond the rows already spoiled; otherwise it is reverted and the
     # scenario lives in another seed.
+    # Which mutations take a row out of the checker's sample: the ones that move an
+    # element between the bases (SPOILS_SAMPLE) and the two that leave the insurable
+    # income unexplained by the row's own elements - a gross that skips a column, a base
+    # computed from another salary. Every other mutation recomputes the row consistently,
+    # so it still votes; excluding all mutated rows halved the coverage of every
+    # NEEDS_PRACTICE scenario (F1_compensation_in_insurable 28 -> 5 at 300 seeds).
+    BREAKS_INSURABLE = set(SPOILS_SAMPLE) | {"K1_sum_omits_column", "A6_base_vs_contract"}
+
     def unsupported():
-        clean = _usable_rows([people[i] for i in free], regime["max_insurable"],
-                             cap_effective)
+        intact = [p for p in people if not (set(p.get("defects") or ()) & BREAKS_INSURABLE)]
+        clean = _usable_rows(intact, regime["max_insurable"], cap_effective)
         for e in expected:
             if e[0] != "row" or e[2] not in NEEDS_PRACTICE:
                 continue
-            if any(_carries(people[e[1]]["row"], el) and clean[el] < 3 + spoiled[el]
+            # Three intact rows, the same bar the loop's gate set (four usable including
+            # the row about to be spoiled). `intact` already leaves the spoiled rows
+            # out, so they are not counted again here.
+            if any(_carries(people[e[1]]["row"], el) and clean[el] < 3
                    for el in ("in_kind", "excess")):
                 return e[1]
         return None

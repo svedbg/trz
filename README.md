@@ -199,8 +199,8 @@ A run passes only when **every** injected defect is found and **no** finding is 
 beyond them. False positives fail the suite exactly like misses: a skill that sees
 violations everywhere is as useless as one that sees none.
 
-Current state, the three generated suites at 3000 seeds: 25 048 injected defects in
-suite 2, 6 883 in suite 3 and 8 994 in suite 4, every one of them found, zero false
+Current state, the three generated suites at 3000 seeds: 29 550 injected defects in
+suite 2, 6 855 in suite 3 and 8 994 in suite 4, every one of them found, zero false
 positives.
 Randomisation earned its keep — it exposed three bugs in the checks themselves, including
 one where five separately rounded contributions drift up to 0.03 from 13.78% of the base and
