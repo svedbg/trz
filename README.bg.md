@@ -1,12 +1,13 @@
-# trz — скил за одит на ТРЗ документи в Claude Code и GitHub Copilot
+# trz — скил за одит на ТРЗ документи в Claude Code, GitHub Copilot и Codex CLI
 
 [![тестове](https://github.com/svedbg/trz/actions/workflows/tests.yml/badge.svg)](https://github.com/svedbg/trz/actions/workflows/tests.yml)
 [![лиценз: MIT + CC BY 4.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7-MIT%20%2B%20CC--BY--4.0-blue)](#лиценз)
 [![ставки сверени](https://img.shields.io/badge/%D1%81%D1%82%D0%B0%D0%B2%D0%BA%D0%B8%20%D1%81%D0%B2%D0%B5%D1%80%D0%B5%D0%BD%D0%B8-2026--09--01-green)](skills/trz-expert/references/stavki.md)
 
-Скил за [Claude Code](https://claude.com/claude-code) и
-[GitHub Copilot](https://github.com/features/copilot), който превръща асистента в старши ТРЗ
-експерт за България. Подаваш ведомост, фиш, трудов договор или график — той сверява
+Скил за [Claude Code](https://claude.com/claude-code),
+[GitHub Copilot](https://github.com/features/copilot) и
+[OpenAI Codex CLI](https://developers.openai.com/codex), който превръща асистента в старши
+ТРЗ експерт за България. Подаваш ведомост, фиш, трудов договор или график — той сверява
 числата срещу Кодекса на труда, КСО, ЗДДФЛ и Наредбата за структурата и организацията на
 работната заплата.
 
@@ -121,6 +122,15 @@ copilot plugin install trz-expert@trz-bg
 стойност, при която възнаграждение с постоянен характер излиза от базата. Сменя се по-късно
 с `/plugin`. При клониране вместо инсталация настройка няма и действа стойността по
 подразбиране — скилът го казва в отчета, вместо да реши мълчаливо.
+
+В [Codex CLI](https://developers.openai.com/codex) — никаква инсталация: клонираш репото
+и Codex сам намира
+[`.agents/skills/trz-expert/SKILL.md`](.agents/skills/trz-expert/SKILL.md) чрез своето
+откриване на скилове в репото. Този файл е кратък указател, не второ копие — казва на
+Codex да прочете същия `skills/trz-expert/`, от който инсталират Claude Code и Copilot,
+така че указанията остават на едно място. Извиква се с `$trz-expert` или сам се избира
+при въпрос за заплати. За личен скил, наличен във всяко репо, копирай същата директория
+в `~/.agents/skills/trz-expert/`.
 
 **Ако ще работиш по него**, клонирай и направи symlink, за да са живи промените ти:
 
@@ -334,7 +344,7 @@ python test/eval_skill.py --seeds 3   # три семена
 
 | Какво | Лиценз |
 | --- | --- |
-| директорията на скила `skills/trz-expert/` — `SKILL.md`, `references/*.md`, двата манифеста на плъгина и самият `LICENSE-DOCS` | [CC BY 4.0](LICENSE-DOCS) |
+| директорията на скила `skills/trz-expert/` — `SKILL.md`, `references/*.md`, двата манифеста на плъгина и самият `LICENSE-DOCS` — плюс указателят за Codex, `.agents/skills/trz-expert/SKILL.md` | [CC BY 4.0](LICENSE-DOCS) |
 | репото около нея — Python-ът в `test/`, git hook-ът, CI-ят | [MIT](LICENSE) |
 
 **Инсталацията носи само CC BY 4.0.** Източникът на плъгина е `./skills/trz-expert`, а не

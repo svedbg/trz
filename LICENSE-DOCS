@@ -22,6 +22,10 @@ skills/trz-expert; the rest of that repository — the test suite under test/, t
 git hook, the CI workflow and the other tooling — is not part of the installed
 bundle and is covered by the MIT licence in the repository's LICENSE file.
 
+The same licence covers .agents/skills/trz-expert/SKILL.md — a short pointer file,
+in the same source repository, that tells Codex CLI where to find this skill rather
+than carrying a second copy of it.
+
 THE GRANT
 
 You are free to:
