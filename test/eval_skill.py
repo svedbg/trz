@@ -612,7 +612,14 @@ def invoke(d, model=None, timeout=1800):
            "--output-format", "stream-json", "--verbose",
            "--permission-mode", "acceptEdits",
            "--allowedTools", "Read", "Write", "Edit", "Glob", "Grep",
-           f"Bash({VENV}/bin/python:*)", "Bash(ls:*)",
+           # Both names, not just the one the prompt tells the model to use: a live
+           # Sonnet 5 refusal run (seed 7, 04.09.2026) called `python3` instead of
+           # `python`, got "This command requires approval" five times running the
+           # same script, gave up and asked the (nonexistent, -p has none) user for
+           # approval instead of writing findings.json - USD 0.47 spent, nothing
+           # measured. `Bash(<path>:*)` matches the exact program name, not a string
+           # prefix, so `…/python:*` never covered `…/python3`.
+           f"Bash({VENV}/bin/python:*)", f"Bash({VENV}/bin/python3:*)", "Bash(ls:*)",
            "--disallowedTools", "WebSearch", "WebFetch"]
     if model:
         cmd += ["--model", model]
