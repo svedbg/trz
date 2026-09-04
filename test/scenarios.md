@@ -241,7 +241,10 @@ missing, but one `нарушение` leaned on a rate it did not have — „з
 … под тавана", the 2026 cap applied to 2027. An insurable income below the accruals is a
 finding only if the accruals are below the cap *of that period*; without it, `за проверка`.
 The first rule in SKILL.md now says so, in the same words as the 2.6.0 lesson about a
-missing contribution, and F1 repeats it.
+missing contribution, and F1 repeats it. **Proved on 2.8.0 with the same seed (USD 4.90):** no violation asserted
+on a rate it lacks, the МРЗ comparison written as `за проверка` naming the missing 2027
+figure, 8 of 8 rate-free defects identified — the eighth after one more phrasing joined
+the I5 pattern („дните на реда са 20 вместо 22"). 3 of 3.
 
 **What a run leaves behind.** Each seed's session runs in `/tmp/trz-eval/seed-<n>`
 (`pair-<n>` for the two-month fixture, `refusal-seed-<n>` for a refusal run - it shared
