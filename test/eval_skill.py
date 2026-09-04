@@ -109,7 +109,9 @@ KEYWORDS = {
     # „това е пари, не бройка" is a correct description that carried none of
     # „сума|стойност|размер".
     "K2_amount_in_day_column":    [r"сума|стойност|размер|пари|парич", r"дни|ден"],
-    "K3_stale_contributions":     [r"вноск", r"процент|13\.?78|не отговар|твърд|"
+    # No bare „процент" - it matched any percentage-based finding, including an F5
+    # ТЗПБ sentence that also happens to say „вноските" (04.09.2026).
+    "K3_stale_contributions":     [r"вноск", r"13\.?78|не отговар|твърд|"
                                    r"изостан|вместо върху|друга база|върху база"],
     # The defect is a control cell that reads zero while the two figures it compares
     # differ. A bare `0` would match any zero digit and `0\.00` the tail of „250.00", so
@@ -118,11 +120,12 @@ KEYWORDS = {
                                    r"нула|\b0[.,]00\b|(?<![\d.,])0(?![\d.,])|тъждеств|"
                                    r"винаги|не улавя|равна на|не отчита|не показва|скрива|"
                                    r"празн"],
-    # „вместо" only before a figure: „вместо да бъде изключена" is how a sick-pay
-    # finding reads, „1 234,58 вместо 1 234,56" is how this one does.
+    # „вместо" only before a COMMA-decimal figure, this file's convention for a total
+    # ("1 234,58 вместо 1 234,56") - a bare `вместо \d` also matched a dot-decimal
+    # amount in an unrelated C2 sentence (04.09.2026).
     "K5_total_not_sum":           [r"сбор|сум|общо",
-                                   r"ръчно|не отговар|различ|вписан|≠|вместо \d|по клетките|"
-                                   r"не е сбор|не съвпад|разминав"],
+                                   r"ръчно|не отговар|различ|вписан|≠|вместо\s+[\d ]*,\d|"
+                                   r"по клетките|не е сбор|не съвпад|разминав"],
     # \bцент(а|ове|\b), not цент: the bare stem matches „процент" and claimed every
     # finding that mentions a percentage; \bцент alone still matched „централно".
     "K6_unrounded_accrual":       [r"закръгл|знак|\bцент(?:а|ове|\b)|десетичн"],
@@ -167,11 +170,13 @@ KEYWORDS = {
     # „над" alone was too narrow: a live run described this defect as „приложено с
     # пълния размер на удръжката, без да е спазен лимитът" and scored as located only.
     # „10 на сто" is the statute's own spelling of the limit.
+    # „надхвърля" (a live sentence from the Sonnet run, 04.09.2026) is a synonym of
+    # „надвишава" the direction group did not carry.
     "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|10 на сто|чл\.? ?19|"
                                    r"чл\.? ?42",
-                                   r"\bнад\b|превиш|надвиш|повече от|без да е спазен"
-                                   r"|не е спазен|пълния размер|целия размер"
-                                   r"|без ограничен|цял"],
+                                   r"\bнад\b|превиш|надвиш|надхвърля\w*|повече от|"
+                                   r"без да е спазен|не е спазен|пълния размер|"
+                                   r"целия размер|без ограничен|цял"],
     # No bare „приспадн" here: an I1 sentence about a deduction „не е приспадната от
     # нетото … 2211.09 вместо 2184.21" carried it and „вместо" and was credited here.
     "F7_relief_combined_limit":   [r"облекчен|лимит|10 ?%|10 на сто|чл\.? ?19",
@@ -185,15 +190,21 @@ KEYWORDS = {
                                    r"|не е приспаднат\w* от (?:месечната )?данъчн"
                                    r"|липсв\w*\s+(?:облекчен|приспад|намал)"
                                    r"|без облекчен|нула|не намал|не е отразен"],
+    # „недовнесена ТЗПБ вноска" names the shortfall by the contribution, not the rate,
+    # and carried none of „под|по-ниск|занижен" (Sonnet run, 04.09.2026).
     "F5_tzpb_below_due":          [r"ТЗПБ|трудова злополука",
-                                   r"\bпод\b|по-ниск|занижен|вместо|по-малък"],
+                                   r"\bпод\b|по-ниск|занижен|вместо|по-малък|недовнес\w*|"
+                                   r"недоплат\w*"],
     "B4_cap_from_wrong_period":   [r"таван|максимал",
                                    r"друг|предходн|предишн|полугоди|стар|изтекл|вместо|"
                                    r"31\.07|01\.08|неправилн|грешн"],
     # The supplement as SUBJECT (класът е начислен върху …), not „клас" as one of the
     # elements listed inside a sick-pay base: „(основна + клас + бонус)" is F9's story.
-    "C2_seniority_on_gross":      [r"класът|класа\b|клас\w*\s+(?:е\s+)?(?:начислен|изчислен|"
-                                   r"сметнат|начисляван|начислява|върху)",
+    # „Клас сумата е изчислена грешно" (Sonnet run, 04.09.2026) put a noun between
+    # „клас" and the verb that the original group did not allow for.
+    "C2_seniority_on_gross":      [r"класът|класа\b|клас\w*\s+(?:сумата\s+)?(?:е\s+)?"
+                                   r"(?:начислен|изчислен|сметнат|начисляван|начислява|"
+                                   r"върху)",
                                    r"база|бруто|основна|плюс|\+|отпуск|бонус"],
     "E3_leave_without_seniority": [r"отпуск",
                                    r"\bбез\b|липсва|не включва|клас|не е включен|не носи|"
@@ -210,17 +221,23 @@ KEYWORDS = {
     # group is what keeps them apart from the F9/F7/K entries that share a subject.
     # The live phrasing of a net that does not follow: a deduction „не е удържана от
     # нетото", „не приспада", „не е приспаднат", the net „вместо" the right figure.
+    # No bare „вместо" or „в повече" - both fire on any „X вместо Y" sentence
+    # regardless of subject, and collided with a C2 finding that happened to phrase a
+    # class-supplement error the same way (04.09.2026).
     "I1_vertical":                [r"нето|за получаване|изплат",
                                    r"минус|−|не се връзва|не отговар|не съвпад|разминав|"
                                    r"различ|аритмет|сверк|не следва от|не приспада|"
-                                   r"не е приспаднат|не е удържан|вместо|в повече|"
-                                   r"противоречи"],
+                                   r"не е приспаднат|не е удържан|противоречи"],
     # The rate, not a generic mismatch word: an I1 sentence also says „данък" and
     # „разминаване", and would be credited here. A tax-amount finding names the rate.
     # A live run named neither the rate nor the word „ставка": „ДДФЛ … е сметнат върху
     # основата преди приспадането, а не върху … - надвнесен данък". The rate OR the
     # base it was applied to OR the direction of the tax error.
-    "F6_tax_amount":              [r"данък|ДДФЛ",
+    # \bДДФЛ\b, not bare ДДФЛ - it matched inside „ЗДДФЛ" (the act itself, cited by
+    # F7/F9/I1 too; Cyrillic letters carry no word boundary between them, so a bare
+    # stem inside a longer word needs an explicit \b) and collided with an F7 sentence
+    # naming чл. 19 вр. чл. 42, ал. 3 ЗДДФЛ (04.09.2026).
+    "F6_tax_amount":              [r"данък|\bДДФЛ\b",
                                    r"10 ?%|10 на сто|ставк|не е 10|десет на сто|процент|"
                                    r"надвнесен|недовнесен|основата преди|основата след|"
                                    r"преди приспадането|след приспадането|върху основа"],
@@ -698,13 +715,26 @@ def location(finding, total_row):
     row = finding.get("red")
     if not isinstance(row, int):
         where = str(finding.get("kade", "")).lower()
-        if "файл" in where:
+        if "файл" in where or "всички редове" in where or "всеки ред" in where \
+                or "всички лица" in where:
             return "file"
         # „ред 12" names a row wherever it stands; „лист 08-2026" names a sheet, and the
         # first digit run in it is a month, not a row - it used to be read as row 8.
-        m = re.search(r"ред\s*(\d+)", where)
-        if m:
-            row = int(m.group(1))
+        # A finding that names TWO OR MORE rows this way ("редове 6, 8, 12 …") is a
+        # systemic claim across the file, the same shape as B4/F5/K5/K8's own
+        # expectation - crediting it to the first row named threw it away. „без ред 9"
+        # names a row EXCLUDED from the finding, not its location, and used to be read
+        # as row 9 for exactly that reason.
+        rows = set()
+        for m in re.finditer(r"ред\w*\s*", where):
+            if where[max(0, m.start() - 4):m.start()] == "без ":
+                continue
+            tail = re.split(r"[(—–;.]", where[m.end():], maxsplit=1)[0]
+            rows.update(int(n) for n in re.findall(r"\d+", tail))
+        if len(rows) >= 2:
+            return "file"
+        if len(rows) == 1:
+            row = next(iter(rows))
         elif "лист" in where:
             return "file"
         else:
@@ -734,6 +764,14 @@ DENIES = re.compile(
     r"|не мога да (?:проверя|потвърдя|установя|преценя)"
     r"|не (?:е|представлява|съставлява) нарушение|няма (?:нарушение|разминаване|отклонение)"
     r"|(?<!не )(?:е в съответствие|съответств(?:а|ува) на)", re.I)
+
+# „…, за разлика от идентичния случай на ред 8, изчислен правилно." names a DIFFERENT
+# row as the correct comparison, not this finding as correct - DENIES fired on it
+# regardless, and a real чл. 40, ал. 1, т. 5 ЗЗО overcharge (2.7.0/Sonnet run,
+# 04.09.2026) scored as a denial of itself. A comparison marker before the match means
+# the "правилно" describes the OTHER thing named, not the finding's own subject.
+_COMPARISON = re.compile(r"за разлика от|докато (?:при|на|за)|за разлика с|"
+                         r"за сравнение с|спрямо ред", re.I)
 
 
 # Scenarios whose correct finding IS a `за проверка`: the figure matches no composition
@@ -766,7 +804,11 @@ def asserts_a_defect(finding, ident=None):
         allowed.add("бележка")
     if tezhest not in allowed:
         return False
-    return not DENIES.search(str(finding.get("kratko", "")))
+    text = str(finding.get("kratko", ""))
+    m = DENIES.search(text)
+    if m and _COMPARISON.search(text[:m.start()]):
+        return True     # the правилно/коректно names a different row, not this one
+    return m is None
 
 
 def grade(man, findings):
@@ -946,6 +988,9 @@ _OBSERVED_PAIRS = (
         "238.61 EUR при лимит 10%",
         "Облекчението по чл. 19, ал. 2 ЗДДФЛ е приложено с пълния размер на удръжката "
         "276.21 EUR, без да е спазен лимитът",
+        "Приспадната лична вноска за допълнително доброволно осигуряване (278.44 EUR) "
+        "надхвърля 10%-товия лимит от месечната данъчна основа (лимит 179.44 EUR) по "
+        "чл. 19, ал. 2 вр. чл. 42, ал. 3 ЗДДФЛ",
     ]),
     ("F9_sick_pay_in_taxable", [
         "Сумата по чл. 40, ал. 5 КСО (185.47) е включена в данъчната основа, вместо да "
@@ -961,6 +1006,9 @@ _OBSERVED_PAIRS = (
     ]),
     ("F5_tzpb_below_due", [
         "ТЗПБ е приложен 0.80% вместо потвърдените 1.1% при всичките 11 лица",
+        "Изведеният от вноските процент ТЗПБ е ефективно ~0.40% (виж AF спрямо "
+        "осигурителния доход), а не декларираните от дружеството 0.50% — недовнесена "
+        "ТЗПБ вноска за месеца",
     ]),
     # From the review of 03.09.2026 - correct descriptions the patterns missed outright:
     ("I5_days_do_not_reconcile", [
@@ -998,6 +1046,16 @@ _OBSERVED_PAIRS = (
         "Болничният за сметка на работодателя е изчислен като 70% x 2 дни x (основна + клас "
         "+ бонус 354.50)/21 отработени дни; по постоянната база (договор + клас) се получава "
         "139.26 EUR, т.е. 23.63 EUR в повече — бонусът е третиран като еднократен",
+    ]),
+    ("C2_seniority_on_gross", [
+        "Клас сумата е изчислена грешно (34.21 вместо 549.23×4.2%=23.07 по чл. 12, ал. 8 "
+        "НСОРЗ); грешката се пренася в брутото, осигурителния доход, данъка и нетото",
+    ]),
+    ("F9_health_on_sick_days", [
+        "Здравната вноска при болничен е изчислена върху всички 3 дни болничен вместо "
+        "само върху 1-я ден за сметка на ДОО (чл. 40, ал. 1, т. 5 ЗЗО, in fine) — "
+        "надвнесено 2.30 EUR за сметка на работодателя, за разлика от идентичния случай "
+        "на ред 8, изчислен правилно",
     ]),
 )
 OBSERVED = dict(_OBSERVED_PAIRS)
