@@ -583,6 +583,50 @@ else:
         note(f"social preview: {check_count} checks, {scenario_count} scenarios, "
              f"{grouped(totals['README.md'][0])} defects - all agree with their sources")
 
+# ------------------------------------------------------ the Codex CLI pointer
+# Codex CLI auto-discovers a repository skill at .agents/skills/<name>/SKILL.md - no
+# manifest, no install step, just that file's presence. Unlike a Claude Code plugin
+# (copied elsewhere before it runs), Codex reads the live repository, so the pointer
+# below tells it to go read the canonical skill instead of carrying a second copy that
+# could drift from it silently.
+CODEX_DIR = os.path.join(ROOT, ".agents", "skills", "trz-expert")
+CODEX_SKILL_MD = os.path.join(CODEX_DIR, "SKILL.md")
+if not os.path.exists(CODEX_SKILL_MD):
+    fail(f"{CODEX_SKILL_MD} is missing - Codex CLI's repository-skill discovery finds "
+         f"nothing there")
+else:
+    codex_text = read(CODEX_SKILL_MD)
+    codex_match = re.match(r"---\n(.*?)\n---\n", codex_text, re.S)
+    if not codex_match:
+        fail(f"{CODEX_SKILL_MD} has no YAML frontmatter delimited by --- lines")
+        codex_frontmatter = {}
+    else:
+        try:
+            codex_frontmatter = yaml.safe_load(codex_match.group(1)) or {}
+        except yaml.YAMLError as e:
+            fail(f"the Codex pointer's frontmatter is not valid YAML: {e}")
+            codex_frontmatter = {}
+    codex_name = codex_frontmatter.get("name")
+    codex_directory = os.path.basename(CODEX_DIR)
+    if codex_name != codex_directory:
+        fail(f"Codex pointer frontmatter name {codex_name!r} does not match its "
+             f"directory {codex_directory!r}")
+    # The two descriptions are the same trigger, kept as one string by hand; a change
+    # to one that misses the other silently un-syncs when Codex decides to load the
+    # skill from when Claude Code does.
+    if codex_frontmatter.get("description") != description:
+        fail("the Codex pointer's description has drifted from skills/trz-expert/"
+             "SKILL.md's - they are the same trigger for two readers of the same skill")
+    # The paths the pointer sends Codex to read. Named literally, not derived, so a
+    # rename of any of the four files breaks this the moment the pointer is not
+    # updated in the same commit - exactly the silent drift this file exists to catch.
+    for rel in ("skills/trz-expert/SKILL.md", "skills/trz-expert/references/stavki.md",
+               "skills/trz-expert/references/proverki.md",
+               "skills/trz-expert/references/normativna-baza.md"):
+        if rel not in codex_text:
+            fail(f"the Codex pointer no longer names {rel} - Codex would not be told "
+                 f"to read it")
+
 # ------------------------------------------------------------------ licences
 # The repository is dual-licensed - CC BY 4.0 for the skill prose, MIT for the Python
 # under `test/` - but only the skill directory is published as the plugin. So the

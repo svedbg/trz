@@ -81,6 +81,12 @@ A false positive fails exactly like a miss.
 - **Adding a check or a scenario** has a checklist in `CONTRIBUTING.md`. Prove a new
   check has teeth: break something on purpose, confirm the suite goes red, revert.
 - **Hooks are opt-in:** `git config core.hooksPath .githooks` once.
+- **A fourth channel with no manifest.** `.agents/skills/trz-expert/SKILL.md` is what
+  Codex CLI's repository-skill discovery finds — no plugin, no marketplace, just that
+  path. It is a pointer, not a copy: its body names the four canonical files by exact
+  path and tells Codex to go read them, and its frontmatter `description` must equal
+  `skills/trz-expert/SKILL.md`'s. `skill_test.py` checks both; a rename on one side
+  without the other breaks it.
 
 ## Language
 
