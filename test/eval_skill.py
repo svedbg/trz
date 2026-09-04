@@ -116,7 +116,8 @@ KEYWORDS = {
     # the zero is taken only when nothing numeric touches it.
     "K4_control_column_blind":    [r"изплат|разлика|контрол",
                                    r"нула|\b0[.,]00\b|(?<![\d.,])0(?![\d.,])|тъждеств|"
-                                   r"винаги|не улавя|равна на|не отчита|не показва|скрива"],
+                                   r"винаги|не улавя|равна на|не отчита|не показва|скрива|"
+                                   r"празн"],
     # „вместо" only before a figure: „вместо да бъде изключена" is how a sick-pay
     # finding reads, „1 234,58 вместо 1 234,56" is how this one does.
     "K5_total_not_sum":           [r"сбор|сум|общо",
@@ -125,7 +126,11 @@ KEYWORDS = {
     # \bцент(а|ове|\b), not цент: the bare stem matches „процент" and claimed every
     # finding that mentions a percentage; \bцент alone still matched „централно".
     "K6_unrounded_accrual":       [r"закръгл|знак|\bцент(?:а|ове|\b)|десетичн"],
-    "K7_cost_from_net":           [r"разход", r"нето|след удръжк|от нетото"],
+    # Live runs described the cost taken from the net as „занижен … изважда личната
+    # удръжка" and „намален с личната част на картата" - the deduction named, the word
+    # „нето" absent.
+    "K7_cost_from_net":           [r"разход", r"нето|след удръжк|от нетото|удръжк|"
+                                              r"занижен|намален|личната част"],
     # осигурител\w*, not осигурителн - see _RATE_NAMES.
     "F9_sick_pay_out_of_insurable": [_SICK, r"осигурител\w*"],
     "F9_sick_pay_in_taxable":     [_SICK, r"данъчн|данък|облага|облож"],
@@ -164,10 +169,12 @@ KEYWORDS = {
     # „10 на сто" is the statute's own spelling of the limit.
     "F7_relief_over_limit":       [r"облекчен|приспадн|лимит|10 ?%|10 на сто|чл\.? ?19|"
                                    r"чл\.? ?42",
-                                   r"над|превиш|надвиш|повече от|без да е спазен"
+                                   r"\bнад\b|превиш|надвиш|повече от|без да е спазен"
                                    r"|не е спазен|пълния размер|целия размер"
                                    r"|без ограничен|цял"],
-    "F7_relief_combined_limit":   [r"облекчен|приспадн|лимит|10 ?%|10 на сто|чл\.? ?19",
+    # No bare „приспадн" here: an I1 sentence about a deduction „не е приспадната от
+    # нетото … 2211.09 вместо 2184.21" carried it and „вместо" and was credited here.
+    "F7_relief_combined_limit":   [r"облекчен|лимит|10 ?%|10 на сто|чл\.? ?19",
                                    r"два|две|отделн|поотделно|груп|\bобщ|20 ?%|вместо|по-малк"],
     # A bare `0` matched any text containing a zero digit, i.e. almost everything;
     # `0\.00` was no better - it matches the tail of „250.00". And a bare „липсв" took
@@ -175,14 +182,19 @@ KEYWORDS = {
     # finding; what must be missing is the relief itself.
     "F7_relief_not_applied":      [r"облекчен|приспадн|намал|чл\.? ?19|чл\.? ?42",
                                    r"не е приложен|не е ползван|не е намал"
-                                   r"|не е приспадн|липсв\w*\s+(?:облекчен|приспад|намал)"
+                                   r"|не е приспаднат\w* от (?:месечната )?данъчн"
+                                   r"|липсв\w*\s+(?:облекчен|приспад|намал)"
                                    r"|без облекчен|нула|не намал|не е отразен"],
     "F5_tzpb_below_due":          [r"ТЗПБ|трудова злополука",
                                    r"\bпод\b|по-ниск|занижен|вместо|по-малък"],
     "B4_cap_from_wrong_period":   [r"таван|максимал",
                                    r"друг|предходн|предишн|полугоди|стар|изтекл|вместо|"
                                    r"31\.07|01\.08|неправилн|грешн"],
-    "C2_seniority_on_gross":      [r"клас", r"база|бруто|основна"],
+    # The supplement as SUBJECT (класът е начислен върху …), not „клас" as one of the
+    # elements listed inside a sick-pay base: „(основна + клас + бонус)" is F9's story.
+    "C2_seniority_on_gross":      [r"класът|класа\b|клас\w*\s+(?:е\s+)?(?:начислен|изчислен|"
+                                   r"сметнат|начисляван|начислява|върху)",
+                                   r"база|бруто|основна|плюс|\+|отпуск|бонус"],
     "E3_leave_without_seniority": [r"отпуск",
                                    r"\bбез\b|липсва|не включва|клас|не е включен|не носи|"
                                    r"не съдържа"],
@@ -193,13 +205,22 @@ KEYWORDS = {
     # The six scenarios that got their mutations on 03.09.2026 (they had checkers and
     # no generator). Each carries its subject and the shape of the defect; the shape
     # group is what keeps them apart from the F9/F7/K entries that share a subject.
+    # The live phrasing of a net that does not follow: a deduction „не е удържана от
+    # нетото", „не приспада", „не е приспаднат", the net „вместо" the right figure.
     "I1_vertical":                [r"нето|за получаване|изплат",
                                    r"минус|−|не се връзва|не отговар|не съвпад|разминав|"
-                                   r"различ|аритмет|сверк|не следва от"],
+                                   r"различ|аритмет|сверк|не следва от|не приспада|"
+                                   r"не е приспаднат|не е удържан|вместо|в повече|"
+                                   r"противоречи"],
     # The rate, not a generic mismatch word: an I1 sentence also says „данък" and
     # „разминаване", and would be credited here. A tax-amount finding names the rate.
+    # A live run named neither the rate nor the word „ставка": „ДДФЛ … е сметнат върху
+    # основата преди приспадането, а не върху … - надвнесен данък". The rate OR the
+    # base it was applied to OR the direction of the tax error.
     "F6_tax_amount":              [r"данък|ДДФЛ",
-                                   r"10 ?%|10 на сто|ставк|не е 10|десет на сто|процент"],
+                                   r"10 ?%|10 на сто|ставк|не е 10|десет на сто|процент|"
+                                   r"надвнесен|недовнесен|основата преди|основата след|"
+                                   r"преди приспадането|след приспадането|върху основа"],
     "A6_base_vs_contract":        [r"договор|споразумени|уговорен",
                                    r"основн|заплата|възнаграждени",
                                    r"разминав|различ|не отговар|по-ниск|по-висок|\bпод\b|"
@@ -716,7 +737,17 @@ DENIES = re.compile(
 # of the row, so the honest report says the file does not explain it and asks - it does
 # not assert a violation. Demanding `нарушение` there would score the right answer as
 # „located only" and reward a skill that guesses a cause.
-UNRESOLVED_IS_RIGHT = {"F1_insurable_unexplained", "F6_taxable_unexplained"}
+UNRESOLVED_IS_RIGHT = {"F1_insurable_unexplained", "F6_taxable_unexplained",
+                       # Not unresolved but status-capped: the composition of the чл. 40,
+                       # ал. 5 КСО base is `за потвърждение` in stavki.md, so a skill that
+                       # computes the 23.63 EUR overpayment and writes `за проверка` is
+                       # following its own cap rule. Seed 1 of the 04.09.2026 run did.
+                       "F9_sick_pay_amount"}
+
+# Group K findings are proven by arithmetic and normativna-baza.md gives them
+# `дефект` OR `бележка`; a construction defect the model judged minor (a 0.05 EUR
+# control-column blind spot) is still the finding.
+NOTE_IS_RIGHT_FOR_GROUP = ("K",)
 
 
 def asserts_a_defect(finding, ident=None):
@@ -725,8 +756,12 @@ def asserts_a_defect(finding, ident=None):
     For the scenarios in UNRESOLVED_IS_RIGHT a `за проверка` counts as the claim.
     """
     tezhest = str(finding.get("tezhest", "")).strip().lower()
-    if tezhest not in ASSERTING and not (tezhest == "за проверка"
-                                         and ident in UNRESOLVED_IS_RIGHT):
+    allowed = set(ASSERTING)
+    if ident in UNRESOLVED_IS_RIGHT:
+        allowed.add("за проверка")
+    if ident and ident.startswith(NOTE_IS_RIGHT_FOR_GROUP):
+        allowed.add("бележка")
+    if tezhest not in allowed:
         return False
     return not DENIES.search(str(finding.get("kratko", "")))
 
@@ -934,6 +969,31 @@ _OBSERVED_PAIRS = (
     ("K2_amount_in_day_column", [
         "в „Отработени дни“ стои 1 850,00 - това е пари, не бройка",
     ]),
+    # From the 04.09.2026 run (2.7.0) - correct identifications scored „located only":
+    ("I1_vertical", [
+        "Нетото за изплащане (2118.31) не приспада личната част от картата 11.82, докато "
+        "при всички други редове с такава удръжка тя е приспадната",
+        "Удръжката за доброволно осигуряване 26.88 намалява данъчната основа, но не е "
+        "приспадната от „НЕТО за изплащане“ (2211.09 вместо 2184.21)",
+        "личната премия за застраховка Живот 211.44 EUR намалява данъчната основа, но не е "
+        "удържана от нетото (нето за изплащане 4490.27 вместо 4278.83) — файлът си противоречи",
+    ]),
+    ("F6_tax_amount", [
+        "премията за застраховка Живот 93.29 EUR е приспадната в колона Данъчна основа, но "
+        "ДДФЛ 522.08 е сметнат върху основата преди приспадането (5220.83), а не върху "
+        "5127.54 — надвнесен данък 9.33 EUR за сметка на лицето",
+    ]),
+    ("K7_cost_from_net", [
+        "„Общ разход за труд“ е занижен с 40.29 — изважда личната удръжка за доброволно "
+        "осигуряване, която е част от брутото",
+        "Общият разход за труд на Здравка Влахова 2602.82 EUR е намален с личната част на "
+        "картата",
+    ]),
+    ("F9_sick_pay_amount", [
+        "Болничният за сметка на работодателя е изчислен като 70% x 2 дни x (основна + клас "
+        "+ бонус 354.50)/21 отработени дни; по постоянната база (договор + клас) се получава "
+        "139.26 EUR, т.е. 23.63 EUR в повече — бонусът е третиран като еднократен",
+    ]),
 )
 OBSERVED = dict(_OBSERVED_PAIRS)
 assert len(OBSERVED) == len(_OBSERVED_PAIRS), "a scenario is listed twice in OBSERVED"
@@ -1049,10 +1109,15 @@ def check_grading():
 
     for where, idx, ident in man["expected"]:
         sample = SAMPLE_TEXT[ident]
+        # A `бележка` identifies a group-K defect (normativna-baza.md allows it there),
+        # and a `за проверка` identifies the scenarios whose right answer is one.
+        note_ok = ident.startswith(NOTE_IS_RIGHT_FOR_GROUP)
+        decline_ok = ident in UNRESOLVED_IS_RIGHT
         variants = (
             ("asserted", "дефект", sample, "identified"),
-            ("a note", "бележка", sample, "located only"),
-            ("declined", "за проверка", sample, "located only"),
+            ("a note", "бележка", sample, "identified" if note_ok else "located only"),
+            ("declined", "за проверка", sample,
+             "identified" if decline_ok else "located only"),
             ("a denial", "нарушение", sample + " - проверено, изчислението е коректно",
              "located only"),
             ("a negated denial", "нарушение", sample + " - изчислено е неправилно",

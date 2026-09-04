@@ -214,6 +214,35 @@ python test/eval_skill.py --regrade       # re-score the saved results, paying n
 **It costs money.** A measured run on Opus: 18 turns, about 12 minutes and USD 2.4
 for one seed. Hence it is not in `run_tests.py` and not in CI.
 
+**The 2.7.0 run (04.09.2026).** Five seeds chosen with `--covering` for the new scenarios
+and the changed guidance (1, 3, 9, 14, 16 — 42 injected defects), USD 24.09, about 11
+minutes and USD 4.7 per seed on this model (the USD 2.4 above was an earlier model's
+price). Located 42 of 42, missed none. Identified 33 as graded live; nine „located only",
+of which eight were the grader, not the skill: the model wrote „нетото не приспада",
+„надвнесен данък … върху основата преди приспадането", „разходът е занижен — изважда
+личната удръжка", and a `бележка` for a 0.05 EUR control-column defect (allowed for group
+K), and reported the sick-pay base overpayment as `за проверка` because the base's
+composition is `за потвърждение` in the reference — its own cap rule. Those phrasings are
+regression cases now; re-graded offline the same records score 41 of 42. The ninth is the
+K2 sentence that also carries the I5 expectation and does not name the norm. **No false
+`нарушение` in five payrolls**: every unattributed finding was a correct consequence of an
+injected defect (seed 14's nine cap rows are its file-level B4), a `за проверка` that
+asks for a document, or a note. One thing it found in the fixture itself: the чл. 224
+compensation was a uniform random amount, and the skill said on every seed that it
+matched no whole number of days at any base. It is whole days now. A second fixture
+lesson from the 3000-seed run that followed: the relief-over-limit mutation could land
+two cents from „the card outside the base plus the lawful relief", and the checker rightly
+called the base unexplained — the mutation now checks its base against every other
+candidate's (`_taxable_alternatives`).
+
+**The refusal seed of that batch (seed 3, a 2027 payroll, USD 6.17)** scored 2 of 3: the
+arithmetic survived (8 of 8 rate-free defects identified) and the report named what was
+missing, but one `нарушение` leaned on a rate it did not have — „занижен осигурителен доход
+… под тавана", the 2026 cap applied to 2027. An insurable income below the accruals is a
+finding only if the accruals are below the cap *of that period*; without it, `за проверка`.
+The first rule in SKILL.md now says so, in the same words as the 2.6.0 lesson about a
+missing contribution, and F1 repeats it.
+
 **What a run leaves behind.** Each seed's session runs in `/tmp/trz-eval/seed-<n>`
 (`pair-<n>` for the two-month fixture, `refusal-seed-<n>` for a refusal run - it shared
 `seed-<n>` with the wide run until the first paid batch collided on seed 3) and leaves its
