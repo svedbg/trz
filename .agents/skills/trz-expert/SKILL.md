@@ -5,11 +5,12 @@ description: Старши експертиза по ТРЗ (труд и рабо
 
 # Trz-expert (pointer to the canonical skill)
 
-This directory exists only so Codex CLI's repository-skill discovery
-(`.agents/skills/<name>/SKILL.md`) finds this skill. The instructions themselves live
-at `skills/trz-expert/` in this same repository, because that is also the source
-Claude Code and GitHub Copilot install from — one copy, not a fork that can drift out
-of sync with the other two.
+This directory exists so any coding agent that scans `.agents/skills/<name>/SKILL.md`
+finds this skill — that convention is shared, unmodified, by OpenAI Codex CLI, Google
+Gemini CLI, xAI Grok Build, DeepSeek's Deep Code/Harness, OpenClaw and Cursor. The instructions
+themselves live at `skills/trz-expert/` in this same repository, because that is also
+the source Claude Code and GitHub Copilot install from — one copy, not a fork that can
+drift out of sync with the others.
 
 **Do this now, before answering anything about a payroll:**
 
