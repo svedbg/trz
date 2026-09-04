@@ -199,9 +199,12 @@ KEYWORDS = {
                                    r"\bбез\b|липсва|не включва|клас|не е включен|не носи|"
                                    r"не съдържа"],
     # „18 + 2 + 2 = 22 при 21 работни дни" names the norm without the word.
+    # „дните на реда са 20 вместо 22 - дните липсват от отчетността" is how the 2.8.0
+    # refusal run described it, without „норма" or „не се връзва".
     "I5_days_do_not_reconcile":   [r"дни|ден",
                                    r"норма|не се връзва|не отговар|сбор|работни дни|"
-                                   r"не съвпад|разминав"],
+                                   r"не съвпад|разминав|вместо \d|дните липсва|"
+                                   r"дните на реда|броят (?:на )?дни|дни са \d"],
     # The six scenarios that got their mutations on 03.09.2026 (they had checkers and
     # no generator). Each carries its subject and the shape of the defect; the shape
     # group is what keeps them apart from the F9/F7/K entries that share a subject.
@@ -962,6 +965,8 @@ _OBSERVED_PAIRS = (
     # From the review of 03.09.2026 - correct descriptions the patterns missed outright:
     ("I5_days_do_not_reconcile", [
         "отработени 18 + отпуск 2 + болнични 2 = 22 при 21 работни дни в месеца",
+        "Начислени болнични за сметка на работодателя 51.54 (= 2 дни × 70% × 36.81), но "
+        "„Дни болничен“ = 0 и дните на реда са 20 вместо 22 — дните липсват от отчетността",
     ]),
     ("K5_total_not_sum", [
         "ОБЩО за колоната Карта е 1 234,58 вместо 1 234,56 по клетките",
