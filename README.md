@@ -262,9 +262,10 @@ python test/eval_skill.py --dry       # show what would be sent, pay nothing
 python test/eval_skill.py --seeds 3   # three seeds
 ```
 
-One measured run on Opus: 18 turns, about 12 minutes and USD 2.4 for a single seed. So it is
-not in `run_tests.py` and not in CI. Run it when the guidance in `SKILL.md` changes, which is
-the only thing that can move its result.
+Measured on 04.09.2026: Claude Fable 5.1, the default, about USD 4.5–6.2 per seed
+(16–25 turns, 11–15 minutes); Claude Sonnet 5, about USD 1.5–2.2, at a lower identified
+rate. So it is not in `run_tests.py` and not in CI. Run it when the guidance in
+`SKILL.md` changes, which is the only thing that can move its result.
 
 Three decisions in it are worth knowing. The model gets a directory in `/tmp` holding the
 workbook and a contracts CSV — what an auditor legitimately has — while the manifest is

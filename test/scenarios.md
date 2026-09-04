@@ -246,6 +246,25 @@ on a rate it lacks, the МРЗ comparison written as `за проверка` nam
 figure, 8 of 8 rate-free defects identified — the eighth after one more phrasing joined
 the I5 pattern („дните на реда са 20 вместо 22"). 3 of 3.
 
+**Claude Sonnet 5 (04.09.2026), five fresh seeds (20, 21, 22, 24, 25 - never used for
+calibration before), USD 8.89, about USD 1.8 and 15-20 turns per seed - roughly a third
+the cost of Claude Fable 5.1 above.** Live 28 of 50 = 56%. Triaging every gap found four
+real grader defects, not model failures, confirmed harmless against the untouched Fable
+records (still 41/42 after the fix): `location()` collapsed a systemic finding named by
+row list („редове 6, 8, 12, …" or „всички редове … (без ред 9 - …)") to a single row -
+for the exclusion phrasing, the excluded row; Sonnet tends to name every affected row
+where Fable tends to write „file", so this one hit Sonnet's transcripts far harder than
+Fable's ever had reason to. `DENIES` read „за разлика от … ред 8, изчислен правилно"
+(unlike row 8, which WAS correct) as the model denying its OWN finding - the comparison
+names a different row's correct example, not this row's outcome. Three keyword gaps
+(„недовнесена вноска" for F5, a noun between subject and verb in „клас сумата е
+изчислена грешно" for C2, „надхвърля" for F7) each collided with another scenario once
+widened and were fixed at the collision, not by dropping the recall - see the commit for
+detail. Re-graded offline with all four fixes: **33 of 50 = 66%.** Zero false
+`нарушение` in five payrolls, same as Fable. The gap to Fable's 98% is real and clusters
+in checks needing a multi-step derivation carried through several numbers (K3, K7,
+F6_tax_amount, I1) - nothing in the misses points at unclear guidance.
+
 **What a run leaves behind.** Each seed's session runs in `/tmp/trz-eval/seed-<n>`
 (`pair-<n>` for the two-month fixture, `refusal-seed-<n>` for a refusal run - it shared
 `seed-<n>` with the wide run until the first paid batch collided on seed 3) and leaves its

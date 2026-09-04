@@ -102,7 +102,7 @@ What runs when:
 | commit touching `test/*.py` | plus all five suites (0–4), 25 seeds |
 | push and pull request (CI) | rates, packaging, the grader's self-test, the leak guards (text files and inside every tracked workbook), the five suites (0–4) at 300 seeds on Python 3.10–3.13 |
 | weekly (CI) | the five suites at 3000 seeds; monthly, the verification-date freshness check |
-| by hand | `eval_skill.py` — it calls Claude and costs about USD 2.4 per seed |
+| by hand | `eval_skill.py` — it calls Claude and costs about USD 5 per seed on Claude Fable 5.1, about USD 2 on Claude Sonnet 5 |
 
 `eval_skill.py` is the only test that exercises the skill rather than the rules.
 Run it when you change the guidance in `SKILL.md`, because nothing else will

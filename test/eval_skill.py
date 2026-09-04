@@ -10,8 +10,10 @@ findings it reports back onto the manifest.
     python test/eval_skill.py --refusal        # can the skill refuse rather than guess?
     python test/eval_skill.py --regrade        # free: re-grade saved results with the current keywords
 
-IT COSTS MONEY. One measured run on Opus: 18 turns, about 12 minutes and USD 2.4
-for a single seed. Use --dry to see what will happen before paying.
+IT COSTS MONEY, and the amount depends on the model. Measured on 04.09.2026: Claude
+Fable 5.1, the default, ~USD 4.5-6.2 per seed (16-25 turns, 11-15 minutes); Claude
+Sonnet 5 (--model claude-sonnet-5) ~USD 1.5-2.2 per seed, at a lower identified rate -
+see scenarios.md for the comparison. Use --dry to see what will happen before paying.
 
 How this differs from the other suites. They test the rules - arithmetic,
 thresholds, composition logic - with independent Python against a generated
@@ -84,7 +86,7 @@ REPO_SKILL = os.path.join(HERE, "..", "skills", "trz-expert")
 # a run of more than this many needs --allow-expensive, because `--seeds 300` is what
 # every other suite in this directory takes and here it would be a four-figure bill
 # after one printed line.
-EST_USD_PER_SEED = 2.4
+EST_USD_PER_SEED = 5.0    # Claude Fable 5.1, the default; roughly a third on Sonnet 5
 MAX_SEEDS_UNCONFIRMED = 10
 
 # --- keywords for the mapping. Each entry is a list: all of them must match ---
