@@ -8,8 +8,8 @@ anywhere under `test/`.
 
 A комплект is the payroll plus what follows from it:
 
-    ведомост  ->  Декларация обр. 1  ->  Декларация обр. 6  ->  внесено / изплатено
-    (vedomost.xlsx)  (deklaracia_1.csv)   (deklaracia_6.csv)     (plateni.csv)
+    ведомост -> Декларация обр. 1 -> Декларация обр. 6 -> внесено -> счетоводство
+    (vedomost)     (deklaracia_1)      (deklaracia_6)     (plateni)  (oborotna)
 
 plus `dogovori.csv`, which carries what the payroll cannot: the agreed salary, the
 identifier and the bank account of each person.
@@ -171,6 +171,22 @@ def d6_from_d1(d1):
             for name, key in _KEY_BY_NAME.items()]
 
 
+def ledger_from(d6, people):
+    """The trial balance: what the books owe, by account.
+
+    The last transition I9 names, and the one the fixture stopped short of until
+    05.09.2026. It reconciles **liabilities**, not cost: the balance owed to НАП by kind
+    of contribution and the balance owed to staff. The cost of labour is K7's business
+    and is deliberately not recomputed here - checking it twice is how one defect gets
+    reported as two.
+    """
+    rows = [dict(smetka=f"461 {line['vid']}", opisanie=f"задължение към НАП — {line['vid']}",
+                 salddo=line["dalzhimo"]) for line in d6]
+    rows.append(dict(smetka="421 Персонал", opisanie="задължение към персонала",
+                     salddo=r2(sum(p["row"]["НЕТО за изплащане"] for p in people))))
+    return rows
+
+
 def payments_from(d6, people):
     """What left the account: one salary order per person, one НАП order per obligation."""
     out = [dict(vid="заплата", poluchatel=p["ident"], iban=p["iban"],
@@ -192,6 +208,7 @@ def payments_from(d6, people):
 def b_person_missing_in_d1(k):
     del k["d1"][2]
     k["d6"] = d6_from_d1(k["d1"])
+    k["ledger"] = ledger_from(k["d6"], k["people"])
     k["payments"] = payments_from(k["d6"], k["people"])
     return 2
 
@@ -201,6 +218,7 @@ def b_extra_person_in_d1(k):
     ghost["ident"] = "СЛ-900"
     k["d1"].append(ghost)
     k["d6"] = d6_from_d1(k["d1"])
+    k["ledger"] = ledger_from(k["d6"], k["people"])
     k["payments"] = payments_from(k["d6"], k["people"])
     return None            # the ghost has no row in the payroll to point at
 
@@ -221,6 +239,7 @@ def b_sick_days_differ_in_d1(k):
 def b_d6_not_sum_of_d1(k):
     line = next(x for x in k["d6"] if x["vid"] == "ДОО")
     line["dalzhimo"] = r2(line["dalzhimo"] - 45.60)
+    k["ledger"] = ledger_from(k["d6"], k["people"])
     k["payments"] = payments_from(k["d6"], k["people"])
     return None
 
@@ -245,10 +264,23 @@ def b_duplicate_payment(k):
     return 4
 
 
+def b_ledger_differs(k):
+    """The books carry a liability to НАП that the declaration does not.
+
+    Everything upstream agrees - обр. 1, обр. 6 and the payment file all reconcile - and
+    only the ledger disagrees, which is the shape this defect has in a real file: either
+    an accrual nobody declared, or a declaration nobody booked.
+    """
+    line = next(x for x in k["ledger"] if x["smetka"].startswith("461 ДЗПО"))
+    line["salddo"] = r2(line["salddo"] + 73.40)
+    return None
+
+
 def b_iban_shared(k):
     # Two people, one account. A9 calls this master data; I10 is where it becomes
     # visible, because it is the usual way a duplicated payment stays invisible.
     k["people"][5]["iban"] = k["people"][4]["iban"]
+    k["ledger"] = ledger_from(k["d6"], k["people"])
     k["payments"] = payments_from(k["d6"], k["people"])
     return None            # two people, so the finding is about the file, not a row
 
@@ -267,6 +299,7 @@ def b_midmonth_annex_whole_month(k):
     p["row"] = M.clean_row(p["inputs"], k["regime"], k["tzpb"], k["policy"], k["norm"])
     k["d1"] = chain(k["people"])
     k["d6"] = d6_from_d1(k["d1"])
+    k["ledger"] = ledger_from(k["d6"], k["people"])
     k["payments"] = payments_from(k["d6"], k["people"])
     return 0
 
@@ -292,6 +325,8 @@ BREAKS = {
                                     "one net paid twice"),
     "I10_iban_shared":             (b_iban_shared,
                                     "two people, one bank account"),
+    "I9_ledger_differs":           (b_ledger_differs,
+                                    "the trial balance owes НАП something обр. 6 does not"),
 }
 
 
@@ -304,7 +339,8 @@ ORDER = ["A10_midmonth_annex",
          "I9_person_missing_in_d1", "I9_extra_person_in_d1",
          "I9_insurable_differs_in_d1", "I9_sick_days_differ_in_d1",
          "I10_iban_shared", "I9_d6_not_sum_of_d1",
-         "I9_declared_not_paid", "I9_net_not_paid", "I10_duplicate_payment"]
+         "I9_declared_not_paid", "I9_net_not_paid", "I10_duplicate_payment",
+         "I9_ledger_differs"]
 
 GROUPS = [("A10_midmonth_annex",),
           ("I9_person_missing_in_d1", "I9_extra_person_in_d1"),
@@ -312,7 +348,8 @@ GROUPS = [("A10_midmonth_annex",),
           ("I10_iban_shared",),
           ("I9_d6_not_sum_of_d1",),
           ("I9_declared_not_paid",),
-          ("I9_net_not_paid", "I10_duplicate_payment")]
+          ("I9_net_not_paid", "I10_duplicate_payment"),
+          ("I9_ledger_differs",)]
 
 assert set(ORDER) == set(BREAKS) and len(ORDER) == len(BREAKS)
 assert [b for g in GROUPS for b in g] and set(b for g in GROUPS for b in g) == set(BREAKS)
@@ -354,7 +391,8 @@ def komplekt(seed=1, year=YEAR, month=MONTH):
     _add_annex(people[0], rnd, norm, regime, tzpb, policy, year, month)
     d1 = chain(people)
     d6 = d6_from_d1(d1)
-    return dict(people=people, d1=d1, d6=d6, payments=payments_from(d6, people),
+    return dict(people=people, d1=d1, d6=d6, ledger=ledger_from(d6, people),
+                payments=payments_from(d6, people),
                 year=year, month=month, norm=norm, tzpb=tzpb, regime=regime,
                 policy=policy)
 
@@ -408,6 +446,9 @@ def write(k, outdir):
     _csv(os.path.join(outdir, "plateni.csv"),
          ["вид", "получател", "IBAN", "сума"],
          [[x["vid"], x["poluchatel"], x["iban"], x["suma"]] for x in k["payments"]])
+    _csv(os.path.join(outdir, "oborotna.csv"),
+         ["сметка", "описание", "крайно салдо (кредит)"],
+         [[x["smetka"], x["opisanie"], x["salddo"]] for x in k["ledger"]])
 
     return dict(dir=outdir, sheet=ws.title, year=k["year"], month=k["month"],
                 norm=k["norm"], tzpb=k["tzpb"], people=len(k["people"]),

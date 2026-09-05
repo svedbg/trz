@@ -42,6 +42,9 @@ CENT = 0.005            # a difference below this is rounding, not a finding
 # KOMPLEKT_KEYWORDS to recognise them. When a paid run shows real phrasings, calibrate
 # the patterns against those and keep these as the floor.
 CORRECT_REPORT = {
+    "I9_ledger_differs":
+        "Салдото по сметка 461 за ДЗПО-УПФ в оборотната ведомост е с 73.40 повече от "
+        "декларираното по обр. 6 — начисление, което не е декларирано, или обратното",
     "A10_midmonth_annex":
         "Увеличената основна заплата по допълнителното споразумение е начислена за "
         "целия месец, а не пропорционално от датата на влизането му в сила",
@@ -173,6 +176,25 @@ def reconcile(k):
                   "нареденото по банка не е нетото по ведомостта",
                   stated=got, due=due)
 
+    # --- transition 5: внесено -> счетоводна статия -------------------------
+    # Liabilities, not cost: the balance owed to НАП by kind and the balance owed to
+    # staff must come out of the same figures the declarations do. The cost of labour
+    # is K7's and is not recomputed here - checking it twice reports one defect twice.
+    booked = {x["smetka"]: x["salddo"] for x in k.get("ledger", [])}
+    for line in k["d6"]:
+        account = f"461 {line['vid']}"
+        if account in booked and abs(booked[account] - line["dalzhimo"]) > CENT:
+            f.add("I9_ledger_differs", account,
+                  "салдото по сметката за задължение към НАП не излиза от обр. 6",
+                  stated=booked[account], due=line["dalzhimo"])
+    staff = booked.get("421 Персонал")
+    if staff is not None:
+        due = r2(sum(p["row"]["НЕТО за изплащане"] for p in k["people"]))
+        if abs(staff - due) > CENT:
+            f.add("I9_ledger_differs", "421 Персонал",
+                  "салдото по задължението към персонала не е сборът на нетата",
+                  stated=staff, due=due)
+
     # --- master data: the account, not the money ----------------------------
     seen = {}
     for person in k["people"]:
@@ -202,7 +224,7 @@ def main():
               f"a clean комплект raises no finding at all, got "
               f"{sorted(i['id'] for i in found.items)}")
         for name in ("vedomost.xlsx", "dogovori.csv", "deklaracia_1.csv",
-                     "deklaracia_6.csv", "plateni.csv"):
+                     "deklaracia_6.csv", "plateni.csv", "oborotna.csv"):
             check(os.path.exists(os.path.join(man["dir"], name)),
                   f"the set carries {name}")
 

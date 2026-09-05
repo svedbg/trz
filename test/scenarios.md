@@ -610,6 +610,7 @@ of the seven groups at once to produce exactly those seven.
 | `I9_sick_days_differ_in_d1` | I9, transition 1 | т. 16.А is not the payroll's sick days |
 | `I9_d6_not_sum_of_d1` | I9, transition 2 | обр. 6 is not the sum of the обр. 1 rows |
 | `I9_declared_not_paid` | I9, transition 3 | less reached НАП than обр. 6 declares |
+| `I9_ledger_differs` | I9, transition 4 | the trial balance owes НАП something обр. 6 does not — liabilities, never the cost of labour, which is K7's |
 | `I9_net_not_paid` | I9, the net leg | someone was paid less than their net |
 | `I10_duplicate_payment` | I10 | one net paid twice |
 | `I10_iban_shared` | I10 and A9 | two people, one bank account — A9 calls it master data, I10 is where it becomes visible |
@@ -667,7 +668,39 @@ supply: no КИД, no dates of birth (so УПФ cannot be confirmed), no hire da
 the class percentages, no dates in the payment file, and no formulas in the workbook.
 None of them is a false `нарушение` on a clean row.
 
-**What is still not reached.** `I11` — one person's timeline across months — needs the
-комплект to span two months with the documents behind each event, and does not have
-that yet. Neither does the statutory half of `A9`: НКПД, category of labour and the
-agreed working time are checked against documents no fixture writes.
+**What is still not reached.** The statutory half of `A9` — НКПД, category of labour and
+the agreed working time — is checked against documents no fixture writes. `I11` was on
+this list until suite 6 below.
+
+## Suite 6: one person's timeline across months
+
+`I11` is the last check `proverki.md` describes that no fixture could reach. The комплект
+proves the chain *below* one month; this proves the chain *along* the months, which is a
+different axis and needs a different fixture: five sheets for the same people, plus
+`sabitiya.csv` — the вписване, the анекс, the заповед за отпуск, the болничен лист, the
+заповед за прекратяване — which is what is supposed to explain what changes between them.
+
+**Every month is internally correct on purpose.** The arithmetic reconciles, the bases are
+right, each sheet would pass suites 1–4 on its own, and the suite asserts that before it
+asserts anything else. The only thing that disagrees is the sequence. So `reconcile()`
+may compare a month with another month or with an event, never a row with itself — a
+check that could be written inside one sheet belongs in another suite.
+
+| id | the break | the bullet of I11 it comes from |
+| --- | --- | --- |
+| `I11_salary_change_without_annex` | pay rises between months, no annex dated for it | „заплатата се променя … а допълнително споразумение за тази дата няма" |
+| `I11_pay_after_termination` | a salary in a month after the termination date | „обезщетение при прекратяване, а лицето продължава да получава заплата" |
+| `I11_severance_without_termination` | чл. 224 compensation with no order behind it | the same bullet, from the other side |
+| `I11_sick_days_restart` | a spell continuing into the next month pays the employer's first days twice | „болничен … в следващия започва отново от първия ден" |
+| `I11_class_raised_early` | the class moves before the anniversary | „клас, който се вдига без навършена година стаж" |
+| `I11_class_not_raised` | the anniversary passes and the class does not move | „или не се вдига, когато е навършена" |
+
+Each break maps onto a sentence in the skill, which is the test that keeps the suite
+honest: a break that stops corresponding to one should be deleted rather than kept.
+
+**Two bugs the suite found in its own generator before it found anything else.** The
+first clean history was not clean — it paid the employer's two sick days in both months
+of one continuous spell, which is precisely `I11_sick_days_restart`, planted by accident.
+And the person carrying the class anniversary was also the person terminated in August,
+so the month where the raise should appear had no row at all and `I11_class_not_raised`
+could never fire. Both are the reason the clean fixture is asserted silent first.
