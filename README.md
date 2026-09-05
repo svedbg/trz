@@ -301,10 +301,21 @@ python test/eval_skill.py --dry       # show what would be sent, pay nothing
 python test/eval_skill.py --seeds 3   # three seeds
 ```
 
-Measured on 04.09.2026: Claude Fable 5.1, the default, about USD 4.5–6.2 per seed
-(16–25 turns, 11–15 minutes); Claude Sonnet 5, about USD 1.5–2.2, at a lower identified
-rate. So it is not in `run_tests.py` and not in CI. Run it when the guidance in
-`SKILL.md` changes, which is the only thing that can move its result.
+**Where it stands on 2.12.0 (05.09.2026).** Claude Fable 5.1: **21 of 21 injected
+defects identified on two held-out payrolls, and 8 of 8 broken links identified on the
+комплект** — the whole month of ведомост, обр. 1, обр. 6 and payment file — with **zero
+false `нарушение`** in either. Claude Sonnet 5 on the same wide fixture: 17 of 29. Every
+gap in those runs was triaged against the saved transcript and every one turned out to be
+a keyword gap, not a model failure — the fix and the phrasing that caused it are in
+`test/scenarios.md`, along with the re-grade proving nothing moved the other way.
+
+Cost, measured: Claude Fable 5.1 about USD 4.5–6.2 per seed (16–25 turns, 11–15
+minutes); Claude Sonnet 5 about USD 1.5–2.2, at a lower identified rate. **Without
+`--model` the session runs on whatever the CLI is configured for**, so the model that
+answered is read back out of the transcript, printed and saved with the score. It is not
+in `run_tests.py` and not in CI; a `workflow_dispatch` job runs it on demand, never as a
+pull-request gate. Run it when the guidance in `SKILL.md` changes, which is the only
+thing that can move its result.
 
 Three decisions in it are worth knowing. The model gets a directory in `/tmp` holding the
 workbook and a contracts CSV — what an auditor legitimately has — while the manifest is
