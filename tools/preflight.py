@@ -77,8 +77,14 @@ DUPLICATE_CONCEPT = "DUPLICATE_CONCEPT"
 MID_YEAR_BOUNDARY = "MID_YEAR_BOUNDARY"
 MAPPING_UNKNOWN_CONCEPT = "MAPPING_UNKNOWN_CONCEPT"
 MAPPING_COLUMN_ABSENT = "MAPPING_COLUMN_ABSENT"
+ERROR_CELLS = "ERROR_CELLS"
+HIDDEN_SHEET = "HIDDEN_SHEET"
+HIDDEN_ROWS = "HIDDEN_ROWS"
 NO_KID = "NO_KID"
 NO_TZPB = "NO_TZPB"
+
+# The seven values Excel stores when a formula does not resolve.
+EXCEL_ERRORS = {"#N/A", "#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#NULL!", "#NUM!"}
 
 BLOCKING = {NO_HEADER, NO_PERIOD, MISSING_REQUIRED, DUPLICATE_CONCEPT,
             MAPPING_UNKNOWN_CONCEPT, MAPPING_COLUMN_ABSENT}
@@ -352,12 +358,16 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
 
     for name in formulas.sheetnames:
         wf, wv = formulas[name], values[name]
+        if getattr(wv, "sheet_state", "visible") != "visible":
+            # A hidden sheet is content, not an accident: the party being audited chose
+            # to hide it. It is scanned like any other and named in the report.
+            out["signals"].append((HIDDEN_SHEET, name))
         header_row, score = find_header_row(wv, mapping)
         info = {"name": name, "header_row": header_row, "matched": score,
                 "period": sheet_period(name, wv), "rows": 0, "totals_row": None,
                 "known": {}, "unknown": [], "formula_cells": 0, "value_cells": 0,
                 "merged": [], "name_col": None, "signals": [], "first_row": None,
-                "uncached_cells": 0}
+                "uncached_cells": 0, "error_cells": [], "hidden_rows": []}
         out["sheets"].append(info)
 
         if header_row is None:
@@ -405,12 +415,28 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
                     info["signals"].append((MID_YEAR_BOUNDARY, f"{a:%d.%m.%Y}"))
                     break
 
+        # Rows the reader does not see. Real exports hide them - a leaver, a correction,
+        # a helper row - and whether the totals include them cannot be told from the
+        # printed sheet. Reported for the same reason as a hidden sheet.
+        hidden_rows = [r for r in range(first, last + 1)
+                       if getattr(wv.row_dimensions.get(r), "hidden", False)]
+        if hidden_rows:
+            info["hidden_rows"] = hidden_rows
+            info["signals"].append((HIDDEN_ROWS, hidden_rows))
+
         # Formula coverage over the data block. A values-only export is not a defect in
         # itself, but it removes the evidence the K group works from, and the audit has
         # to say so rather than quietly checking less.
         for r in range(first, last + 1):
             for c in range(1, (wf.max_column or 1) + 1):
                 v = wf.cell(r, c).value
+                cached = wv.cell(r, c).value
+                # #N/A, #REF!, #DIV/0!: a formula that never resolved. The cell has no
+                # value to audit, and every sum over it silently has none either. Excel
+                # keeps these as strings, so nothing else here would notice them.
+                if isinstance(cached, str) and cached.strip().upper() in EXCEL_ERRORS:
+                    info["error_cells"].append(
+                        f"{wv.cell(r, c).coordinate}={cached.strip()}")
                 if isinstance(v, str) and v.startswith("="):
                     info["formula_cells"] += 1
                     # Excel stores the last computed result beside each formula. A file
@@ -421,6 +447,8 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
                         info["uncached_cells"] += 1
                 elif v is not None:
                     info["value_cells"] += 1
+        if info["error_cells"]:
+            info["signals"].append((ERROR_CELLS, info["error_cells"]))
         if info["formula_cells"] == 0:
             info["signals"].append((NO_FORMULAS, None))
         elif info["uncached_cells"]:
@@ -525,6 +553,11 @@ def report(data):
         L.append(f"\n> **Описът сочи колони, които ги няма във файла**: "
                  f"{', '.join(sig[MAPPING_COLUMN_ABSENT])}. Или ведомостта е сменила "
                  f"формата си, или описът е остарял — и двете се оправят веднъж.\n")
+    hidden = [v for k, v in data["signals"] if k == HIDDEN_SHEET]
+    if hidden:
+        L.append(f"\n> **Скрити листове**: {', '.join('„' + h + '“' for h in hidden)}. "
+                 f"Прегледани са наравно с останалите — скритото е съдържание на файла, "
+                 f"а не се пропуска, защото не се вижда при отваряне.\n")
 
     for s in data["sheets"]:
         ssig = dict(s["signals"])
@@ -590,6 +623,16 @@ def report(data):
                      f"или ги назови при подаването: "
                      + ", ".join(f"„{x}“" for x in u[:12])
                      + (" …" if len(u) > 12 else ""))
+        if ERROR_CELLS in ssig:
+            e = ssig[ERROR_CELLS]
+            L.append(f"- клетки с грешка ({len(e)}) — формула, която не се е получила; "
+                     f"стойност за проверка там няма, а сборовете над тях също: "
+                     + ", ".join(e[:8]) + (" …" if len(e) > 8 else ""))
+        if HIDDEN_ROWS in ssig:
+            h = ssig[HIDDEN_ROWS]
+            L.append(f"- скрити редове в данните ({len(h)}): "
+                     + ", ".join(str(r) for r in h[:12]) + (" …" if len(h) > 12 else "")
+                     + ". Дали влизат в сборовете не личи от отпечатания лист")
         if s["name_col"]:
             L.append(f"- колоната с имена е {s['name_col']} — съдържанието ѝ не се "
                      f"възпроизвежда нито в този доклад, нито в извлека")

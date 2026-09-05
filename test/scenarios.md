@@ -672,6 +672,24 @@ None of them is a false `нарушение` on a clean row.
 the agreed working time — is checked against documents no fixture writes. `I11` was on
 this list until suite 6 below.
 
+## What guards the guidance between paid runs
+
+The paid eval is the only thing that measures whether `SKILL.md` still works, and it
+cannot gate a pull request: the score moves ten points on one seed, and this repository
+fails a suite for a single false positive. So a rewrite could make the guidance worse and
+every check would stay green.
+
+What *can* be free is refusing to let a rewrite silently **delete** a rule a paid run
+already bought. `skill_test.PAID_GUIDANCE` pins eleven sentences by a short distinctive
+phrase, each next to the incident that produced it — the first refusal run's missing
+contribution, the 2.7.0 run measuring a 2027 payroll against the 2026 cap, the `вторичен`
+row that produced a `нарушение` against a correct payroll, and so on. None of them can be
+re-derived by reading the statute; each cost a run.
+
+It is emphatically **not** a test that the guidance is good — it cannot be. It is the
+difference between rewording a rule and losing it: rewording is free, and the phrase is
+updated in the same commit. Losing one is what nothing noticed before.
+
 ## Suite 6: one person's timeline across months
 
 `I11` is the last check `proverki.md` describes that no fixture could reach. The комплект

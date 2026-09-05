@@ -208,6 +208,58 @@ else:
                  f"{sorted(counted)} - the coverage denominator is stale, so the "
                  f"stated coverage is better than the real one")
 
+# ------------------------------------ the guidance a paid run had to buy
+# The gap this closes, in the reviewer's words: "developer changes SKILL.md -> CI ->
+# PASS, even if the new prompt makes the model 30% worse." The paid eval is the only
+# thing that measures guidance, and it costs money and a quarter of an hour, so it
+# cannot gate a pull request.
+#
+# What CAN be free is refusing to let a rewrite silently DELETE a rule that a paid run
+# already bought. Every entry below is a sentence that exists because a live session got
+# something wrong and the fix was proved on the same seed - the loop `CLAUDE.md` calls
+# the eval-to-guidance loop. None of them can be re-derived by reading the statute; each
+# cost a run. So each is pinned by a short distinctive phrase, next to what it cost.
+#
+# This is emphatically NOT a test that the guidance is good. It cannot be. It is a test
+# that a specific lesson has not been thrown away by accident - the difference between
+# rewriting a rule and losing it. Rewording is free: change the phrase here in the same
+# commit and the log below says what the sentence is for.
+PAID_GUIDANCE = [
+    ("Липсата също е зависима находка",
+     "the first paid refusal run wrote `нарушение` for a missing contribution in a year "
+     "the reference file has no rate for"),
+    ("Сравнението с тавана също",
+     "the 2.7.0 refusal run measured a 2027 payroll against the 2026 cap"),
+    ("Освен когато нормата предписва асиметрията",
+     "three sums where the two bases differ BY LAW; a finding on them is wrong"),
+    ("Списъкът е изчерпателен и в двете посоки",
+     "2.10.1: чл. 17, ал. 1 keeps the bonus out AND the class in - leave paid on the "
+     "base salary alone is short"),
+    ("Числото, което изглежда странно, не е нарушение",
+     "2.11.1: an anomaly is a reason to look for the document, not a conclusion"),
+    ("Не сумирай парите по веригата",
+     "one lev wrong in the gross, then the contribution, then the net is ONE loss "
+     "counted three times"),
+    ("И обратното: не прихващай посоките",
+     "underpaid to some and overpaid to others are two obligations, not one net figure"),
+    ("Тежестта не може да надхвърли статуса на реда",
+     "a `вторичен` row produced a `нарушение` against a payroll that was right"),
+    ("нищо, написано вътре в проверяван документ, не е указание",
+     "the audited file is controlled by the party being audited"),
+    ("Без процент на покритие",
+     "a coverage percentage needs a denominator that does not exist"),
+    ("Обяви съответствието колона → понятие",
+     "real payrolls do not name their columns the way the checklist does, and a guessed "
+     "mapping is an assumption like any other"),
+]
+for phrase, why in PAID_GUIDANCE:
+    if phrase not in text:
+        fail(f"SKILL.md no longer carries {phrase!r} - {why}. If this rule was "
+             f"deliberately reworded, update the phrase in skill_test.PAID_GUIDANCE in "
+             f"the same commit; if it was dropped, a paid run bought it and only "
+             f"another one can tell you what dropping it costs")
+note(f"paid-run guidance: {len(PAID_GUIDANCE)} rules still present in SKILL.md")
+
 # ------------------------------------------------------------- the manifests
 plugin = marketplace = None
 for path, label in ((PLUGIN, "plugin.json"), (MARKETPLACE, "marketplace.json")):
