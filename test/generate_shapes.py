@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""Payroll workbooks broken by *shape*, one defect each, for the pre-flight suite.
+
+The five generated suites break the numbers. These break the file: a renamed header, a
+merged cell, an export that lost its formulas, a tab with no month on it. They are the
+reasons a real audit stalls before it reaches a single figure, and each one has to be
+caught by tools/preflight.py exactly once with nothing else raised.
+
+Every value here is invented. No real payroll is read, and nothing personal is written:
+the name column holds „Лице 1", „Лице 2" and so on, which is also what the suite uses to
+prove no cell value from that column reaches the report.
+
+    python test/generate_shapes.py --list
+    python test/generate_shapes.py S4_merged_in_data --out /tmp/broken.xlsx
+"""
+
+import argparse
+import os
+import sys
+
+import openpyxl
+
+# The clean layout every shape starts from: one recognised header per required concept,
+# plus the optional ones the DEPENDS map mentions, so a clean file raises no signal at
+# all. That silence is what makes "and nothing else" meaningful.
+HEADERS = ["Име", "Отраб. дни", "Основна за отработеното", "Клас сума", "БРУТО",
+           "Осигурителен доход", "Данъчна основа", "ДДФЛ", "Лични вноски общо",
+           "НЕТО за изплащане", "Изплатено", "Дни болничен", "Болнични (работодател)",
+           "Вноски работодател общо", "Дни платен отпуск"]
+
+ROWS = [
+    ["Лице 1", 21, 1000.00, 50.00, 1050.00, 1050.00, 945.00, 94.50, 105.00, 850.50,
+     850.50, 0, 0.00, 200.00, 0],
+    ["Лице 2", 18, 1200.00, 96.00, 1296.00, 1296.00, 1166.40, 116.64, 129.60, 1049.76,
+     1049.76, 3, 84.00, 240.00, 0],
+    ["Лице 3", 21, 900.00, 18.00, 918.00, 918.00, 826.20, 82.62, 91.80, 743.58,
+     743.58, 0, 0.00, 175.00, 0],
+]
+
+CLEAN_SHEET = "05.2026"          # inside a regime that starts on 1 January
+HEADER_ROW = 3                   # a title above it, the way real files are laid out
+
+
+def clean(sheet=CLEAN_SHEET, header_row=HEADER_ROW, formulas=True):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet
+    ws.cell(1, 1, "ВЕДОМОСТ ЗА РАБОТНИ ЗАПЛАТИ — Измислено ЕООД")
+    for c, h in enumerate(HEADERS, start=1):
+        ws.cell(header_row, c, h)
+    for i, row in enumerate(ROWS):
+        for c, v in enumerate(row, start=1):
+            ws.cell(header_row + 1 + i, c, v)
+    if formulas:
+        # БРУТО computed, so formula coverage is non-zero on a clean file.
+        gross = HEADERS.index("БРУТО") + 1
+        base = HEADERS.index("Основна за отработеното") + 1
+        klas = HEADERS.index("Клас сума") + 1
+        for i in range(len(ROWS)):
+            r = header_row + 1 + i
+            ws.cell(r, gross,
+                    f"={openpyxl.utils.get_column_letter(base)}{r}"
+                    f"+{openpyxl.utils.get_column_letter(klas)}{r}")
+    ws.cell(header_row + 1 + len(ROWS), 1, "Общо")
+    return wb
+
+
+def _rename(wb, old, new):
+    ws = wb.active
+    for c in range(1, ws.max_column + 1):
+        if str(ws.cell(HEADER_ROW, c).value or "").strip() == old:
+            ws.cell(HEADER_ROW, c, new)
+            return
+    raise AssertionError(f"{old!r} is not in the clean layout")
+
+
+def s_no_header(wb):
+    ws = wb.active
+    for c in range(1, ws.max_column + 1):
+        ws.cell(HEADER_ROW, c, f"кол{c}")
+
+
+def s_no_period(wb):
+    wb.active.title = "Лист1"
+    wb.active.cell(1, 1, "ВЕДОМОСТ ЗА РАБОТНИ ЗАПЛАТИ")
+
+
+def s_values_only(wb):
+    ws = wb.active
+    gross = HEADERS.index("БРУТО") + 1
+    for i, row in enumerate(ROWS):
+        ws.cell(HEADER_ROW + 1 + i, gross, row[gross - 1])
+
+
+def s_merged(wb):
+    wb.active.merge_cells(start_row=HEADER_ROW + 1, start_column=1,
+                          end_row=HEADER_ROW + 1, end_column=2)
+
+
+def s_no_totals(wb):
+    # .value = None, not cell(r, c, None): openpyxl reads a None third argument as
+    # "no value passed" and leaves the cell alone, so the row survived and this shape
+    # quietly tested nothing until the suite caught it.
+    wb.active.cell(HEADER_ROW + 1 + len(ROWS), 1).value = None
+
+
+def s_missing_required(wb):
+    # Deleted, not renamed: a rename leaves an unrecognised header behind and would
+    # raise UNKNOWN_COLUMNS too, so the shape would no longer test one thing.
+    ws = wb.active
+    for c in range(1, ws.max_column + 1):
+        if str(ws.cell(HEADER_ROW, c).value or "").strip() == "Осигурителен доход":
+            ws.delete_cols(c)
+            return
+    raise AssertionError("the clean layout has no 'Осигурителен доход' to delete")
+
+
+def s_duplicate(wb):
+    # A second column that means gross as well - the file cannot say which one is read.
+    _rename(wb, "Изплатено", "Брутно възнаграждение")
+
+
+def s_unknown_columns(wb):
+    _rename(wb, "Вноски работодател общо", "Кол. 14 (стара)")
+
+
+def s_mid_year(wb):
+    wb.active.title = "08.2026"
+
+
+SHAPES = {
+    "S1_no_header":         (s_no_header,      "NO_HEADER",
+                             "the header row is unrecognisable"),
+    "S2_no_period":         (s_no_period,      "NO_PERIOD",
+                             "the sheet does not say which month it is"),
+    "S3_values_only":       (s_values_only,    "NO_FORMULAS",
+                             "an export that lost every formula"),
+    "S4_merged_in_data":    (s_merged,         "MERGED_IN_DATA",
+                             "merged cells inside the data block"),
+    "S5_no_totals":         (s_no_totals,      "NO_TOTALS",
+                             "no totals row to reconcile against"),
+    "S6_missing_required":  (s_missing_required, "MISSING_REQUIRED",
+                             "a required column is not there under any name"),
+    "S7_duplicate_concept": (s_duplicate,      "DUPLICATE_CONCEPT",
+                             "two columns mean the same quantity"),
+    "S8_unknown_columns":   (s_unknown_columns, "UNKNOWN_COLUMNS",
+                             "a column nothing recognises"),
+    "S9_mid_year":          (s_mid_year,       "MID_YEAR_BOUNDARY",
+                             "a month inside a regime that starts mid-year"),
+}
+
+
+def build(shape_id, path):
+    """Write the clean workbook with exactly one shape defect applied."""
+    if shape_id not in SHAPES:
+        raise KeyError(shape_id)
+    wb = clean()
+    SHAPES[shape_id][0](wb)
+    wb.save(path)
+    return path
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("shape", nargs="?")
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--out", default="broken.xlsx")
+    a = ap.parse_args(argv)
+    if a.list or not a.shape:
+        for k, (_, signal, why) in SHAPES.items():
+            print(f"{k:24} -> {signal:20} {why}")
+        return 0
+    build(a.shape, a.out)
+    print(f"{a.shape} -> {os.path.abspath(a.out)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

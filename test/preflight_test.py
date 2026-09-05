@@ -4,13 +4,19 @@
 Standalone, like skill_test.py: run it directly, not through run_tests.py, which owns
 the five generated suites and says so in four places.
 
-The proving standard is the repository's: a shape defect is planted on purpose and the
-check has to find it. Every fixture here is built in memory from invented data - no real
-payroll, no personal data, nothing written outside a temporary directory.
+The proving standard is the repository's. A clean workbook must raise **no** signal at
+all, and each planted shape defect must raise its own signal and **nothing else** - a
+false positive fails exactly like a miss, the same rule the payroll suites are held to.
+Asserting on signal ids rather than on the rendered Bulgarian is deliberate: prose can
+match by coincidence.
+
+Every fixture is built in memory from invented data. No real payroll is read, and
+nothing is written outside a temporary directory.
 
     python test/preflight_test.py
 """
 
+import json
 import os
 import shutil
 import sys
@@ -23,6 +29,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, HERE)
 
+import generate_shapes as G                                    # noqa: E402
 import preflight as P                                          # noqa: E402
 import trz_model as M                                          # noqa: E402
 
@@ -35,36 +42,10 @@ def check(condition, message):
         FAILURES.append(message)
 
 
-def build(path, headers, rows, sheet="05.2026", header_row=1, totals=True,
-          formulas=False, merged=None):
-    """A minimal workbook with the shape asked for. Values are invented."""
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = sheet
-    for c, h in enumerate(headers, start=1):
-        ws.cell(header_row, c, h)
-    r = header_row
-    for r, row in enumerate(rows, start=header_row + 1):
-        for c, v in enumerate(row, start=1):
-            ws.cell(r, c, v)
-    if formulas:
-        # A gross column that is actually computed, so formula coverage is non-zero.
-        gross = headers.index("БРУТО") + 1
-        for rr in range(header_row + 1, r + 1):
-            ws.cell(rr, gross, f"=C{rr}")
-    if totals:
-        ws.cell(r + 1, 1, "Общо")
-    for rng in (merged or []):
-        ws.merge_cells(rng)
-    wb.save(path)
-    return path
-
-
-HEADERS = ["Име", "Отраб. дни", "Основна за отработеното", "БРУТО",
-           "Осигурителен доход", "Данъчна основа", "ДДФЛ", "Лични вноски общо",
-           "НЕТО за изплащане"]
-ROWS = [["Лице 1", 21, 1000.0, 1000.0, 1000.0, 900.0, 90.0, 100.0, 810.0],
-        ["Лице 2", 21, 1200.0, 1200.0, 1200.0, 1080.0, 108.0, 120.0, 972.0]]
+def signals_for(path, mapping=None, kid="62", group="3", tzpb="0.4"):
+    data = P.analyse(path, mapping, kid, group, tzpb)
+    data["_path"] = path
+    return P.all_signals(data), data
 
 
 def main():
@@ -84,89 +65,137 @@ def main():
         check(not missing, f"the canonical names this test pins still exist in "
                            f"trz_model.COLUMNS{' - missing ' + str(missing) if missing else ''}")
         unrecognised = sorted(w for w in wanted if P.classify(w) is None)
-        check(not unrecognised,
-              f"preflight recognises every canonical column it depends on"
-              f"{' - not ' + str(unrecognised) if unrecognised else ''}")
-
-        # Real-world spellings the token pass exists for.
+        check(not unrecognised, f"preflight recognises every canonical column"
+                                f"{' - not ' + str(unrecognised) if unrecognised else ''}")
         check(P.classify("Болнични от работодател") == "болнични",
               "„Болнични от работодател“ maps to the sick-pay concept")
         check(P.classify("Брутно възнаграждение") == "бруто",
               "„Брутно възнаграждение“ maps to gross")
         check(P.classify("Отдел") is None, "an unrelated header stays unknown")
+        # Both from running the tool against test/vedomost_05_2026.xlsx, where a correct
+        # real layout was reported as naming the same quantity twice.
+        check(P.classify("Клас %") != P.classify("Клас сума"),
+              "the class rate and the class amount are different concepts")
+        check(P.classify("Извънр. часове (раб. дни)") != "отработени дни",
+              "an overtime-hours column is not mistaken for days worked")
+        check(P.classify("Отработени часове") != "отработени дни",
+              "hours worked are not mistaken for days worked")
 
-        # ------------------------------------------------------------- the happy path
-        good = build(os.path.join(tmp, "ok.xlsx"), HEADERS, ROWS, formulas=True)
-        data = P.scan(good, kid="62", group="3", tzpb="0.4")
-        s = data["sheets"][0]
-        check(s["header_row"] == 1, "header row found")
-        check(s["rows"] == 2, f"two data rows counted, got {s['rows']}")
-        check(s["totals_row"] == 4, f"totals row found at 4, got {s['totals_row']}")
-        check(s["period"] == (2026, 5), f"period read from the tab, got {s['period']}")
-        check(s["formula_cells"] > 0, "formulas detected when present")
-        text, blocking = P.report(data)
-        check(not blocking, f"a well-formed file does not block, got {blocking}")
+        # --------------------------------------------------- the clean file is silent
+        good = os.path.join(tmp, "clean.xlsx")
+        G.clean().save(good)
+        sig, data = signals_for(good)
+        check(sig == set(), f"a clean workbook raises no signal at all, got {sorted(sig)}")
+        text, stop = P.report(data)
+        check(not stop, f"and does not block, got {stop}")
         check("не е променян" in text, "the report states the file was not modified")
-        check("Лице 1" not in text, "no cell value from the name column reaches the report")
+        check("Лице 1" not in text, "no value from the name column reaches the report")
 
-        # -------------------------------------------------------- planted shape defects
-        # Each one is the reason a real audit stalls, and each must be caught.
-        vals = build(os.path.join(tmp, "values.xlsx"), HEADERS, ROWS, formulas=False)
-        t, _ = P.report(P.scan(vals))
-        check("няма нито една формула" in t,
-              "a values-only export is called out, so the K group is not claimed")
+        # ------------------------------------------------- one planted defect at a time
+        print("-" * 78)
+        for shape_id, (_, expected, why) in G.SHAPES.items():
+            path = G.build(shape_id, os.path.join(tmp, f"{shape_id}.xlsx"))
+            sig, _ = signals_for(path)
+            extra = sorted(sig - {expected})
+            check(expected in sig and not extra,
+                  f"{shape_id:22} -> {expected:18} ({why})"
+                  + ("" if expected in sig else "  NOT RAISED")
+                  + (f"  ALSO RAISED {extra}" if extra else ""))
+        print("-" * 78)
 
-        no_period = build(os.path.join(tmp, "nop.xlsx"), HEADERS, ROWS, sheet="Лист1")
-        t, b = P.report(P.scan(no_period))
-        check(any("период" in x for x in b),
-              "an unlabelled period blocks rather than being guessed from the numbers")
+        # --------------------------------------------------- missing inputs are signals
+        sig, _ = signals_for(good, kid=None, group=None, tzpb=None)
+        check(sig == {P.NO_KID, P.NO_TZPB},
+              f"КИД and ТЗПБ absent are signals, not guesses, got {sorted(sig)}")
 
-        thin = build(os.path.join(tmp, "thin.xlsx"), ["A", "B", "C"],
-                     [[1, 2, 3]], sheet="05.2026")
-        t, b = P.report(P.scan(thin))
-        check(any("заглавен ред" in x for x in b),
-              "a sheet with no recognisable header row blocks")
+        # ------------------------------------------------------------ phase 2: mapping
+        # A file whose columns are named the company's way: unknown without a mapping,
+        # clean with one. This is the whole point of declaring the layout once.
+        odd = os.path.join(tmp, "odd.xlsx")
+        wb = G.clean()
+        ws = wb.active
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(G.HEADER_ROW, c).value == "Осигурителен доход":
+                ws.cell(G.HEADER_ROW, c, "Дох.осиг.")
+        wb.save(odd)
+        sig, _ = signals_for(odd)
+        check(P.MISSING_REQUIRED in sig,
+              "a company-specific header is missing without a mapping")
 
-        short = build(os.path.join(tmp, "short.xlsx"), HEADERS[:4], [r[:4] for r in ROWS])
-        t, b = P.report(P.scan(short))
-        check(any("Осигурителен" in x or "осиг" in x for x in b),
-              "a missing required column blocks and is named")
-        check("F1" in t or "B3" in t,
-              "the report says which checks the missing column costs")
+        m = P.Mapping({"kid": "62", "group": 3, "tzpb": 0.4,
+                       "columns": {"осиг. доход": "Дох.осиг."}})
+        sig, data = signals_for(odd, mapping=m, kid=None, group=None, tzpb=None)
+        check(sig == set(), f"the declared mapping resolves it, got {sorted(sig)}")
+        check(data["kid"] == "62" and data["tzpb"] == 0.4,
+              "the mapping supplies КИД and ТЗПБ so they need not be retyped monthly")
 
-        no_totals = build(os.path.join(tmp, "nt.xlsx"), HEADERS, ROWS, totals=False)
-        t, _ = P.report(P.scan(no_totals))
-        check("ред с общи суми не е намерен" in t, "a missing totals row is reported")
+        typo = P.Mapping({"columns": {"осиг доходд": "Дох.осиг."}})
+        sig, _ = signals_for(odd, mapping=typo)
+        check(P.MAPPING_UNKNOWN_CONCEPT in sig,
+              "a typo in a concept key blocks instead of silently doing nothing")
 
-        mg = build(os.path.join(tmp, "merged.xlsx"), HEADERS, ROWS, merged=["A2:B2"])
-        t, _ = P.report(P.scan(mg))
-        check("слети клетки" in t, "merged cells inside the data range are reported")
+        stale = P.Mapping({"columns": {"осиг. доход": "Колона, която я няма"}})
+        sig, _ = signals_for(odd, mapping=stale)
+        check(P.MAPPING_COLUMN_ABSENT in sig,
+              "a mapping pointing at an absent column is reported as stale")
 
-        # ------------------------------------------------------- boundaries from stavki
-        bounds = P.regime_boundaries()
-        check(len(bounds) >= 2,
-              f"period boundaries are read from stavki.md, got {len(bounds)}")
-        mid = [a for a, _ in bounds if (a.month, a.day) != (1, 1)]
-        check(bool(mid), "at least one mid-year boundary is known, so K8 can be warned")
-        if mid:
-            a = max(mid)
-            aug = build(os.path.join(tmp, "aug.xlsx"), HEADERS, ROWS,
-                        sheet=f"{a.month:02d}.{a.year}")
-            t, _ = P.report(P.scan(aug))
-            check("средата на годината" in t,
-                  f"a sheet dated {a:%m.%Y} is warned about the mid-year threshold change")
+        ign = P.Mapping({"columns": {"осиг. доход": "Дох.осиг."}, "ignore": ["Забележка"]})
+        wb = G.clean()
+        ws = wb.active
+        ws.cell(G.HEADER_ROW, ws.max_column + 1, "Забележка")
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(G.HEADER_ROW, c).value == "Осигурителен доход":
+                ws.cell(G.HEADER_ROW, c, "Дох.осиг.")
+        noted = os.path.join(tmp, "noted.xlsx")
+        wb.save(noted)
+        sig, _ = signals_for(noted, mapping=ign)
+        check(P.UNKNOWN_COLUMNS not in sig,
+              "a declared-ignored column stops being reported as unknown")
+
+        # ------------------------------------------------------------ phase 3: extract
+        out = os.path.join(tmp, "extract.json")
+        sig, data = signals_for(good)
+        doc = P.extract(data, out)
+        check(os.path.exists(out), "the extract is written where asked")
+        sheet = doc["sheets"][0]
+        check(len(sheet["rows"]) == len(G.ROWS),
+              f"every data row is extracted, got {len(sheet['rows'])}")
+        check(all(r["row"] != sheet["totals_row"] for r in sheet["rows"]),
+              "the totals row is not extracted as a person")
+        first = sheet["rows"][0]["cells"]
+        # „основна", not „бруто": openpyxl writes formulas without a cached value, so a
+        # fixture it built has None behind every formula when read with data_only. That
+        # is a property of the fixture, not of the tool - a real workbook saved by Excel
+        # carries the cached values - and it is why the extract documents the case.
+        check("основна" in first
+              and first["основна"]["ref"].endswith(str(sheet["rows"][0]["row"])),
+              "each value carries the cell reference it came from")
+        raw = json.dumps(doc, ensure_ascii=False)
+        check("име" not in sheet["columns"] and "Лице 1" not in raw,
+              "no name is written to the extract, by column or by value")
+        check(doc["kid"] == "62" and doc["tzpb"] == "0.4",
+              "the extract carries the inputs the workbook does not")
 
         # ---------------------------------------------------------- it never writes
         before = os.path.getmtime(good), os.path.getsize(good)
-        P.scan(good)
+        P.analyse(good)
+        P.extract(data, os.path.join(tmp, "again.json"))
         check((os.path.getmtime(good), os.path.getsize(good)) == before,
-              "scanning does not touch the workbook")
+              "neither scanning nor extracting touches the workbook")
+
+        # ----------------------------------------------------- boundaries from stavki
+        bounds = P.regime_boundaries()
+        check(len(bounds) >= 2,
+              f"period boundaries are read from stavki.md, got {len(bounds)}")
+        check(any((a.month, a.day) != (1, 1) for a, _ in bounds),
+              "at least one mid-year boundary is known, so K8 can be warned")
 
         print("=" * 78)
         if FAILURES:
             print(f"FAILED: {len(FAILURES)} check(s)")
             return 1
-        print("OK: pre-flight reads the shape, names what is missing, writes nothing")
+        print("OK: clean is silent, every planted shape defect is found exactly once, "
+              "nothing is written")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
