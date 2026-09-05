@@ -483,7 +483,7 @@ the findings in any payroll report. Both are fixed and both are now self-test ca
 
 ## How much of `proverki.md` the suites reach
 
-**29 of the 78 checks** have a test behind them: 14 implemented in suite 1's static
+**29 of the 85 checks** have a test behind them: 14 implemented in suite 1's static
 checker (11 of them in the answer key, three — F1, F6 on the composition, I2 — asserted
 to stay silent on a correct row), 21 across the generated suites, six shared between the
 two (B4, C2, F1, F6, F9, I1). The number is worth stating
@@ -511,7 +511,30 @@ until their checker branches — present since the suite was written — got the
 mutations that let them fire.
 
 Two things this does **not** mean. An uncovered check is not an unimplemented one —
-`proverki.md` describes all 78 and the skill is asked to apply all 78; what is
+`proverki.md` describes all 85 and the skill is asked to apply all 85; what is
 missing is the proof that it does. And the count is of checks, not of risk: the
 covered ones were chosen because they are the errors that actually turn up in real
 payrolls, which is why the suites keep finding bugs in themselves.
+
+### The checks no fixture can reach at all
+
+The gap above is about scenarios that could be written. These four are about
+documents that do not exist anywhere under `test/`, and saying so is the point —
+they are the newest and strongest material in `proverki.md`, and not one line of
+them has ever been executed:
+
+| Check | What it needs | What exists |
+| --- | --- | --- |
+| `I9` — payroll → обр. 1 → обр. 6 → paid → ledger | a declaration per person, a summary declaration, a bank or НАП statement, a trial balance | nothing; every fixture in this repository is a single payroll workbook |
+| `I10` — duplicated contracts and payments | a payment file, or two annexes for one period | nothing; `I8`'s duplicate-person shape is expressible in a sheet, `I10`'s is not |
+| `I11` — one person's timeline across months | events with the documents behind them across several months | the two-month workbook carries the months but no annex, order or sick-leave certificate |
+| `A9` — employee master data | identifiers, dates of birth, hire and termination dates, an IBAN | the generated payrolls carry names and rows, not a personnel record |
+
+The fixture that would close these is not another scenario in an existing generator:
+it is a **комплект** — one month of payroll plus the documents downstream of it, with
+one planted break per transition, checked the way `preflight_test.py` checks shapes
+(a clean set raises nothing; each break raises its own id and nothing else). Until
+that exists, a green `run_tests.py` says nothing whatever about the reconciliation
+chain, and neither does a paid eval run: `eval_skill.py` sends `vedomost.xlsx` and
+`dogovori.csv` and nothing else, so the model is never given a declaration, a payment
+file or a ledger to reconcile against.

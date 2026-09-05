@@ -150,6 +150,64 @@ if lines > 500:
     note("SKILL.md is over 500 lines - consider moving detail into references/, "
          "which loads on demand instead of on every invocation")
 
+# ------------------------------------------- the checklist and what counts it
+# Two numbers about `proverki.md` are written down elsewhere by hand, and both went
+# stale unnoticed once already: the set of results a check can have (five, after
+# `непроверимо` arrived with tools/preflight.py - the file's own header still said
+# four over five bullets, and SKILL.md listed the old four), and how many checks
+# there are (scenarios.md said 78 while the file held 85). Neither is derivable by a
+# reader, so both are pinned here against the file itself.
+PROVERKI = os.path.join(SKILL_DIR, "references", "proverki.md")
+SCENARIOS = os.path.join(ROOT, "test", "scenarios.md")
+NUMERALS = {"две": 2, "три": 3, "четири": 4, "пет": 5, "шест": 6}
+CHECK_BULLET = re.compile(r"^- \*\*([A-K]\d+)\.", re.M)
+check_ids = []      # the social-preview figures are counted from this too
+
+if not os.path.exists(PROVERKI):
+    fail(f"{PROVERKI} is missing")
+else:
+    proverki = read(PROVERKI)
+    header, _, rest = proverki.partition("\n---\n")
+
+    # The results are the bullets of the opening list, each `- **<name>** - ...`.
+    results = re.findall(r"^- \*\*([а-яА-Я ]+)\*\*", header, re.M)
+    stated = re.search(r"изричен резултат — един от ([а-я]+):", header)
+    if not stated:
+        fail("proverki.md no longer opens by saying how many results a check can "
+             "have - that sentence is what SKILL.md's step 4 is kept in step with")
+    elif NUMERALS.get(stated.group(1)) != len(results):
+        fail(f"proverki.md says a check has one of {stated.group(1)!r} results and "
+             f"then lists {len(results)}: {results} - the header and the bullets "
+             f"drifted, which is how `непроверимо` stayed invisible to SKILL.md")
+
+    # Every result must also be named where the skill is told to record one. A result
+    # defined in the reference but absent from SKILL.md is a state the model never
+    # writes, however carefully the reference defines it.
+    for result in results:
+        if result not in text:
+            fail(f"proverki.md defines the result {result!r}, which SKILL.md never "
+                 f"names - step 4 tells the model which results exist, so one "
+                 f"missing there is one the report will not carry")
+
+    check_ids = CHECK_BULLET.findall(rest)
+    if len(check_ids) != len(set(check_ids)):
+        dupes = sorted({i for i in check_ids if check_ids.count(i) > 1})
+        fail(f"proverki.md has duplicate check ids: {dupes}")
+    if not os.path.exists(SCENARIOS):
+        fail(f"{SCENARIOS} is missing")
+    else:
+        scenarios = read(SCENARIOS)
+        counted = set(int(n) for n in re.findall(r"of the (\d+) checks", scenarios))
+        counted |= set(int(n) for n in re.findall(r"describes all (\d+)", scenarios))
+        counted |= set(int(n) for n in re.findall(r"apply all (\d+)", scenarios))
+        if not counted:
+            fail("scenarios.md no longer states how many checks proverki.md holds - "
+                 "the coverage section is meaningless without its denominator")
+        elif counted != {len(check_ids)}:
+            fail(f"proverki.md holds {len(check_ids)} checks; scenarios.md says "
+                 f"{sorted(counted)} - the coverage denominator is stale, so the "
+                 f"stated coverage is better than the real one")
+
 # ------------------------------------------------------------- the manifests
 plugin = marketplace = None
 for path, label in ((PLUGIN, "plugin.json"), (MARKETPLACE, "marketplace.json")):
@@ -518,7 +576,6 @@ else:
 # per-suite figures.
 SOCIAL_PREVIEW = os.path.join(ROOT, ".github", "social-preview.html")
 CARD_FACT = re.compile(r'<div class="n">([^<]*)</div>\s*<div class="l">([^<]*)</div>')
-CHECK_BULLET = re.compile(r"^- \*\*[A-K]\d+\.", re.M)
 # "the three generated suites at 3000 seeds: N injected defects in suite 2,
 # N in suite 3 and N in suite 4" - hard-wrapped, so matched on collapsed
 # whitespace. The card carries the first figure: suite 2 is the one the scenarios
@@ -551,8 +608,7 @@ else:
             fail(f".github/social-preview.html shows no „{key}“ figure - the card's "
                  f"layout changed, so update CARD_FACT and the labels this test expects")
 
-    check_count = len(CHECK_BULLET.findall(read(os.path.join(SKILL_DIR, "references",
-                                                             "proverki.md"))))
+    check_count = len(check_ids)        # counted once, above, with scenarios.md
     if "проверки" in facts and digits(facts["проверки"]) != check_count:
         fail(f".github/social-preview.html claims {facts['проверки']} checks; "
              f"references/proverki.md lists {check_count} `- **X1.` bullets")

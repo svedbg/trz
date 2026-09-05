@@ -49,6 +49,12 @@ A–K. A check needs three things:
   invent an article;
 * a formula, if the check computes anything, in the formulas section.
 
+A new check also moves two numbers written down elsewhere by hand: the coverage
+denominator in `test/scenarios.md` ("N of the M checks", "describes all M") and the
+check count on `.github/social-preview.html`. `skill_test.py` counts the bullets in
+`proverki.md` and fails if either has drifted, so run it before opening the pull
+request rather than finding out in CI.
+
 If a check depends on a contested reading, write it as the skill is told to
 behave: enumerate the possible readings, say what follows from each in money, and
 have it ask. Do not pick one and present it as settled.
