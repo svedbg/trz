@@ -265,6 +265,21 @@ detail. Re-graded offline with all four fixes: **33 of 50 = 66%.** Zero false
 in checks needing a multi-step derivation carried through several numbers (K3, K7,
 F6_tax_amount, I1) - nothing in the misses points at unclear guidance.
 
+**Claude Sonnet 5 again (05.09.2026), seeds 1-3 on 2.11.1, USD 4.78.** Live 16 of 29 =
+**55%**, located at all 83%, zero false `нарушение` — inside the band the five-seed
+Sonnet batch above recorded (56% live, 66% re-graded), so the 2.11.1 guidance changes
+cost nothing measurable. Read it as a Sonnet number and only that.
+
+**And read the model, not the intent.** This batch was meant for Fable. Nobody passed
+`--model`, the `claude` CLI was configured for Sonnet 5, and the run said "default"
+everywhere while producing a number that looks like a collapse against Fable's 98% and
+is ordinary against Sonnet's 56%. Two things now stop that: the model that ANSWERED is
+read out of the transcript, printed after each seed and saved in the record, and the
+results file is named by it — until now a Fable default run and a Sonnet default run
+both wrote `wide-<seed>-default.json`, which is the collision `results_path` was
+already documented to prevent for the named case. The three seeds above were renamed
+and backfilled by hand.
+
 **What a run leaves behind.** Each seed's session runs in `/tmp/trz-eval/seed-<n>`
 (`pair-<n>` for the two-month fixture, `refusal-seed-<n>` for a refusal run - it shared
 `seed-<n>` with the wide run until the first paid batch collided on seed 3) and leaves its
