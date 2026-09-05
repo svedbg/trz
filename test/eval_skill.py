@@ -68,6 +68,7 @@ import csv
 import glob
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -479,6 +480,10 @@ def seed_dir(seed, pair=False, dry=False, refusal=False):
                                  f"{'pair' if pair else 'seed'}-{seed}")
 
 
+def komplekt_dir(seed, dry=False):
+    return os.path.join(WORKDIR, f"{'dry-' if dry else ''}komplekt-{seed}")
+
+
 # A session that could not start or was cut short for a reason outside the skill: the
 # account's spend limit, a rate limit, no credits. The first paid batch hit the spend
 # limit inside seed 1 and then paid a turn for each remaining seed to be told the same
@@ -503,6 +508,47 @@ def _claim(d, overwrite):
             f"replace it, or move it aside first.")
     shutil.rmtree(d, ignore_errors=True)
     os.makedirs(d)
+
+
+# The комплект fixture: the chain below the payroll. These patterns are a FIRST CUT -
+# unlike KEYWORDS and PAIR_KEYWORDS, no transcript has been graded against them yet, so
+# a miss here is at least as likely to be a keyword gap as a model failure. Triage every
+# gap against the saved transcript before believing the number, and re-grade for free.
+KOMPLEKT_KEYWORDS = {
+    "A10_midmonth_annex":         [r"споразумени|анекс|договор",
+                                   r"заплата|възнаграждение|увеличени",
+                                   r"целия месец|от началото|от 01|от 1|пропорционал|"
+                                   r"от датата|част от месеца|не от"],
+    "I9_person_missing_in_d1":    [r"обр\.? ?1|декларация ?1|декларацията",
+                                   r"липсва|няма|без ред|не фигурира|не е подаден|"
+                                   r"не присъства"],
+    "I9_extra_person_in_d1":      [r"обр\.? ?1|декларация ?1",
+                                   r"ведомост",
+                                   r"няма|липсва|не фигурира|без съответств|непознат|"
+                                   r"не присъства"],
+    "I9_insurable_differs_in_d1": [r"осигурителен доход|т\.? ?21",
+                                   r"разлика|разминав|не съвпада|различ|по-малък|"
+                                   r"по-нисък|занижен"],
+    "I9_sick_days_differ_in_d1":  [r"болничн|неработоспособност|т\.? ?16",
+                                   r"дни|дн\.",
+                                   r"разминав|не съвпада|различ|повече|по-малко|"
+                                   r"вместо"],
+    "I9_d6_not_sum_of_d1":        [r"обр\.? ?6|декларация ?6",
+                                   r"сбор|сума|общо|разминав|не съвпада|не е равн"],
+    "I9_declared_not_paid":       [r"внесен|плат|превед|нареден|погасен",
+                                   r"деклар|обр\.? ?6",
+                                   r"разлика|по-малко|не съвпада|разминав|невнесен|"
+                                   r"недовнесен"],
+    "I9_net_not_paid":            [r"нето|заплата|възнаграждение",
+                                   r"плат|нареден|превед|изплатен",
+                                   r"по-малко|разлика|не съвпада|разминав|недоплат|"
+                                   r"неизплатен"],
+    "I10_duplicate_payment":      [r"два пъти|дублир|повторно|второ нареждане|"
+                                   r"дважди|два записа|две нареждания"],
+    "I10_iban_shared":            [r"IBAN|сметк",
+                                   r"две лица|двама|повече от едно|едно и също|"
+                                   r"един и същ|съвпада|споделен"],
+}
 
 
 def prepare(seed, year=2026, dry=False, overwrite=False):
@@ -611,6 +657,66 @@ def prepare_pair(seed, dry=False, overwrite=False):
                   tzpb_due=late["tzpb_due"], hdr=late["hdr"],
                   total_row=late["total_row"], people=late["people"],
                   expected=man["cross_expected"], keywords=PAIR_KEYWORDS)
+    return d, graded, prompt
+
+
+def prepare_komplekt(seed, dry=False, overwrite=False):
+    """Build a whole month's set of documents and place it in an isolated directory.
+
+    This is the fixture the reconciliation checks needed and never had. Everything the
+    other modes send is one workbook, so I9, I10 and the cross-document half of A9 were
+    prose no session had ever been asked to apply. Here the payroll itself is **clean** -
+    every row computed by `trz_model` - and the defects are in the chain below it, which
+    also makes the run a false-positive test on the payroll: a finding on a row is
+    unattributed by construction.
+    """
+    import generate_komplekt as GK
+    d = komplekt_dir(seed, dry=dry)
+    _claim(d, overwrite)
+    # Four of the six groups per set, chosen by the seed - the same shape as the wide
+    # fixture drawing its defects, and one break per group so every finding stays
+    # attributable (`komplekt_test.py` proves that separability).
+    chosen = GK.breaks_for_seed(seed)
+    k, man = GK.build(chosen, d, seed=seed)
+
+    expected = []
+    for ident in chosen:
+        idx = k["hit"].get(ident)
+        expected.append(["file" if idx is None else "row", idx, ident])
+
+    prompt = f"""Направи ТРЗ проверка на комплекта документи в тази директория. Ползвай скила trz-expert.
+
+Какво имаш за месец {man['month']:02d}.{man['year']} г.:
+- ./vedomost.xlsx - ведомостта
+- ./dogovori.csv - идентификатор, договорена основна заплата, клас % и банкова сметка
+- ./deklaracia_1.csv - подадената Декларация обр. 1, по лице
+- ./deklaracia_6.csv - подадената Декларация обр. 6, сборно по вид задължение
+- ./plateni.csv - какво е излязло по банка: заплатите по лица и преводите към НАП
+- приложимият процент ТЗПБ по КИД на дружеството е {man['tzpb']}%
+- валутата е EUR
+
+Работи само в тази директория. За Python ползвай {VENV}/bin/python - има openpyxl.
+
+Освен обичайния отчет, запиши накрая и findings.json в тази директория: масив, по един
+обект за всяка находка, само това и нищо друго във файла. За находка по конкретно лице
+посочи реда му във ведомостта; за находка, засягаща повече от едно лице или цял
+документ, пиши "файл".
+
+[{{"kade": "ред 12" или "файл", "red": 12 или null,
+  "tezhest": "нарушение|риск|за проверка|дефект|бележка",
+  "kratko": "едно изречение какво е сбъркано",
+  "nachisleno": число или null, "dalzhimo": число или null}}]
+"""
+    with open(os.path.join(d, "prompt.txt"), "w", encoding="utf8") as f:
+        f.write(prompt)
+
+    graded = dict(seed=seed, sheet=man["sheet"], year=man["year"],
+                  regime=None, rates_known=True, tzpb_due=man["tzpb"],
+                  hdr=man["header_row"],
+                  total_row=man["header_row"] + 1 + man["people"],
+                  people=[{"name": p["name"]} for p in k["people"]],
+                  expected=expected, keywords=KOMPLEKT_KEYWORDS,
+                  month=man["month"], breaks=chosen)
     return d, graded, prompt
 
 
@@ -1442,9 +1548,10 @@ def keywords_sha(universe):
     return hashlib.sha256(repr(universe).encode("utf8")).hexdigest()
 
 
-def generator_sha(pair):
+def generator_sha(pair, komplekt=False):
     """Identity of the fixture generator the manifest came from."""
-    name = "generate_pair.py" if pair else "generate_wide.py"
+    name = ("generate_komplekt.py" if komplekt else
+            "generate_pair.py" if pair else "generate_wide.py")
     with open(os.path.join(HERE, name), "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
 
@@ -1505,15 +1612,19 @@ def print_graded(graded, unattributed):
                   f"{str(f.get('kratko'))[:95]}")
 
 
-def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=False):
-    mode = "pair" if pair else "refusal" if refusal else "wide"
-    if pair:
+def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=False,
+             komplekt=False):
+    mode = "komplekt" if komplekt else "pair" if pair else "refusal" if refusal else "wide"
+    if komplekt:
+        d, man, prompt = prepare_komplekt(seed, dry=dry, overwrite=overwrite)
+    elif pair:
         d, man, prompt = prepare_pair(seed, dry=dry, overwrite=overwrite)
     else:
         d, man, prompt = prepare(seed, year=2027 if refusal else 2026, dry=dry,
                                  overwrite=overwrite)
     print(f"\n{'=' * 78}\nseed {seed} · sheet {man['sheet']} · {len(man['people'])} people"
-          f" · accident rate {man['tzpb_due']}% · {len(man['expected'])} defects injected")
+          f" · accident rate {man['tzpb_due']}% · {len(man['expected'])} "
+          f"{'links broken' if komplekt else 'defects injected'}")
     print(f"directory: {d}")
     if not man["rates_known"]:
         print(f"REFUSAL MODE: references/stavki.md has no rates for {man['year']}. The "
@@ -1543,7 +1654,7 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
     rec = dict(seed=seed, mode=mode, model=model, model_used=model_used,
                skill_sig=tree_skill_signature(),
                keywords_sha=keywords_sha(man.get("keywords") or KEYWORDS),
-               generator_sha=generator_sha(pair),
+               generator_sha=generator_sha(pair, komplekt),
                manifest={k: v for k, v in man.items() if k != "keywords"},
                findings=None, gradable=False, session_error=bool(trace.get("error")),
                touched=trace["touched"], turns=trace.get("turns"),
@@ -1823,6 +1934,10 @@ def main():
     ap.add_argument("--selftest", action="store_true",
                     help="check that the refusal grading separates a refusal from a "
                          "guess, using synthetic findings; free, starts no session")
+    ap.add_argument("--komplekt", action="store_true",
+                    help="run the whole-month document set: ведомост + обр. 1 + обр. 6 "
+                         "+ платежен файл, with links of the chain broken (I9, I10, "
+                         "the cross-document half of A9). The payroll itself is clean")
     ap.add_argument("--pair", action="store_true",
                     help="run the two-month fixture: the cross-month scenarios the "
                          "wide fixture cannot hold (E3_leave_base, K8, I7)")
@@ -1866,6 +1981,9 @@ def main():
     if a.refusal and a.pair:
         ap.error("--refusal and --pair do not combine: the pair fixture has its rates, "
                  "and the refusal report reads a single-month manifest")
+    if a.komplekt and (a.pair or a.refusal):
+        ap.error("--komplekt is its own fixture and combines with neither --pair nor "
+                 "--refusal")
     if a.regrade and (selectors or a.covering):
         ap.error("--regrade scores what is saved and takes no seeds")
 
@@ -1884,7 +2002,11 @@ def main():
     os.makedirs(WORKDIR, exist_ok=True)
     if a.covering:
         wanted = {x.strip() for x in a.covering.split(",") if x.strip()}
-        universe = set(M.PAIR_SCENARIOS) if a.pair else set(M.SCENARIOS)
+        if a.komplekt:
+            import generate_komplekt as GK
+            universe = set(GK.BREAKS)
+        else:
+            universe = set(M.PAIR_SCENARIOS) if a.pair else set(M.SCENARIOS)
         unknown = wanted - universe
         if unknown:
             print(f"unknown scenarios for this fixture: {', '.join(sorted(unknown))}")
@@ -1893,7 +2015,12 @@ def main():
         for seed in range(a.start, a.start + 2000):
             if not still:
                 break
-            if a.pair:
+            if a.komplekt:
+                # No workbook needs building to know which links a seed breaks: the
+                # choice is a function of the seed alone.
+                import generate_komplekt as GK
+                got = set(GK.breaks_for_seed(seed))
+            elif a.pair:
                 import generate_pair as P
                 _, m = _generate(P, seed, bonus_in_base=False)
                 got = {i for _, _, i in m["cross_expected"]}
@@ -1961,7 +2088,8 @@ def main():
     try:
         for s in seeds:
             try:
-                r = run_seed(s, a.model, a.dry, a.timeout, a.refusal, a.pair, a.overwrite)
+                r = run_seed(s, a.model, a.dry, a.timeout, a.refusal, a.pair,
+                             a.overwrite, a.komplekt)
             except SessionUnavailable as exc:
                 print(f"\nstopping after {len(runs)} of {len(seeds)} seeds: the account "
                       f"cannot run sessions right now - {exc}. The remaining seeds would "

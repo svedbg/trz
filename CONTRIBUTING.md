@@ -59,6 +59,25 @@ If a check depends on a contested reading, write it as the skill is told to
 behave: enumerate the possible readings, say what follows from each in money, and
 have it ask. Do not pick one and present it as settled.
 
+## Adding a break to the комплект
+
+Suite 5 (`test/generate_komplekt.py` + `test/komplekt_test.py`) is the whole month:
+ведомост, договори, обр. 1, обр. 6, платежен файл. To add a break:
+
+1. Write the mutation. If it changes a link, rebuild what follows it — обр. 6 from
+   обр. 1, the payments from обр. 6 — so only the transition you broke disagrees.
+2. Return the index of the person it landed on, or `None` when the finding is about the
+   file. The paid eval uses that to say where to look.
+3. Register it in `BREAKS`, in `ORDER` (before anything that edits обр. 6 or the payment
+   file, if it rebuilds them) and in `GROUPS`, with the breaks it is mutually exclusive
+   with.
+4. Teach `reconcile()` in `komplekt_test.py` to find it, and add an entry to `BASIS` in
+   `test/findings.py`.
+5. Add a sentence to `CORRECT_REPORT` and a pattern set to `KOMPLEKT_KEYWORDS` in
+   `test/eval_skill.py`. The suite grades that sentence against those patterns, so a
+   pattern that matches nothing fails here instead of turning a paid seed into a miss.
+6. Prove it: break the detection on purpose, watch the suite go red, revert.
+
 ## Adding a test scenario
 
 The structural suite injects a defect and requires it to be found exactly once.
