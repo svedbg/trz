@@ -16,7 +16,10 @@ prove no cell value from that column reaches the report.
 
 import argparse
 import os
+import re
+import shutil
 import sys
+import zipfile
 
 import openpyxl
 
@@ -39,6 +42,36 @@ ROWS = [
 
 CLEAN_SHEET = "05.2026"          # inside a regime that starts on 1 January
 HEADER_ROW = 3                   # a title above it, the way real files are laid out
+
+
+def cache_formula_values(path, cached):
+    """Fill in the cached results Excel stores next to each formula.
+
+    openpyxl writes `<f>C4+D4</f><v />` - the formula with an empty cached value - so a
+    workbook it produced reads as None behind every formula with data_only=True. Excel
+    itself always stores the last computed result there. Patching it in makes the
+    fixture behave like a real file, which matters because the difference between the
+    two *is* one of the shapes under test: S10 is this same workbook with the patch
+    withheld.
+
+    `cached` maps a cell reference to the value to store, e.g. {"E4": 1050.0}.
+    """
+    tmp = path + ".tmp"
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            blob = zin.read(item.filename)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                xml = blob.decode("utf8")
+                for ref, value in cached.items():
+                    # The cell element for this ref, up to its closing tag; only the
+                    # empty <v/> inside it is replaced, so nothing else can be touched.
+                    pattern = re.compile(r'(<c r="%s"[^>]*>.*?)<v\s*/>(.*?</c>)' % ref)
+                    xml = pattern.sub(lambda m: f"{m.group(1)}<v>{value}</v>{m.group(2)}",
+                                      xml, count=1)
+                blob = xml.encode("utf8")
+            zout.writestr(item, blob)
+    shutil.move(tmp, path)
+    return path
 
 
 def clean(sheet=CLEAN_SHEET, header_row=HEADER_ROW, formulas=True):
@@ -128,6 +161,13 @@ def s_mid_year(wb):
     wb.active.title = "08.2026"
 
 
+def s_no_cached_values(wb):
+    # Nothing to change in the workbook: this shape is the clean file with the cached
+    # values never patched in - what a script that writes .xlsx produces and Excel
+    # never does. The formulas are there; the numbers behind them are not.
+    pass
+
+
 SHAPES = {
     "S1_no_header":         (s_no_header,      "NO_HEADER",
                              "the header row is unrecognisable"),
@@ -147,16 +187,42 @@ SHAPES = {
                              "a column nothing recognises"),
     "S9_mid_year":          (s_mid_year,       "MID_YEAR_BOUNDARY",
                              "a month inside a regime that starts mid-year"),
+    "S10_no_cached_values": (s_no_cached_values, "NO_CACHED_VALUES",
+                             "formulas whose computed results were never stored"),
 }
 
 
-def build(shape_id, path):
+def gross_cache(header_row=HEADER_ROW):
+    """{cell ref: value} for the computed БРУТО column of the clean layout."""
+    col = openpyxl.utils.get_column_letter(HEADERS.index("БРУТО") + 1)
+    return {f"{col}{header_row + 1 + i}": row[HEADERS.index("БРУТО")]
+            for i, row in enumerate(ROWS)}
+
+
+def save(wb, path, cached=True):
+    """Save a workbook the way Excel would: formulas with their computed results.
+
+    Every fixture goes through here, so „clean" means clean in the one respect that
+    S10 exists to test as well.
+    """
+    wb.save(path)
+    if cached:
+        cache_formula_values(path, gross_cache())
+    return path
+
+
+def build(shape_id, path, cached=True):
     """Write the clean workbook with exactly one shape defect applied."""
     if shape_id not in SHAPES:
         raise KeyError(shape_id)
     wb = clean()
     SHAPES[shape_id][0](wb)
     wb.save(path)
+    # S10 is defined by the absence of the cached values, and S1/S3 rewrite or bury the
+    # column they would be written to, so the patch is skipped for those.
+    if cached and shape_id not in ("S10_no_cached_values", "S3_values_only",
+                                   "S1_no_header"):
+        cache_formula_values(path, gross_cache())
     return path
 
 
