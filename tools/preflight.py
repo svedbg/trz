@@ -55,7 +55,7 @@ import sys
 
 try:
     import openpyxl
-    from openpyxl.utils import get_column_letter
+    from openpyxl.utils import get_column_letter, column_index_from_string
 except ImportError:                                          # pragma: no cover
     sys.exit("openpyxl is required: pip install -r test/requirements.txt")
 
@@ -80,6 +80,9 @@ MAPPING_COLUMN_ABSENT = "MAPPING_COLUMN_ABSENT"
 ERROR_CELLS = "ERROR_CELLS"
 HIDDEN_SHEET = "HIDDEN_SHEET"
 HIDDEN_ROWS = "HIDDEN_ROWS"
+HIDDEN_COLUMNS = "HIDDEN_COLUMNS"
+NUMBERS_AS_TEXT = "NUMBERS_AS_TEXT"
+EXTERNAL_LINKS = "EXTERNAL_LINKS"
 NO_KID = "NO_KID"
 NO_TZPB = "NO_TZPB"
 
@@ -353,6 +356,13 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
     if tzpb in (None, ""):
         out["signals"].append((NO_TZPB, None))
 
+    # A formula pointing at another workbook. The number in the cell was computed
+    # somewhere this audit cannot see, and the link may not even resolve on the machine
+    # the file arrives on - the value is then whatever Excel last cached.
+    links = [str(x) for x in (getattr(formulas, "_external_links", None) or [])]
+    if links:
+        out["signals"].append((EXTERNAL_LINKS, len(links)))
+
     declared_headers = {norm(v) for v in mapping.columns.values()}
     seen_headers = set()
 
@@ -424,6 +434,14 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
             info["hidden_rows"] = hidden_rows
             info["signals"].append((HIDDEN_ROWS, hidden_rows))
 
+        # Columns hidden inside the data block, for the same reason as hidden rows.
+        hidden_cols = sorted(
+            get_column_letter(meta["col"]) for meta in info["known"].values()
+            if getattr(wv.column_dimensions.get(get_column_letter(meta["col"])),
+                       "hidden", False))
+        if hidden_cols:
+            info["signals"].append((HIDDEN_COLUMNS, hidden_cols))
+
         # Formula coverage over the data block. A values-only export is not a defect in
         # itself, but it removes the evidence the K group works from, and the audit has
         # to say so rather than quietly checking less.
@@ -447,6 +465,21 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
                         info["uncached_cells"] += 1
                 elif v is not None:
                     info["value_cells"] += 1
+        # A money column stored as text. It prints like a number, sums to zero, and
+        # every comparison against it silently fails - the defect that looks like the
+        # audit is wrong rather than the file.
+        as_text = []
+        for concept, meta in sorted(info["known"].items()):
+            col, letter = meta["col"], get_column_letter(meta["col"])
+            texty = [r for r in range(first, min(last, first + 40) + 1)
+                     if isinstance(wv.cell(r, col).value, str)
+                     and wv.cell(r, col).value.strip().replace(",", ".")
+                     .replace(" ", "").replace("-", "", 1).replace(".", "", 1).isdigit()]
+            if texty:
+                as_text.append(f"{concept} ({letter}): {len(texty)}")
+        if as_text:
+            info["signals"].append((NUMBERS_AS_TEXT, as_text))
+
         if info["error_cells"]:
             info["signals"].append((ERROR_CELLS, info["error_cells"]))
         if info["formula_cells"] == 0:
@@ -549,6 +582,10 @@ def report(data):
                  f"{', '.join(sig[MAPPING_UNKNOWN_CONCEPT])}. Правописна грешка в ключ "
                  f"не прави нищо тихо — затова спира. Допустимите понятия са: "
                  f"{', '.join(CONCEPTS)}.\n")
+    if EXTERNAL_LINKS in sig:
+        L.append(f"\n> **Връзки към други файлове** ({sig[EXTERNAL_LINKS]}). Част от "
+                 f"числата са пресметнати някъде, което този одит не вижда, а стойността "
+                 f"в клетката е последното, което Excel е запазил.\n")
     if MAPPING_COLUMN_ABSENT in sig:
         L.append(f"\n> **Описът сочи колони, които ги няма във файла**: "
                  f"{', '.join(sig[MAPPING_COLUMN_ABSENT])}. Или ведомостта е сменила "
@@ -628,6 +665,13 @@ def report(data):
             L.append(f"- клетки с грешка ({len(e)}) — формула, която не се е получила; "
                      f"стойност за проверка там няма, а сборовете над тях също: "
                      + ", ".join(e[:8]) + (" …" if len(e) > 8 else ""))
+        if HIDDEN_COLUMNS in ssig:
+            L.append(f"- скрити колони в данните: {', '.join(ssig[HIDDEN_COLUMNS])}. "
+                     f"Прочетени са наравно с останалите")
+        if NUMBERS_AS_TEXT in ssig:
+            L.append(f"- числа, записани като текст: {'; '.join(ssig[NUMBERS_AS_TEXT])}. "
+                     f"Печатат се като числа, сумират се като нула и всяко сравнение с "
+                     f"тях мълчи")
         if HIDDEN_ROWS in ssig:
             h = ssig[HIDDEN_ROWS]
             L.append(f"- скрити редове в данните ({len(h)}): "
