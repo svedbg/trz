@@ -232,7 +232,12 @@ KEYWORDS = {
     "I5_days_do_not_reconcile":   [r"дни|ден",
                                    r"норма|не се връзва|не отговар|сбор|работни дни|"
                                    r"не съвпад|разминав|вместо \d|дните липсва|"
-                                   r"дните на реда|броят (?:на )?дни|дни са \d"],
+                                   r"дните на реда|броят (?:на )?дни|дни са \d|"
+                                   # „само 19 отчетени дни от 21" - Fable 5.1, wide
+                                   # seed 13, 05.09.2026. The shortfall stated as
+                                   # „X … от Y", with the norm as the second number
+                                   # and no word for it at all.
+                                   r"\d+\s+(?:\S+\s+){0,2}(?:от|срещу)\s+\d+"],
     # The six scenarios that got their mutations on 03.09.2026 (they had checkers and
     # no generator). Each carries its subject and the shape of the defect; the shape
     # group is what keeps them apart from the F9/F7/K entries that share a subject.
@@ -292,10 +297,18 @@ PAIR_KEYWORDS = {
                              r"друг[а-я]* (?:месец|период)|до 31\.07|от 01\.08|вместо|"
                              r"шапк\w*|заглавн\w*|обявява",
                              r"праг|норма|таван|максимал"],
-    "I7_unexplained_jump":  [r"заплата|възнаграждение|бруто",
+    # Two gaps from Fable 5.1, pair seed 7, 05.09.2026, on a finding that was not merely
+    # right but named the checks itself: „Основна за отработеното в 08-2026 е 1360.47
+    # EUR при 21 от 21 работни дни, а договорът и юли дават 764.78 EUR; допълнително
+    # споразумение няма (A6/I7/I11)". It named the subject by the payroll's own column
+    # („основна за отработеното", not „заплата"), and stated the discrepancy as „а
+    # договорът … дават", where the pattern wanted the adjective „договорен". Both
+    # widened at the phrasing; the third group still requires the missing document, so
+    # nothing about K8 or E3 can reach this entry.
+    "I7_unexplained_jump":  [r"заплата|възнаграждение|бруто|основна",
                              r"скок|скач|разлика|промяна|различн|мени се|повече|спрямо|"
                              r"по-висок|по-голям|ръст|увелич|нарасн|\+\d|"
-                             r"(?:от|при|спрямо|срещу) договорен",
+                             r"(?:от|при|спрямо|срещу|а)\s+договор\w*",
                              r"споразумение|обяснение|основание|документ|анекс"],
     "E3_leave_base":        [r"отпуск",
                              r"чл\.? ?1[78]|бонус|преми\w*|предходн|предишн|среднодневн|"

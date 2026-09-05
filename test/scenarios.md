@@ -271,12 +271,20 @@ Sonnet batch above recorded (56% live, 66% re-graded), so the 2.11.1 guidance ch
 cost nothing measurable. Read it as a Sonnet number and only that. Re-graded after the
 three keyword fixes the Fable batch below produced: **17 of 29 = 59%**.
 
-**Claude Fable 5.1, held-out seeds 11 and 12, on 2.12.0, USD 10.22** (USD 5.19 and
-5.03). Live 18 of 21; re-graded after triage **21 of 21 = 100%**, located 100%, missed
-0%, zero false `нарушение`. Seed 13 never ran — the account's spend limit stopped the
-batch, which the runner reports and then saves what it already has.
+**Claude Fable 5.1, held-out seeds 11-13, on 2.12.0, USD 15.98.** Live 30 of 35;
+re-graded after triage **34 of 35 = 97%**, located 100%, **missed 0**, zero false
+`нарушение`. The batch stopped after two seeds on the account's spend limit — the runner
+says so, saves what it has, and seed 13 ran afterwards with `--overwrite`, which is the
+whole reason that flag refuses to clobber a paid transcript by default.
 
-All three gaps were keyword gaps, and each was fixed at the phrasing rather than by
+The one that is **not** a keyword gap and is left as it stands: `F10_in_kind_asymmetry`
+on seed 13. The model reported something else on that row — a чл. 224 compensation equal
+to five days' leave on someone with a full month worked and no termination document,
+which is a fair observation — and never addressed the benefit in kind. That is a miss
+wearing "located only", and widening a pattern to cover it would be scoring a different
+finding as if it were the injected one.
+
+The other four gaps were keyword gaps, each fixed at the phrasing rather than by
 dropping the requirement that keeps the pattern honest:
 
 | id | what the model wrote | why it missed |
@@ -284,11 +292,36 @@ dropping the requirement that keeps the pattern honest:
 | `K4_control_column_blind` | „а колоната Разлика **не го** показва" | a pronoun between the negation and the verb — the same shape as the C2 gap the Sonnet batch found |
 | `F6_compensation_out_of_taxable` | „е **извадено** от данъчната основа" | a verb the „изключен / вън от / не влиза" list did not carry |
 | `I1_vertical` | „не е **приспаднета** от нетото" | the participle agreed with a feminine noun and was misspelt; the pattern required the `-ат` ending |
+| `I5_days_do_not_reconcile` | „само **19 отчетени дни от 21**" | the shortfall stated as „X … от Y", with the norm as the second number and no word for it at all |
 
-Re-grading every saved result with the three fixes moved four findings from "located
-only" to "identified" across **both** models and moved **nothing** in the other
-direction — which is the check that they widened recall without widening what counts as
-a match.
+**The two-month fixture, Fable 5.1, seed 7, USD 4.98.** Live 1 of 2; re-graded **2 of 2**.
+The gap was `I7_unexplained_jump`, on a finding that named the checks itself:
+
+> „Основна за отработеното в 08-2026 е 1360.47 EUR при 21 от 21 работни дни, а
+> договорът и юли дават 764.78 EUR; допълнително споразумение няма (A6/I7/I11)."
+
+Two patterns missed it at once. It named the subject by the payroll's own column —
+„основна за отработеното", not „заплата" or „бруто" — and stated the discrepancy as
+„а договорът … дават", where the pattern wanted the adjective „договорен". Both widened;
+the third group still requires the missing document, so nothing about K8 or E3 reaches
+this entry.
+
+Re-grading every saved result with all six fixes moved six findings from "located only"
+to "identified" across **both** models and **all three** fixtures, and moved **nothing**
+in the other direction — which is the check that they widened recall without widening
+what counts as a match.
+
+**Where 2.12.0 stands, in one table.** Every figure below is after triage, and every
+triage decision is above.
+
+| fixture · model | seeds | identified | located | missed | USD |
+| --- | --- | --- | --- | --- | --- |
+| комплект · Fable 5.1 | 1, 2 | **8/8 = 100%** | 100% | 0 | 9.50 |
+| two-month · Fable 5.1 | 7 | **2/2 = 100%** | 100% | 0 | 4.98 |
+| wide · Fable 5.1 | 11-13 (held out) | **34/35 = 97%** | 100% | 0 | 15.98 |
+| wide · Sonnet 5 (on 2.11.1) | 1-3 | 17/29 = 59% | 90% | 5 | 4.78 |
+
+Zero false `нарушение` in any of them.
 
 **And read the model, not the intent.** This batch was meant for Fable. Nobody passed
 `--model`, the `claude` CLI was configured for Sonnet 5, and the run said "default"
