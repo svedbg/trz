@@ -83,7 +83,7 @@ def main():
 
         # --------------------------------------------------- the clean file is silent
         good = os.path.join(tmp, "clean.xlsx")
-        G.clean().save(good)
+        G.save(G.clean(), good)
         sig, data = signals_for(good)
         check(sig == set(), f"a clean workbook raises no signal at all, got {sorted(sig)}")
         text, stop = P.report(data)
@@ -117,7 +117,7 @@ def main():
         for c in range(1, ws.max_column + 1):
             if ws.cell(G.HEADER_ROW, c).value == "Осигурителен доход":
                 ws.cell(G.HEADER_ROW, c, "Дох.осиг.")
-        wb.save(odd)
+        G.save(wb, odd)
         sig, _ = signals_for(odd)
         check(P.MISSING_REQUIRED in sig,
               "a company-specific header is missing without a mapping")
@@ -147,7 +147,7 @@ def main():
             if ws.cell(G.HEADER_ROW, c).value == "Осигурителен доход":
                 ws.cell(G.HEADER_ROW, c, "Дох.осиг.")
         noted = os.path.join(tmp, "noted.xlsx")
-        wb.save(noted)
+        G.save(wb, noted)
         sig, _ = signals_for(noted, mapping=ign)
         check(P.UNKNOWN_COLUMNS not in sig,
               "a declared-ignored column stops being reported as unknown")
@@ -163,13 +163,15 @@ def main():
         check(all(r["row"] != sheet["totals_row"] for r in sheet["rows"]),
               "the totals row is not extracted as a person")
         first = sheet["rows"][0]["cells"]
-        # „основна", not „бруто": openpyxl writes formulas without a cached value, so a
-        # fixture it built has None behind every formula when read with data_only. That
-        # is a property of the fixture, not of the tool - a real workbook saved by Excel
-        # carries the cached values - and it is why the extract documents the case.
         check("основна" in first
               and first["основна"]["ref"].endswith(str(sheet["rows"][0]["row"])),
               "each value carries the cell reference it came from")
+        # „бруто" is the computed column: it arrives only because the fixture stores the
+        # cached results, which is exactly what S10 withholds.
+        check("бруто" in first and first["бруто"]["value"] == G.ROWS[0][G.HEADERS.index("БРУТО")],
+              "a formula column is extracted from its cached result")
+        check(doc["uncached_cells"] == 0,
+              "the extract reports how many formulas had no stored result")
         raw = json.dumps(doc, ensure_ascii=False)
         check("име" not in sheet["columns"] and "Лице 1" not in raw,
               "no name is written to the extract, by column or by value")

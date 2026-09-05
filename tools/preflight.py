@@ -18,6 +18,17 @@ Three rules shape the whole tool:
   header; the extract by sheet and cell reference. The name column is located precisely
   so that it can be left out of both.
 
+**It describes, it does not prescribe.** The report says what is wrong with the shape
+and never offers the corrected file, or a patch, or a rewritten header. A suggested fix
+is an invitation to edit the evidence before the audit has seen it, and the one thing
+worse than an unauditable payroll is a tidied one. Merged cells are reported with
+„раздели ги в работно копие, не в оригинала" for the same reason.
+
+The mapping describes columns, and only columns. Internal wage rules, a КТД or the
+contracts are documents the audit reads as documents (C6); they are not layout, and
+folding them into mapping.yaml would turn a description of a spreadsheet into a second,
+unversioned copy of company policy.
+
 The checks emit **signals** - machine-readable ids - and the Bulgarian report is
 rendered from them. That split is what lets the shape suite assert a planted defect is
 found exactly once and *nothing else* is raised; asserting on rendered prose would pass
@@ -58,6 +69,7 @@ NO_HEADER = "NO_HEADER"
 NO_PERIOD = "NO_PERIOD"
 NO_TOTALS = "NO_TOTALS"
 NO_FORMULAS = "NO_FORMULAS"
+NO_CACHED_VALUES = "NO_CACHED_VALUES"
 MERGED_IN_DATA = "MERGED_IN_DATA"
 MISSING_REQUIRED = "MISSING_REQUIRED"
 UNKNOWN_COLUMNS = "UNKNOWN_COLUMNS"
@@ -344,7 +356,8 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
         info = {"name": name, "header_row": header_row, "matched": score,
                 "period": sheet_period(name, wv), "rows": 0, "totals_row": None,
                 "known": {}, "unknown": [], "formula_cells": 0, "value_cells": 0,
-                "merged": [], "name_col": None, "signals": [], "first_row": None}
+                "merged": [], "name_col": None, "signals": [], "first_row": None,
+                "uncached_cells": 0}
         out["sheets"].append(info)
 
         if header_row is None:
@@ -400,10 +413,19 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
                 v = wf.cell(r, c).value
                 if isinstance(v, str) and v.startswith("="):
                     info["formula_cells"] += 1
+                    # Excel stores the last computed result beside each formula. A file
+                    # written by a script and never opened in Excel has none, and then
+                    # every formula column reads as empty - the audit would see blanks
+                    # where the money is and check less without noticing.
+                    if wv.cell(r, c).value is None:
+                        info["uncached_cells"] += 1
                 elif v is not None:
                     info["value_cells"] += 1
         if info["formula_cells"] == 0:
             info["signals"].append((NO_FORMULAS, None))
+        elif info["uncached_cells"]:
+            info["signals"].append((NO_CACHED_VALUES,
+                                    (info["uncached_cells"], info["formula_cells"])))
 
         info["merged"] = [str(rng) for rng in getattr(wf, "merged_cells", []).ranges
                           if rng.min_row >= header_row] if hasattr(
@@ -444,16 +466,17 @@ def extract(data, path):
     identified by sheet and row number, and the audit asks for a name only when a
     finding actually needs one.
 
-    One limitation, worth knowing before the output is trusted: the values come from the
-    cached results Excel stores next to each formula. A workbook written by a script and
-    never opened in Excel has formulas but no cached values, and those cells arrive as
-    None - they are simply absent from the extract rather than wrong. Detecting that
-    case (formulas present, every cached value empty) is not yet a signal; see #80.
+    Values come from the cached results Excel stores next to each formula. A workbook
+    written by a script and never opened in Excel has formulas but no cached values, and
+    those cells are absent from the extract rather than wrong - so the count is carried
+    in `uncached_cells` and raised as NO_CACHED_VALUES by analyse(), instead of leaving
+    the reader to wonder why a column is thin.
     """
     book = openpyxl.load_workbook(data["_path"], data_only=True)
     doc = {"file": data["file"], "generated": dt.datetime.now().isoformat(timespec="seconds"),
            "kid": data["kid"], "group": data["group"], "tzpb": data["tzpb"],
            "note": "Без имена: редовете се идентифицират по лист и номер на ред.",
+           "uncached_cells": sum(s.get("uncached_cells", 0) for s in data["sheets"]),
            "sheets": []}
     for s in data["sheets"]:
         if s["header_row"] is None:
@@ -537,6 +560,13 @@ def report(data):
             L.append(f"- формули: {s['formula_cells']} от {total} клетки "
                      f"({share:.0f}%) — конструкцията може да се провери")
 
+        if NO_CACHED_VALUES in ssig:
+            bad, tot = ssig[NO_CACHED_VALUES]
+            L.append(f"- **{bad} от {tot} формули са без запазен резултат** — файлът е "
+                     f"писан от програма и не е отварян в Excel. Стойността зад формулата "
+                     f"я няма: тези клетки се четат като празни, а не като грешни, и "
+                     f"одитът ще провери по-малко, без да забележи. Отвори файла в Excel "
+                     f"и го запиши, или поискай експорт със запазени стойности.")
         if DUPLICATE_CONCEPT in ssig:
             L.append(f"- **две колони означават едно и също**: "
                      f"{'; '.join(ssig[DUPLICATE_CONCEPT])}. Кое от двете чете одитът не "
