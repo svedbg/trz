@@ -51,20 +51,20 @@ contract, one severance calculation.
 
 ## What it checks
 
-Eleven groups, 81 checks, in
+Eleven groups, 82 checks, in
 [`references/proverki.md`](skills/trz-expert/references/proverki.md):
 
 | | |
 | --- | --- |
 | **A** | Employment contract — required elements, probation, fixed terms, contract ↔ payroll agreement, a civil contract standing in for employment |
-| **B** | Minimum thresholds — the minimum wage and its hourly rate, the minimum insurance thresholds (МОД) by economic activity, the cap on insurable income |
+| **B** | Minimum thresholds — the minimum wage and its hourly rate, the minimum insurance thresholds (МОД) by economic activity, the cap on insurable income, one person holding several relationships |
 | **C** | Pay structure — the length-of-service supplement (клас прослужено време), its base, benefits disguised as bonuses |
 | **D** | Working time — overtime detection and limits, its premium, night work, public holidays, aggregated calculation of working time (СИРВ), rest periods, whose rest day a Saturday actually is |
 | **E** | Leave — entitlement, pro-rating, pay basis, time-barring |
 | **F** | Contributions and tax — insurance base, employer/employee split, tax base, reliefs, sick pay |
 | **G** | Deductions — legal basis, protected minimum under чл. 446 ГПК (Code of Civil Procedure), order of attachment |
 | **H** | Termination — severance under чл. 220, 221, 222 and 224 КТ, and the base each is computed on |
-| **I** | Consistency — vertical and horizontal reconciliation, payroll ↔ payslip ↔ schedule ↔ declarations, and on to what was declared and actually paid |
+| **I** | Consistency — vertical and horizontal reconciliation, payroll ↔ payslip ↔ schedule ↔ declarations, and on to what was declared, paid and posted to the ledger |
 | **J** | Formalities — payment deadlines, payslip issuance, personnel file |
 | **K** | File construction — sums that skip a column, hardcoded values that stopped following, control columns that cannot fail, hand-typed totals, amounts entered in day columns, unrounded accruals, cost computed from net |
 
