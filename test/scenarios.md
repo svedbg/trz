@@ -692,6 +692,34 @@ moved as reliably from a file it must open as from the prompt it always has. Onl
 run says that, and the honest reading of the current numbers — 34/35 and 8/8 — is that
 they were measured on the 491-line version.
 
+## The fourth review, item by item
+
+Kept here because "we looked at it and decided not to" is worth as much as "we did it",
+and only one of the two survives in a diff.
+
+| # | asked for | what happened |
+| --- | --- | --- |
+| 1 | an I11 end-to-end test | suite 6 |
+| 2 | stronger provenance in `stavki.md` | 16 КТ rows and the чл. 446 ГПК scale verified verbatim, `вторичен` → `ДВ`; per-section verification dates. The *structured* source model was not built — see below |
+| 3 | a canonical normalised payroll schema | the mapping must now be stated before any arithmetic, and `tools/preflight.py` already emits a normalised extract with a cell reference per value |
+| 4 | an explicit `AMBIGUOUS` state | answered without a sixth state: a column whose meaning is uncertain makes its dependent checks `недостатъчни данни`, naming the column |
+| 5 | LLM eval as a regression gate | refused as a PR gate; answered by `PAID_GUIDANCE`, which is free, and a dispatch-only paid job |
+| 6 | cause → consequences in the output | **open.** The prose rule is in `otchet.md`; putting it in `findings.json` changes the eval contract mid-measurement and should follow a paid run, not precede one |
+| 7 | I9 through to the ledger | the eleventh break in the комплект |
+| 8 | evidence contracts for A5 and J | A5, J1, J2, J3 |
+| 9 | J4 is too broad | split into five groups, each with its own evidence and result |
+| 10 | an applicability matrix before the analysis | step 3а |
+| 11 | a messy-workbook suite | five pathologies: error cells, hidden rows, hidden sheet, hidden columns, numbers as text, plus external links. **Partly open** — subtotal rows inside the data, copied sheets and named ranges have no fixture yet |
+| 12 | a raw-value layer | already there: the audit reads the workbook twice, and K6 exists precisely because the displayed value is not the stored one |
+| 13 | `Decimal` everywhere | **refused.** `r2()` already quantizes through `Decimal` with `ROUND_HALF_UP`, so the rounding is exact rather than float; converting the intermediate arithmetic is a large refactor with real regression risk and nothing measurable to gain |
+| 14 | rules as executable metadata | **refused.** It splits the source of truth: `proverki.md` is what the skill reads, and a parallel machine-readable copy is the drift class this repository exists to prevent |
+| 15 | `proverki.md` split into `rules/` | **deferred.** Still one navigable file |
+| 16 | a shorter `SKILL.md` | 491 → 346 lines, with `PAID_GUIDANCE` making the move safe |
+| 17 | an audit contract | the report opens with files, sizes, **sha256**, the reference file's verification date, the skill version and the applied setting |
+
+Two are open on purpose (6 and the rest of 11), three are refused with a reason (13, 14,
+15). Everything else is in the tree.
+
 ## What guards the guidance between paid runs
 
 The paid eval is the only thing that measures whether `SKILL.md` still works, and it
