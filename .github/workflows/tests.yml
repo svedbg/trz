@@ -94,6 +94,13 @@ jobs:
         # free and stops a pattern that matches nothing from reaching a paid run.
         run: python test/komplekt_test.py
 
+      - name: Suite 6 - one person's timeline across months
+        # I11: five months for the same people plus the documents behind the events.
+        # Every month here is internally correct, so nothing in suites 1-4 can see these
+        # defects - a salary that moved with no annex, a payment after the employment
+        # ended, an employer-paid sick period starting twice for one spell.
+        run: python test/lifecycle_test.py
+
       - name: Refusal grader self-test
         # Free: it builds synthetic findings and checks that the grading in
         # eval_skill.py --refusal separates a skill that refused from one that

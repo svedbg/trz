@@ -65,8 +65,18 @@ BASIS = {
     "I9_d6_not_sum_of_d1": ARITHMETIC,
     "I9_declared_not_paid": ARITHMETIC,
     "I9_net_not_paid": ARITHMETIC,
+    "I9_ledger_differs": ARITHMETIC,
     "I10_duplicate_payment": ARITHMETIC,
     "I10_iban_shared": ARITHMETIC,
+    # I11 - the timeline (suite 6). A change compared with the document that should
+    # stand behind it, or one month compared with the next: the basis is the sequence
+    # itself, which is arithmetic in the same sense group I always is.
+    "I11_salary_change_without_annex": ARITHMETIC,
+    "I11_pay_after_termination": ARITHMETIC,
+    "I11_severance_without_termination": ARITHMETIC,
+    "I11_sick_days_restart": ARITHMETIC,
+    "I11_class_raised_early": ARITHMETIC,
+    "I11_class_not_raised": ARITHMETIC,
     # F10 - the contested material. The basis is the file's inconsistency, not a ruling
     # on which reading is right.
     "F10_in_kind_asymmetry": ARITHMETIC,

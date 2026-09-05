@@ -33,7 +33,8 @@ python test/skill_test.py     # packaging: frontmatter, references, manifests, l
 python test/checks_test.py    # suite 1: static payroll against the key in expected_findings.md
 python test/eval_skill.py --selftest      # free: checks the refusal grading itself
 python test/preflight_test.py # tools/preflight.py: clean is silent, each shape defect found once
-python test/komplekt_test.py  # suite 5: ведомост -> обр. 1 -> обр. 6 -> внесено, one link broken at a time
+python test/komplekt_test.py  # suite 5: ведомост -> обр. 1 -> обр. 6 -> внесено -> счетоводство, one link at a time
+python test/lifecycle_test.py # suite 6: five months of the same people, one timeline break at a time
 python test/run_tests.py      # all five, 50 seeds
 python test/run_tests.py --seeds 300      # what CI runs
 ```
@@ -93,6 +94,12 @@ A false positive fails exactly like a miss.
   the skill directory whole. It never writes to the workbook — the file is evidence —
   and never guesses a period, because guessing the period picks the thresholds. Its
   column vocabulary is pinned against `trz_model.COLUMNS` by `preflight_test.py`.
+- **Suite 6 may only compare a month with another month.** Every sheet in
+  `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
+  reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing
+  that disagrees is the sequence. A check in `lifecycle_test.py` that could be written
+  inside one sheet belongs in another suite, and a break that stops corresponding to a
+  bullet of I11 in `proverki.md` should be deleted rather than kept.
 - **The комплект chain is built forward, and that is what makes it testable.** In
   `test/generate_komplekt.py` обр. 1 comes from the payroll, обр. 6 from обр. 1 and the
   payments from обр. 6 — so a break stops the copying at one link and the other three
