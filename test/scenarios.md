@@ -498,10 +498,11 @@ the findings in any payroll report. Both are fixed and both are now self-test ca
 
 ## How much of `proverki.md` the suites reach
 
-**29 of the 85 checks** have a test behind them: 14 implemented in suite 1's static
+**32 of the 86 checks** have a test behind them: 14 implemented in suite 1's static
 checker (11 of them in the answer key, three — F1, F6 on the composition, I2 — asserted
 to stay silent on a correct row), 21 across the generated suites, six shared between the
-two (B4, C2, F1, F6, F9, I1). The number is worth stating
+two (B4, C2, F1, F6, F9, I1), and three — A10, I9, I10 — added by suite 5, the
+комплект. The number is worth stating
 plainly, because a green run is easy to read as "the skill is tested" when what it
 means is "the tested part of the skill still works".
 
@@ -526,30 +527,55 @@ until their checker branches — present since the suite was written — got the
 mutations that let them fire.
 
 Two things this does **not** mean. An uncovered check is not an unimplemented one —
-`proverki.md` describes all 85 and the skill is asked to apply all 85; what is
+`proverki.md` describes all 86 and the skill is asked to apply all 86; what is
 missing is the proof that it does. And the count is of checks, not of risk: the
 covered ones were chosen because they are the errors that actually turn up in real
 payrolls, which is why the suites keep finding bugs in themselves.
 
-### The checks no fixture can reach at all
+## Suite 5: the chain below the payroll
 
-The gap above is about scenarios that could be written. These four are about
-documents that do not exist anywhere under `test/`, and saying so is the point —
-they are the newest and strongest material in `proverki.md`, and not one line of
-them has ever been executed:
+Until 05.09.2026 this section said the opposite of what it says now: I9, I10, I11 and
+the cross-document half of A9 had **no fixture at all**, because every workbook in this
+repository was a single payroll and those checks reconcile the payroll against the
+documents downstream of it. `generate_komplekt.py` writes those documents.
 
-| Check | What it needs | What exists |
+A комплект is one month: `vedomost.xlsx`, `dogovori.csv`, `deklaracia_1.csv`,
+`deklaracia_6.csv` and `plateni.csv`. The chain is built forward — обр. 1 from the
+payroll, обр. 6 from обр. 1, the payments from обр. 6 and the nets — so a break stops
+the copying at exactly one link and the other three still agree with each other.
+Without that ordering one mutation would light up three checks and "its own signal and
+nothing else" could not be asserted at all. `komplekt_test.py` requires a clean set to
+raise **nothing**, each break to raise its own finding alone, and one break from each
+of the seven groups at once to produce exactly those seven.
+
+| id | check | the break |
 | --- | --- | --- |
-| `I9` — payroll → обр. 1 → обр. 6 → paid → ledger | a declaration per person, a summary declaration, a bank or НАП statement, a trial balance | nothing; every fixture in this repository is a single payroll workbook |
-| `I10` — duplicated contracts and payments | a payment file, or two annexes for one period | nothing; `I8`'s duplicate-person shape is expressible in a sheet, `I10`'s is not |
-| `I11` — one person's timeline across months | events with the documents behind them across several months | the two-month workbook carries the months but no annex, order or sick-leave certificate |
-| `A9` — employee master data | identifiers, dates of birth, hire and termination dates, an IBAN | the generated payrolls carry names and rows, not a personnel record |
+| `A10_midmonth_annex` | A10 | a raise effective the 16th paid from the 1st — everything below it is computed from the wrong base and agrees with itself, and only the contract disagrees |
+| `I9_person_missing_in_d1` | I9, transition 1 | someone in the payroll has no row in обр. 1 |
+| `I9_extra_person_in_d1` | I9, transition 1 | обр. 1 carries a person the payroll does not |
+| `I9_insurable_differs_in_d1` | I9, transition 1 | т. 21 is not the payroll's insurable income |
+| `I9_sick_days_differ_in_d1` | I9, transition 1 | т. 16.А is not the payroll's sick days |
+| `I9_d6_not_sum_of_d1` | I9, transition 2 | обр. 6 is not the sum of the обр. 1 rows |
+| `I9_declared_not_paid` | I9, transition 3 | less reached НАП than обр. 6 declares |
+| `I9_net_not_paid` | I9, the net leg | someone was paid less than their net |
+| `I10_duplicate_payment` | I10 | one net paid twice |
+| `I10_iban_shared` | I10 and A9 | two people, one bank account — A9 calls it master data, I10 is where it becomes visible |
 
-The fixture that would close these is not another scenario in an existing generator:
-it is a **комплект** — one month of payroll plus the documents downstream of it, with
-one planted break per transition, checked the way `preflight_test.py` checks shapes
-(a clean set raises nothing; each break raises its own id and nothing else). Until
-that exists, a green `run_tests.py` says nothing whatever about the reconciliation
-chain, and neither does a paid eval run: `eval_skill.py` sends `vedomost.xlsx` and
-`dogovori.csv` and nothing else, so the model is never given a declaration, a payment
-file or a ledger to reconcile against.
+**The payroll itself is clean.** Every row comes from `trz_model`, so the whole set is
+also a false-positive test: a finding on a row is unattributed by construction. That is
+the half of the standard the other suites get from their answer key and this one gets
+from its silence.
+
+`eval_skill.py --komplekt` sends the whole directory to a live session. Its keyword
+universe, `KOMPLEKT_KEYWORDS`, is a **first cut** — no paid transcript has been graded
+against it, so a miss there is at least as likely to be a keyword gap as a model
+failure; triage each one against the saved transcript and re-grade for free. What the
+suite can prove without paying is that a *correct* report is recognised:
+`komplekt_test.py` grades one synthetic, correctly-worded sentence per break and
+requires every one to come back identified, so a pattern that matches nothing can never
+reach a paid run.
+
+**What is still not reached.** `I11` — one person's timeline across months — needs the
+комплект to span two months with the documents behind each event, and does not have
+that yet. Neither does the statutory half of `A9`: НКПД, category of labour and the
+agreed working time are checked against documents no fixture writes.

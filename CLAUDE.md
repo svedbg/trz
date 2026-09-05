@@ -33,6 +33,7 @@ python test/skill_test.py     # packaging: frontmatter, references, manifests, l
 python test/checks_test.py    # suite 1: static payroll against the key in expected_findings.md
 python test/eval_skill.py --selftest      # free: checks the refusal grading itself
 python test/preflight_test.py # tools/preflight.py: clean is silent, each shape defect found once
+python test/komplekt_test.py  # suite 5: ведомост -> обр. 1 -> обр. 6 -> внесено, one link broken at a time
 python test/run_tests.py      # all five, 50 seeds
 python test/run_tests.py --seeds 300      # what CI runs
 ```
@@ -44,7 +45,11 @@ It is the only test that exercises the *guidance* in
 `SKILL.md` rather than the rules, so mention it when that guidance changes — and let
 the user decide. Free modes: `--dry` shows what would be sent, `--selftest` proves the
 grader discriminates, `--covering "id,id"` picks the cheapest seeds that inject the
-scenarios you want measured. `--pair` runs the two-month fixture (the чл. 177/чл. 18
+scenarios you want measured. `--komplekt` sends a whole month's document set — ведомост,
+договори, обр. 1, обр. 6, платежен файл — and is the only mode that exercises I9, I10 and
+the cross-document half of A9; its keyword universe has never been calibrated against a
+paid transcript, so triage every miss before believing it.
+`--pair` runs the two-month fixture (the чл. 177/чл. 18
 material no single sheet can hold); `--seeds-list "6,7,32"` runs exactly those seeds.
 More than 10 seeds in one run is refused without `--allow-expensive`. Every graded seed
 is saved to `/tmp/trz-eval/results/`; `--regrade` re-scores those files against the
@@ -88,6 +93,14 @@ A false positive fails exactly like a miss.
   the skill directory whole. It never writes to the workbook — the file is evidence —
   and never guesses a period, because guessing the period picks the thresholds. Its
   column vocabulary is pinned against `trz_model.COLUMNS` by `preflight_test.py`.
+- **The комплект chain is built forward, and that is what makes it testable.** In
+  `test/generate_komplekt.py` обр. 1 comes from the payroll, обр. 6 from обр. 1 and the
+  payments from обр. 6 — so a break stops the copying at one link and the other three
+  still agree. Break that ordering and one mutation lights up three checks, which is
+  exactly what a real filing compiled from wrong data does NOT do. `ORDER` and `GROUPS`
+  encode it; `komplekt_test.py` asserts that one break from each group at once stays
+  separable. `breaks_for_seed()` is the single answer to "which links does this seed
+  break" — the eval and `--covering` both call it rather than each keeping a copy.
 - **Pre-flight reports signals, not prose.** Every check emits a stable id
   (`NO_PERIOD`, `DUPLICATE_CONCEPT`, …) and the Bulgarian report is rendered from
   them. Assert on ids: `test/generate_shapes.py` plants one shape defect per fixture

@@ -54,6 +54,19 @@ BASIS = {
     "I1_vertical": ARITHMETIC,
     "I5_days_do_not_reconcile": ARITHMETIC,
     "I7_unexplained_jump": ARITHMETIC,
+    # I9/I10 - the chain below the payroll (suite 5, the комплект). Document against
+    # document: proverki.md says so itself for transitions 1, 2 and 4, and the paid
+    # leg is a comparison of two figures too - what обр. 6 declares against what left
+    # the account. The obligation behind it is cited in the report, not here.
+    "I9_person_missing_in_d1": ARITHMETIC,
+    "I9_extra_person_in_d1": ARITHMETIC,
+    "I9_insurable_differs_in_d1": ARITHMETIC,
+    "I9_sick_days_differ_in_d1": ARITHMETIC,
+    "I9_d6_not_sum_of_d1": ARITHMETIC,
+    "I9_declared_not_paid": ARITHMETIC,
+    "I9_net_not_paid": ARITHMETIC,
+    "I10_duplicate_payment": ARITHMETIC,
+    "I10_iban_shared": ARITHMETIC,
     # F10 - the contested material. The basis is the file's inconsistency, not a ruling
     # on which reading is right.
     "F10_in_kind_asymmetry": ARITHMETIC,
@@ -61,6 +74,7 @@ BASIS = {
     "F10_practice_not_establishable": ARITHMETIC,
     # A-J - quoted from the reference files.
     "A6_base_vs_contract": "чл. 66 КТ; чл. 128 КТ",
+    "A10_midmonth_annex": "чл. 66 КТ; чл. 128 КТ",
     "B4_cap_from_wrong_period": "чл. 9 ЗБДОО за 2026 г",
     "C2_seniority_on_gross": "чл. 12, ал. 1 НСОРЗ",
     "E3_leave_without_seniority": "чл. 17, ал. 1 НСОРЗ",

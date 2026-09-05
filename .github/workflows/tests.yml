@@ -5,6 +5,27 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      eval_model:
+        description: >-
+          Model for the paid eval job. Required for it to run at all, and required
+          rather than defaulted on purpose: without --model the session runs on
+          whatever the CLI is configured for, and a batch meant for one model has
+          already been measured on another without saying so.
+        required: false
+        default: ""
+        type: string
+      eval_mode:
+        description: "Which fixture the paid eval sends"
+        required: false
+        default: komplekt
+        type: choice
+        options: [komplekt, wide, pair, refusal]
+      eval_seeds:
+        description: "Seeds, comma-separated (e.g. 1,2,3). Ten at most."
+        required: false
+        default: "1"
+        type: string
   schedule:
     # Once a month, on the 1st. Not because the code changes by itself but
     # because the rates do: the reference file carries a verification date, and
@@ -63,6 +84,15 @@ jobs:
         # column cannot quietly send real ones to the unknown list, and its fixtures
         # are built in memory - no payroll, real or generated, is read.
         run: python test/preflight_test.py
+
+      - name: Suite 5 - the chain below the payroll
+        # ведомост -> обр. 1 -> обр. 6 -> внесено, one link broken at a time. The
+        # checks that reconcile the payroll against the documents downstream of it had
+        # no fixture at all until this suite; the payroll inside the set is clean, so
+        # the run is a false-positive test as well as a detection one. It also grades a
+        # synthetic correct report against the paid eval's keyword universe, which is
+        # free and stops a pattern that matches nothing from reaching a paid run.
+        run: python test/komplekt_test.py
 
       - name: Refusal grader self-test
         # Free: it builds synthetic findings and checks that the grading in
@@ -180,6 +210,59 @@ jobs:
   # re-verified within the quarter - the one thing the ordinary jobs cannot fail
   # on, since a stale-but-consistent reference passes every cross-check. The
   # weekly firing runs the suites at the depth the README advertises.
+  eval:
+    # The only job that spends money, and the only one that cannot run by accident:
+    # manual dispatch, and even then only when a model was named. It is deliberately
+    # NOT a gate on pull requests - the score is stochastic, one seed moves it by ten
+    # points, and this repository fails a suite for a single false positive. A number
+    # like that belongs in a report someone reads, not in a required check.
+    if: github.event_name == 'workflow_dispatch' && inputs.eval_model != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: test/requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install -r test/requirements.txt
+          npm install -g @anthropic-ai/claude-code
+      - name: Install the skill from this checkout
+        # The eval refuses to spend anything unless every resolvable copy of the skill
+        # matches the tree being tested. On a runner there is no copy at all, so this
+        # is what makes the run measure this commit rather than refuse to start.
+        run: |
+          mkdir -p ~/.claude/skills
+          ln -s "$GITHUB_WORKSPACE/skills/trz-expert" ~/.claude/skills/trz-expert
+      - name: Paid eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          test -n "$ANTHROPIC_API_KEY" || {
+            echo "::error::no ANTHROPIC_API_KEY secret - the eval cannot start a session"
+            exit 1
+          }
+          MODE=""
+          case "${{ inputs.eval_mode }}" in
+            komplekt) MODE="--komplekt" ;;
+            pair)     MODE="--pair" ;;
+            refusal)  MODE="--refusal" ;;
+          esac
+          python test/eval_skill.py --model "${{ inputs.eval_model }}" $MODE \
+                 --seeds-list "${{ inputs.eval_seeds }}"
+      - name: Keep the transcripts and the scores
+        # A paid run that leaves nothing behind has to be paid for twice; --regrade
+        # re-scores these files for free when the keywords change.
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eval-${{ inputs.eval_mode }}-${{ inputs.eval_model }}
+          path: /tmp/trz-eval/
+          retention-days: 30
+
   freshness:
     if: github.event_name == 'schedule' && github.event.schedule == '0 6 1 * *'
     runs-on: ubuntu-latest

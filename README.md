@@ -215,6 +215,25 @@ literal. Value exports — which is what every other fixture is — cannot hold 
 The checker judges the formulas alone, structure rather than arithmetic, since nothing in
 openpyxl evaluates them.
 
+
+**Suite 5 — the chain below the payroll.** The one fixture that is not a single workbook.
+A комплект is a whole month: the payroll, the contracts, Декларация обр. 1 per person,
+Декларация обр. 6 and the payment file. The chain is built forward — обр. 1 from the
+payroll, обр. 6 from обр. 1, the payments from обр. 6 and the nets — and then exactly one
+link is broken, so the other three still agree with each other and the finding is
+attributable to one transition. Ten breaks: a person missing from обр. 1 and a person in
+обр. 1 who is not in the payroll, т. 21 and т. 16.А disagreeing with the payroll, обр. 6
+that is not the sum of обр. 1, less paid to НАП than declared, a net short in the bank
+file, one net paid twice, one IBAN on two people, and a raise effective mid-month paid
+from the first. The payroll inside the set is **clean**, so the same run is a
+false-positive test. Until it existed, the checks that reconcile the payroll against the
+documents downstream of it — I9, I10, and the cross-document half of A9 — were prose no
+test had ever executed.
+
+```sh
+python test/komplekt_test.py
+```
+
 A run passes only when **every** injected defect is found and **no** finding is raised
 beyond them. False positives fail the suite exactly like misses: a skill that sees
 violations everywhere is as useless as one that sees none.
