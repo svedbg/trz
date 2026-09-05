@@ -32,7 +32,7 @@ python test/rates_test.py     # rates vs. the reference file. No dependencies. R
 python test/skill_test.py     # packaging: frontmatter, references, manifests, licences, dates
 python test/checks_test.py    # suite 1: static payroll against the key in expected_findings.md
 python test/eval_skill.py --selftest      # free: checks the refusal grading itself
-python test/preflight_test.py # tools/preflight.py: shape checks on a real workbook, no payroll read
+python test/preflight_test.py # tools/preflight.py: clean is silent, each shape defect found once
 python test/run_tests.py      # all five, 50 seeds
 python test/run_tests.py --seeds 300      # what CI runs
 ```
@@ -88,6 +88,18 @@ A false positive fails exactly like a miss.
   the skill directory whole. It never writes to the workbook — the file is evidence —
   and never guesses a period, because guessing the period picks the thresholds. Its
   column vocabulary is pinned against `trz_model.COLUMNS` by `preflight_test.py`.
+- **Pre-flight reports signals, not prose.** Every check emits a stable id
+  (`NO_PERIOD`, `DUPLICATE_CONCEPT`, …) and the Bulgarian report is rendered from
+  them. Assert on ids: `test/generate_shapes.py` plants one shape defect per fixture
+  and the suite requires a clean file to raise **nothing** and each defect to raise
+  its own signal and nothing else — a false positive fails like a miss, as everywhere
+  else here. Adding a shape means a mutation in `generate_shapes.py`, its signal in
+  `SHAPES`, and proving it: break the detection, watch it go red, revert.
+- **A company's layout is declared once** in a `mapping.yaml`
+  (`tools/mapping.example.yaml`), not re-guessed monthly. A typo in a concept key
+  blocks rather than doing nothing quietly, and a mapping pointing at a column that is
+  no longer there is reported as stale. The file holds headers and КИД only — no
+  personal data — so it belongs in version control.
 - **Hooks are opt-in:** `git config core.hooksPath .githooks` once.
 - **A fourth channel with no manifest.** `.agents/skills/trz-expert/SKILL.md` is what
   Codex CLI's repository-skill discovery finds — no plugin, no marketplace, just that

@@ -9,41 +9,67 @@ reasons visible before the audit starts and fixable once.
 Three rules shape the whole tool:
 
 * **The original is never modified.** The workbook is evidence. It is opened, read and
-  closed; nothing is written back, and the normalised extract of phase 3 will go to a
-  separate file rather than into this one.
+  closed; the normalised extract goes to a separate file the caller names.
 * **Nothing is guessed.** Period boundaries are read from `references/stavki.md`, the
   same file the skill takes its figures from, so this tool cannot drift from it. Values
   that are not in the workbook at all - КИД, квалификационна група, ТЗПБ - are reported
   as required inputs, never inferred from the numbers.
 * **No personal data leaves the file.** The report is keyed by sheet, row and column
-  header. Cell values are counted and classified, never echoed, and the name column is
-  located precisely so that it can be left alone.
+  header; the extract by sheet and cell reference. The name column is located precisely
+  so that it can be left out of both.
 
-Code and comments here are English, per the repository convention. Two things are
-Bulgarian because they are data rather than prose: the column headers, which are matched
-by their real text, and the report itself, which is read by Bulgarian payroll staff and
-has to use the same words as the audit it feeds.
+The checks emit **signals** - machine-readable ids - and the Bulgarian report is
+rendered from them. That split is what lets the shape suite assert a planted defect is
+found exactly once and *nothing else* is raised; asserting on rendered prose would pass
+on a coincidence of wording.
+
+Code and comments are English, per the repository convention. Two things are Bulgarian
+because they are data rather than prose: the column headers, matched by their real text,
+and the report, read by Bulgarian payroll staff in the same words as the audit it feeds.
 
 Usage:
-    python tools/preflight.py ВЕДОМОСТ.xlsx [--kid 62] [--group 3] [--tzpb 0.4]
-                                            [--out report.md]
+    python tools/preflight.py ВЕДОМОСТ.xlsx [--mapping mapping.yaml]
+                              [--kid 62] [--group 3] [--tzpb 0.4]
+                              [--out report.md] [--extract extract.json]
 
 Exit codes: 0 auditable (warnings allowed), 1 blocked, 2 could not read the file.
 """
 
 import argparse
 import datetime as dt
+import json
 import os
 import re
 import sys
 
 try:
     import openpyxl
+    from openpyxl.utils import get_column_letter
 except ImportError:                                          # pragma: no cover
     sys.exit("openpyxl is required: pip install -r test/requirements.txt")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAVKI = os.path.join(ROOT, "skills", "trz-expert", "references", "stavki.md")
+
+# ------------------------------------------------------------------------- signals
+# Blocking signals stop the audit; the rest travel into the report's closing section.
+# Ids are stable: the shape suite names them, and so will phase 3's consumers.
+NO_HEADER = "NO_HEADER"
+NO_PERIOD = "NO_PERIOD"
+NO_TOTALS = "NO_TOTALS"
+NO_FORMULAS = "NO_FORMULAS"
+MERGED_IN_DATA = "MERGED_IN_DATA"
+MISSING_REQUIRED = "MISSING_REQUIRED"
+UNKNOWN_COLUMNS = "UNKNOWN_COLUMNS"
+DUPLICATE_CONCEPT = "DUPLICATE_CONCEPT"
+MID_YEAR_BOUNDARY = "MID_YEAR_BOUNDARY"
+MAPPING_UNKNOWN_CONCEPT = "MAPPING_UNKNOWN_CONCEPT"
+MAPPING_COLUMN_ABSENT = "MAPPING_COLUMN_ABSENT"
+NO_KID = "NO_KID"
+NO_TZPB = "NO_TZPB"
+
+BLOCKING = {NO_HEADER, NO_PERIOD, MISSING_REQUIRED, DUPLICATE_CONCEPT,
+            MAPPING_UNKNOWN_CONCEPT, MAPPING_COLUMN_ABSENT}
 
 # --------------------------------------------------------------- column vocabulary
 # concept -> (required, accepted header spellings). The canonical spellings are the ones
@@ -53,8 +79,12 @@ STAVKI = os.path.join(ROOT, "skills", "trz-expert", "references", "stavki.md")
 CONCEPTS = {
     "име":            (True,  ["име", "имена", "трите имена", "служител", "работник",
                                "лице"]),
+    # Neither „раб. дни" nor a bare „отработени": the first reads more naturally as
+    # „работни дни" - the month's norm, a different quantity from days actually worked -
+    # and it claimed „Извънр. часове (раб. дни)" on a real layout. The second swallows
+    # „Отработени часове", which is hours, not days. Days are named in full here.
     "отработени дни": (True,  ["отраб. дни", "отработени дни", "изработени дни",
-                               "раб. дни", "отработени"]),
+                               "отработени работни дни"]),
     "основна":        (True,  ["основна за отработеното", "основна заплата",
                                "основно възнаграждение", "основна", "заплата"]),
     "бруто":          (True,  ["бруто", "брутно", "брутно възнаграждение",
@@ -70,7 +100,11 @@ CONCEPTS = {
                                "сума за получаване", "за получаване"]),
     "вноски раб-л":   (False, ["вноски работодател общо", "вноски работодател",
                                "осигуровки работодател"]),
-    "клас":           (False, ["клас сума", "клас %", "клас прослужено време",
+    # „Клас %" and „Клас сума" are the rate and the amount - different quantities, and
+    # collapsing them into one concept made a correct real layout look like it named the
+    # same thing twice. Found by running this tool against test/vedomost_05_2026.xlsx.
+    "клас %":         (False, ["клас %", "клас процент", "процент клас"]),
+    "клас":           (False, ["клас сума", "клас прослужено време",
                                "прослужено време", "стаж"]),
     "дни отпуск":     (False, ["дни платен отпуск", "дни отпуск", "отпуск дни"]),
     "дни болничен":   (False, ["дни болничен", "болнични дни", "дни временна "
@@ -79,6 +113,11 @@ CONCEPTS = {
                                "обезщетение чл. 40, ал. 5"]),
     "изплатено":      (False, ["изплатено", "платено", "изплатена сума"]),
 }
+
+# Concepts never written into the normalised extract. „име" is the payroll's personal
+# data; the extract is keyed by row instead, and the audit asks for a name only if a
+# finding actually needs one.
+NEVER_EXTRACTED = {"име"}
 
 # Which check groups stop being answerable when a concept is absent. Only groups the
 # audit would otherwise run - this is the bridge into the report's closing section, and
@@ -135,6 +174,81 @@ def regime_boundaries(path=STAVKI):
     return sorted(out)
 
 
+# ------------------------------------------------------------------- phase 2: mapping
+class Mapping:
+    """A company's declared layout, so month two does not re-guess month one.
+
+    Every company's ведомост differs and the checks look columns up by exact Bulgarian
+    text. Declaring the layout once turns the unknown-column list from a monthly
+    negotiation into a one-off. The file carries no personal data - column headers and
+    the company's КИД, nothing per person - so it can live in version control.
+    """
+
+    def __init__(self, raw=None, path=None):
+        raw = raw or {}
+        self.path = path
+        self.company = raw.get("company")
+        self.kid = raw.get("kid")
+        self.group = raw.get("group")
+        self.tzpb = raw.get("tzpb")
+        self.header_row = raw.get("header_row")
+        self.columns = {k: str(v) for k, v in (raw.get("columns") or {}).items()}
+        self.ignore = {norm(x) for x in (raw.get("ignore") or [])}
+        # A typo in a concept key would silently do nothing, which is the worst
+        # outcome for a file whose whole job is to remove ambiguity.
+        self.unknown_concepts = sorted(k for k in self.columns if k not in CONCEPTS)
+        self._by_header = {norm(v): k for k, v in self.columns.items()
+                           if k in CONCEPTS}
+
+    @classmethod
+    def load(cls, path):
+        import yaml                                            # already a dependency
+        with open(path, encoding="utf8") as f:
+            return cls(yaml.safe_load(f) or {}, path=path)
+
+    def concept_for(self, header):
+        return self._by_header.get(norm(header))
+
+    def ignored(self, header):
+        return norm(header) in self.ignore
+
+
+def classify(header, mapping=None):
+    """The concept a header names, or None.
+
+    The declared mapping wins outright - it is the company saying what its own column
+    is, against which a guess has no standing. Then three passes, narrowest first:
+    exact spelling, substring, and every word of a spelling present in any order. The
+    last pass recognises „Болнични от работодател" as „Болнични (работодател)": real
+    headers insert a preposition, a bracket or a unit into an otherwise standard name.
+    """
+    if mapping:
+        declared = mapping.concept_for(header)
+        if declared:
+            return declared
+    h = norm(header)
+    if not h:
+        return None
+    for concept, (_, spellings) in CONCEPTS.items():
+        if h in spellings:
+            return concept
+    for concept, (_, spellings) in CONCEPTS.items():
+        for s in spellings:
+            if len(s) >= 5 and s in h:
+                return concept
+    words = set(re.findall(r"\w+", h))
+    for concept, (_, spellings) in CONCEPTS.items():
+        for s in spellings:
+            # Tokens of four characters or more, and at least two of them. Three-letter
+            # fragments are too generic to carry a match: „раб. дни" claimed
+            # „Извънр. часове (раб. дни)" as отработени дни on a real layout, because
+            # „раб" and „дни" both happened to appear in it.
+            tokens = [t for t in re.findall(r"\w+", s) if len(t) >= 4]
+            if len(tokens) >= 2 and set(tokens) <= words:
+                return concept
+    return None
+
+
 def sheet_period(sheet_name, ws):
     """(year, month) for a sheet, from its name or the first few cells, else None.
 
@@ -161,51 +275,28 @@ def sheet_period(sheet_name, ws):
     return None
 
 
-def find_header_row(ws, limit=15):
+def find_header_row(ws, mapping=None, limit=15):
     """The row that names the columns: the one matching most known concepts.
 
     Scored rather than assumed to be row 1, because real files carry a title, a company
-    line and sometimes a blank before the headers start.
+    line and sometimes a blank before the headers start. A declared header_row is taken
+    as given - but still scored, so a mapping that has gone stale says so instead of
+    quietly reading a blank row.
     """
+    if mapping and mapping.header_row:
+        r = int(mapping.header_row)
+        score = sum(1 for c in ws[r] if classify(c.value, mapping))
+        return (r, score) if score >= 3 else (None, score)
     best, best_score = None, 0
     for r in range(1, min(limit, ws.max_row or 1) + 1):
-        values = [c.value for c in ws[r]]
-        score = sum(1 for v in values if classify(v))
+        score = sum(1 for c in ws[r] if classify(c.value, mapping))
         if score > best_score:
             best, best_score = r, score
     return (best, best_score) if best_score >= 3 else (None, best_score)
 
 
-def classify(header):
-    """The concept a header names, or None.
-
-    Three passes, narrowest first: exact spelling, then substring, then every word of a
-    spelling present in the header in any order. The last pass is what recognises
-    „Болнични от работодател" as „Болнични (работодател)" - real headers insert a
-    preposition, a bracket or a unit into the middle of an otherwise standard name, and
-    matching on substrings alone sends them to the unknown list.
-    """
-    h = norm(header)
-    if not h:
-        return None
-    for concept, (_, spellings) in CONCEPTS.items():
-        if h in spellings:
-            return concept
-    for concept, (_, spellings) in CONCEPTS.items():
-        for s in spellings:
-            if len(s) >= 5 and s in h:
-                return concept
-    words = set(re.findall(r"\w+", h))
-    for concept, (_, spellings) in CONCEPTS.items():
-        for s in spellings:
-            tokens = [t for t in re.findall(r"\w+", s) if len(t) > 2]
-            if len(tokens) >= 2 and set(tokens) <= words:
-                return concept
-    return None
-
-
 def data_range(ws, header_row):
-    """(first, last) data row: from under the headers to the row before the totals.
+    """(first, last, totals): data rows run to the row before the totals row.
 
     The totals row is excluded because it is not a person, and every per-row check that
     treats it as one produces a finding against nobody.
@@ -224,38 +315,82 @@ def data_range(ws, header_row):
     return first, last, totals
 
 
-def scan(path, kid=None, group=None, tzpb=None):
-    """Read the workbook and return everything the report needs. Never writes."""
+def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
+    """Read the workbook and return findings as signals. Never writes."""
+    mapping = mapping or Mapping()
+    kid = kid or mapping.kid
+    group = group or mapping.group
+    tzpb = tzpb if tzpb is not None else mapping.tzpb
+
     formulas = openpyxl.load_workbook(path, data_only=False)
     values = openpyxl.load_workbook(path, data_only=True)
-    out = {"file": os.path.basename(path), "sheets": [], "boundaries": regime_boundaries(),
-           "kid": kid, "group": group, "tzpb": tzpb}
+    out = {"file": os.path.basename(path), "sheets": [],
+           "boundaries": regime_boundaries(), "kid": kid, "group": group,
+           "tzpb": tzpb, "signals": [], "mapping": mapping.path}
+
+    if mapping.unknown_concepts:
+        out["signals"].append((MAPPING_UNKNOWN_CONCEPT, mapping.unknown_concepts))
+    if not kid or not group:
+        out["signals"].append((NO_KID, None))
+    if tzpb in (None, ""):
+        out["signals"].append((NO_TZPB, None))
+
+    declared_headers = {norm(v) for v in mapping.columns.values()}
+    seen_headers = set()
 
     for name in formulas.sheetnames:
         wf, wv = formulas[name], values[name]
-        header_row, score = find_header_row(wv)
+        header_row, score = find_header_row(wv, mapping)
         info = {"name": name, "header_row": header_row, "matched": score,
                 "period": sheet_period(name, wv), "rows": 0, "totals_row": None,
                 "known": {}, "unknown": [], "formula_cells": 0, "value_cells": 0,
-                "merged": [], "name_col": None}
+                "merged": [], "name_col": None, "signals": [], "first_row": None}
         out["sheets"].append(info)
+
         if header_row is None:
+            info["signals"].append((NO_HEADER, score))
             continue
 
+        duplicates = {}
         for c in range(1, (wv.max_column or 1) + 1):
             raw = wv.cell(header_row, c).value
             if raw is None or not str(raw).strip():
                 continue
-            concept = classify(raw)
+            text = str(raw).strip()
+            seen_headers.add(norm(text))
+            if mapping.ignored(text):
+                continue
+            concept = classify(text, mapping)
             if concept:
-                info["known"].setdefault(concept, str(raw).strip())
+                if concept in info["known"]:
+                    duplicates.setdefault(concept, [info["known"][concept]["header"]])
+                    duplicates[concept].append(text)
+                else:
+                    info["known"][concept] = {"col": c, "header": text}
                 if concept == "име":
                     info["name_col"] = c
             else:
-                info["unknown"].append(str(raw).strip())
+                info["unknown"].append(text)
+
+        if duplicates:
+            info["signals"].append(
+                (DUPLICATE_CONCEPT,
+                 sorted(f"{k}: " + ", ".join(v) for k, v in duplicates.items())))
 
         first, last, totals = data_range(wv, header_row)
-        info["totals_row"], info["rows"] = totals, max(0, last - first + 1)
+        info["first_row"], info["totals_row"] = first, totals
+        info["rows"] = max(0, last - first + 1)
+        if totals is None:
+            info["signals"].append((NO_TOTALS, None))
+
+        if info["period"] is None:
+            info["signals"].append((NO_PERIOD, None))
+        else:
+            y, m = info["period"]
+            for a, b in out["boundaries"]:
+                if a.year == y and a <= dt.date(y, m, 1) <= b and (a.month, a.day) != (1, 1):
+                    info["signals"].append((MID_YEAR_BOUNDARY, f"{a:%d.%m.%Y}"))
+                    break
 
         # Formula coverage over the data block. A values-only export is not a defect in
         # itself, but it removes the evidence the K group works from, and the audit has
@@ -267,77 +402,167 @@ def scan(path, kid=None, group=None, tzpb=None):
                     info["formula_cells"] += 1
                 elif v is not None:
                     info["value_cells"] += 1
+        if info["formula_cells"] == 0:
+            info["signals"].append((NO_FORMULAS, None))
 
         info["merged"] = [str(rng) for rng in getattr(wf, "merged_cells", []).ranges
                           if rng.min_row >= header_row] if hasattr(
                               wf, "merged_cells") else []
+        if info["merged"]:
+            info["signals"].append((MERGED_IN_DATA, info["merged"]))
+
+        missing = [c for c, (req, _) in CONCEPTS.items() if req and c not in info["known"]]
+        if missing:
+            info["signals"].append((MISSING_REQUIRED, missing))
+        if info["unknown"]:
+            info["signals"].append((UNKNOWN_COLUMNS, info["unknown"]))
+
+    stale = sorted(declared_headers - seen_headers)
+    if stale:
+        out["signals"].append((MAPPING_COLUMN_ABSENT, stale))
     return out
 
 
+def all_signals(data):
+    """Every signal id raised, file-level and per sheet."""
+    ids = {s for s, _ in data["signals"]}
+    for s in data["sheets"]:
+        ids |= {sig for sig, _ in s["signals"]}
+    return ids
+
+
+def blocked(data):
+    return sorted(all_signals(data) & BLOCKING)
+
+
+# ------------------------------------------------------------------ phase 3: extract
+def extract(data, path):
+    """Write the normalised sidecar the audit consumes. The workbook is not touched.
+
+    Every value carries its cell reference, so a finding keeps a pointer back into the
+    evidence instead of a number with no provenance. Names are never written: rows are
+    identified by sheet and row number, and the audit asks for a name only when a
+    finding actually needs one.
+
+    One limitation, worth knowing before the output is trusted: the values come from the
+    cached results Excel stores next to each formula. A workbook written by a script and
+    never opened in Excel has formulas but no cached values, and those cells arrive as
+    None - they are simply absent from the extract rather than wrong. Detecting that
+    case (formulas present, every cached value empty) is not yet a signal; see #80.
+    """
+    book = openpyxl.load_workbook(data["_path"], data_only=True)
+    doc = {"file": data["file"], "generated": dt.datetime.now().isoformat(timespec="seconds"),
+           "kid": data["kid"], "group": data["group"], "tzpb": data["tzpb"],
+           "note": "Без имена: редовете се идентифицират по лист и номер на ред.",
+           "sheets": []}
+    for s in data["sheets"]:
+        if s["header_row"] is None:
+            continue
+        ws = book[s["name"]]
+        cols = {k: v for k, v in s["known"].items() if k not in NEVER_EXTRACTED}
+        sheet = {"name": s["name"], "period": list(s["period"]) if s["period"] else None,
+                 "header_row": s["header_row"], "totals_row": s["totals_row"],
+                 "columns": {k: {"col": v["col"], "header": v["header"],
+                                 "letter": get_column_letter(v["col"])}
+                             for k, v in cols.items()},
+                 "rows": []}
+        last = (s["totals_row"] - 1) if s["totals_row"] else ws.max_row
+        for r in range(s["first_row"], last + 1):
+            cells = {}
+            for concept, meta in cols.items():
+                v = ws.cell(r, meta["col"]).value
+                if v is None:
+                    continue
+                cells[concept] = {"ref": f"{get_column_letter(meta['col'])}{r}",
+                                  "value": v if isinstance(v, (int, float)) else str(v)}
+            if cells:
+                sheet["rows"].append({"row": r, "cells": cells})
+        doc["sheets"].append(sheet)
+    with open(path, "w", encoding="utf8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=1)
+    return doc
+
+
+# ------------------------------------------------------------------------- rendering
 def report(data):
-    """The pre-flight report, in Bulgarian, and whether anything blocks the audit."""
-    L, blocking = [], []
+    """The pre-flight report, in Bulgarian, rendered from the signals."""
+    L = []
+    sig = dict(data["signals"])
     L.append(f"# Предварителна проверка — `{data['file']}`\n")
     L.append("Проверката е само за четене: файлът не е променян.\n")
+    if data.get("mapping"):
+        L.append(f"Приложен опис на колоните: `{os.path.basename(data['mapping'])}`\n")
+
+    if MAPPING_UNKNOWN_CONCEPT in sig:
+        L.append(f"\n> **Описът съдържа непознати понятия**: "
+                 f"{', '.join(sig[MAPPING_UNKNOWN_CONCEPT])}. Правописна грешка в ключ "
+                 f"не прави нищо тихо — затова спира. Допустимите понятия са: "
+                 f"{', '.join(CONCEPTS)}.\n")
+    if MAPPING_COLUMN_ABSENT in sig:
+        L.append(f"\n> **Описът сочи колони, които ги няма във файла**: "
+                 f"{', '.join(sig[MAPPING_COLUMN_ABSENT])}. Или ведомостта е сменила "
+                 f"формата си, или описът е остарял — и двете се оправят веднъж.\n")
 
     for s in data["sheets"]:
+        ssig = dict(s["signals"])
         L.append(f"\n## Лист „{s['name']}“\n")
-        if s["header_row"] is None:
+        if NO_HEADER in ssig:
             L.append(f"- **Заглавният ред не е намерен** (разпознати {s['matched']} "
                      f"колони). Одитът не може да тръгне по този лист.")
-            blocking.append(f"лист „{s['name']}“: няма разпознаваем заглавен ред")
             continue
 
         L.append(f"- заглавен ред: {s['header_row']}; редове с данни: {s['rows']}"
                  + (f"; ред с общи суми: {s['totals_row']}" if s["totals_row"]
                     else "; **ред с общи суми не е намерен** (K5 няма какво да сверява)"))
 
-        period = s["period"]
-        if period:
-            y, m = period
-            L.append(f"- период: {m:02d}.{y}")
-            for a, b in data["boundaries"]:
-                if a.year == y and a <= dt.date(y, m, 1) <= b and (a.month, a.day) != (1, 1):
-                    L.append(f"  - режимът за периода започва на {a:%d.%m.%Y} — "
-                             f"праговете се сменят в средата на годината; лист, копиран "
-                             f"от предходния месец, носи чужди прагове (K8)")
-        else:
+        if NO_PERIOD in ssig:
             L.append("- **периодът не е обявен на листа** — не се извежда от числата; "
                      "подай го, иначе всяка проверка срещу праг е недостатъчни данни")
-            blocking.append(f"лист „{s['name']}“: неизвестен период")
+        else:
+            y, m = s["period"]
+            L.append(f"- период: {m:02d}.{y}")
+            if MID_YEAR_BOUNDARY in ssig:
+                L.append(f"  - режимът за периода започва на {ssig[MID_YEAR_BOUNDARY]} — "
+                         f"праговете се сменят в средата на годината; лист, копиран от "
+                         f"предходния месец, носи чужди прагове (K8)")
 
         total = s["formula_cells"] + s["value_cells"]
-        share = (100.0 * s["formula_cells"] / total) if total else 0.0
-        if s["formula_cells"] == 0:
+        if NO_FORMULAS in ssig:
             L.append("- **няма нито една формула** — файлът е експорт само със "
                      "стойности. Групата K (конструкция на файла) отпада почти изцяло: "
                      "обхват на сумите, твърди стойности, слепи контроли. Одитът остава "
                      "възможен, но го казва изрично.")
         else:
+            share = 100.0 * s["formula_cells"] / total if total else 0.0
             L.append(f"- формули: {s['formula_cells']} от {total} клетки "
                      f"({share:.0f}%) — конструкцията може да се провери")
 
-        if s["merged"]:
-            L.append(f"- **слети клетки в обхвата на данните**: {len(s['merged'])} "
-                     f"({', '.join(s['merged'][:5])}) — редовете се разместват при "
-                     f"четене; разделѝ ги в работно копие, не в оригинала")
+        if DUPLICATE_CONCEPT in ssig:
+            L.append(f"- **две колони означават едно и също**: "
+                     f"{'; '.join(ssig[DUPLICATE_CONCEPT])}. Кое от двете чете одитът не "
+                     f"се решава от инструмента — назови ги в описа (K10).")
+        if MERGED_IN_DATA in ssig:
+            m = ssig[MERGED_IN_DATA]
+            L.append(f"- **слети клетки в обхвата на данните**: {len(m)} "
+                     f"({', '.join(m[:5])}) — редовете се разместват при четене; "
+                     f"раздели ги в работно копие, не в оригинала")
+        if MISSING_REQUIRED in ssig:
+            L.append(f"- **липсващи задължителни колони**: "
+                     f"{', '.join(ssig[MISSING_REQUIRED])}")
 
-        missing = [c for c, (req, _) in CONCEPTS.items() if req and c not in s["known"]]
-        if missing:
-            L.append(f"- **липсващи задължителни колони**: {', '.join(missing)}")
-            blocking += [f"лист „{s['name']}“: липсва колона „{c}“" for c in missing]
         absent = [c for c in DEPENDS if c not in s["known"]]
         if absent:
             L.append("- проверки, които няма да могат да се направят:")
             L += [f"  - няма „{c}“ → {DEPENDS[c]}" for c in absent]
-        if s["unknown"]:
-            L.append(f"- неразпознати колони ({len(s['unknown'])}) — опиши ги в "
-                     f"`mapping.yaml` (фаза 2) или ги назови при подаването: "
-                     + ", ".join(f"„{u}“" for u in s["unknown"][:12])
-                     + (" …" if len(s["unknown"]) > 12 else ""))
+        if UNKNOWN_COLUMNS in ssig:
+            u = ssig[UNKNOWN_COLUMNS]
+            L.append(f"- неразпознати колони ({len(u)}) — опиши ги в описа на колоните "
+                     f"или ги назови при подаването: "
+                     + ", ".join(f"„{x}“" for x in u[:12])
+                     + (" …" if len(u) > 12 else ""))
         if s["name_col"]:
             L.append(f"- колоната с имена е {s['name_col']} — съдържанието ѝ не се "
-                     f"възпроизвежда в този доклад")
+                     f"възпроизвежда нито в този доклад, нито в извлека")
 
     L.append("\n## Данни, които ги няма във файла\n")
     for label, value, why in (
@@ -352,41 +577,59 @@ def report(data):
                                        else f"не е подаден — {why}"))
 
     L.append("\n## Заключение\n")
-    if blocking:
+    stop = blocked(data)
+    if stop:
         L.append("Одитът **не може** да тръгне, докато не се отстрани:")
-        L += [f"- {b}" for b in blocking]
+        L += [f"- `{b}`" for b in stop]
     else:
         L.append("Файлът е годен за одит. Ограниченията по-горе влизат в секцията "
                  "„какво не е проверено“ на отчета.")
-    return "\n".join(L) + "\n", blocking
+    return "\n".join(L) + "\n", stop
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Pre-flight check for a payroll workbook.")
     ap.add_argument("workbook")
+    ap.add_argument("--mapping", help="mapping.yaml describing this company's layout")
     ap.add_argument("--kid", help="КИД code of the company, e.g. 62")
     ap.add_argument("--group", help="qualification group for the МОД row")
     ap.add_argument("--tzpb", help="accident-insurance percentage for the КИД")
     ap.add_argument("--out", help="write the report here instead of stdout")
+    ap.add_argument("--extract", help="write the normalised sidecar here")
     a = ap.parse_args(argv)
 
     if not os.path.exists(a.workbook):
         print(f"няма такъв файл: {a.workbook}", file=sys.stderr)
         return 2
+    mapping = None
+    if a.mapping:
+        try:
+            mapping = Mapping.load(a.mapping)
+        except Exception as exc:                              # noqa: BLE001
+            print(f"описът не може да бъде прочетен: {exc}", file=sys.stderr)
+            return 2
     try:
-        data = scan(a.workbook, a.kid, a.group, a.tzpb)
+        data = analyse(a.workbook, mapping, a.kid, a.group, a.tzpb)
+        data["_path"] = a.workbook
     except Exception as exc:                                  # noqa: BLE001
         print(f"файлът не може да бъде прочетен: {exc}", file=sys.stderr)
         return 2
 
-    text, blocking = report(data)
+    text, stop = report(data)
     if a.out:
         with open(a.out, "w", encoding="utf8") as f:
             f.write(text)
         print(f"докладът е записан в {a.out}")
     else:
         print(text)
-    return 1 if blocking else 0
+
+    if a.extract:
+        if stop:
+            print("извлек не се прави, докато одитът е блокиран", file=sys.stderr)
+            return 1
+        extract(data, a.extract)
+        print(f"извлекът е записан в {a.extract}")
+    return 1 if stop else 0
 
 
 if __name__ == "__main__":
