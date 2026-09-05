@@ -252,13 +252,27 @@ PAID_GUIDANCE = [
      "real payrolls do not name their columns the way the checklist does, and a guessed "
      "mapping is an assumption like any other"),
 ]
+# Searched across SKILL.md AND the reference files, because the point is that the lesson
+# has not been LOST, not that it lives in one particular file. A rule may legitimately
+# move to a reference when SKILL.md is trimmed; it may not quietly disappear.
+_bundle = {"SKILL.md": text}
+for _name in sorted(os.listdir(os.path.join(SKILL_DIR, "references"))):
+    if _name.endswith(".md"):
+        _bundle[f"references/{_name}"] = read(os.path.join(SKILL_DIR, "references", _name))
+
 for phrase, why in PAID_GUIDANCE:
-    if phrase not in text:
-        fail(f"SKILL.md no longer carries {phrase!r} - {why}. If this rule was "
-             f"deliberately reworded, update the phrase in skill_test.PAID_GUIDANCE in "
-             f"the same commit; if it was dropped, a paid run bought it and only "
-             f"another one can tell you what dropping it costs")
-note(f"paid-run guidance: {len(PAID_GUIDANCE)} rules still present in SKILL.md")
+    if not any(phrase in body_text for body_text in _bundle.values()):
+        fail(f"no file in the skill carries {phrase!r} any more - {why}. If this rule "
+             f"was deliberately reworded, update the phrase in "
+             f"skill_test.PAID_GUIDANCE in the same commit; if it was dropped, a paid "
+             f"run bought it and only another one can tell you what dropping it costs")
+_where = {}
+for phrase, _ in PAID_GUIDANCE:
+    for _name, body_text in _bundle.items():
+        if phrase in body_text:
+            _where[_name] = _where.get(_name, 0) + 1
+            break
+note("paid-run guidance: " + ", ".join(f"{n} in {f}" for f, n in sorted(_where.items())))
 
 # ------------------------------------------------------------- the manifests
 plugin = marketplace = None
@@ -730,7 +744,8 @@ else:
     # updated in the same commit - exactly the silent drift this file exists to catch.
     for rel in ("skills/trz-expert/SKILL.md", "skills/trz-expert/references/stavki.md",
                "skills/trz-expert/references/proverki.md",
-               "skills/trz-expert/references/normativna-baza.md"):
+               "skills/trz-expert/references/normativna-baza.md",
+               "skills/trz-expert/references/otchet.md"):
         if rel not in codex_text:
             fail(f"the Codex pointer no longer names {rel} - Codex would not be told "
                  f"to read it")

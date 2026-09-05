@@ -672,6 +672,26 @@ None of them is a false `нарушение` on a clean row.
 the agreed working time — is checked against documents no fixture writes. `I11` was on
 this list until suite 6 below.
 
+## Why `SKILL.md` can be trimmed at all
+
+It could not be, before. `SKILL.md` is loaded on every invocation and the reference files
+load on demand, so moving a rule out of it is a real change: a sentence in a reference is
+read when the model opens that file, not necessarily at the moment it decides. Most of
+what is in `SKILL.md` is there because a paid run showed the model got it wrong without
+it, so "shorten the prompt" and "keep what the runs bought" pull against each other.
+
+`PAID_GUIDANCE` is what makes the trade safe to make at all: it searches the whole skill —
+`SKILL.md` and every reference — so a rule may *move* and may not *vanish*. 491 → 346
+lines, with the report contract in `references/otchet.md`, the чл. 17 rule beside the text
+of чл. 17 in `stavki.md`, and the spreadsheet detail in `proverki.md` where the K group
+already is. All eleven pinned rules survive: five in `SKILL.md`, five in `otchet.md`, one
+in `stavki.md`.
+
+What is **not** proven by any of this is that the model still applies the five rules that
+moved as reliably from a file it must open as from the prompt it always has. Only a paid
+run says that, and the honest reading of the current numbers — 34/35 and 8/8 — is that
+they were measured on the 491-line version.
+
 ## What guards the guidance between paid runs
 
 The paid eval is the only thing that measures whether `SKILL.md` still works, and it
