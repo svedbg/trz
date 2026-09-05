@@ -134,7 +134,8 @@ KEYWORDS = {
     # whose difference the blind cell hides. The lookahead was wrong on its own terms.
     "K4_control_column_blind":    [r"изплат|разлика|контрол",
                                    r"нула|\b0[.,]00\b|(?<![\d.,])0(?![.,]?\d)|тъждеств|"
-                                   r"винаги|не улавя|равна на|не отчита|не показва|скрива|"
+                                   r"винаги|равна на|скрива|"
+                                   r"не (?:\w+ ){0,2}(?:улавя|отчита|показва)|"
                                    r"празн"],
     # „вместо" only before a COMMA-decimal figure, this file's convention for a total
     # ("1 234,58 вместо 1 234,56") - a bare `вместо \d` also matched a dot-decimal
@@ -243,7 +244,7 @@ KEYWORDS = {
     "I1_vertical":                [r"нето|за получаване|изплат",
                                    r"минус|−|не се връзва|не отговар|не съвпад|разминав|"
                                    r"различ|аритмет|сверк|не следва от|не приспада|"
-                                   r"не е приспаднат|не е удържан|противоречи"],
+                                   r"не е приспадн|не е удържан|противоречи"],
     # The rate, not a generic mismatch word: an I1 sentence also says „данък" and
     # „разминаване", and would be credited here. A tax-amount finding names the rate.
     # A live run named neither the rate nor the word „ставка": „ДДФЛ … е сметнат върху
@@ -272,6 +273,7 @@ KEYWORDS = {
     "F6_compensation_out_of_taxable": [r"чл\.? ?224|обезщетени",
                                        r"данъчн|облага|данък",
                                        r"извън|вън от|не е включен|липсва|изключен|"
+                                       r"извад|"
                                        r"необлага|не влиза|пропусн|оставен"],
 }
 
@@ -526,9 +528,16 @@ KOMPLEKT_KEYWORDS = {
                                    r"ведомост",
                                    r"няма|липсва|не фигурира|без съответств|непознат|"
                                    r"не присъства"],
+    # „…т.21 осигурителен доход е 1647.25 при 1797.25 във ведомостта … т.21 е грешното
+    # число" - seed 1 on Fable 5.1, 05.09.2026: correct, and better than the sentence
+    # this pattern was written against, because it works out WHICH of the two figures
+    # is wrong from the contributions on the same row. It stated the discrepancy as
+    # „X при Y" and named it „грешното число", and neither reached the pattern. Widened
+    # at the phrasing, not by dropping the requirement: the first pattern still has to
+    # match, so no finding about other material can slip in through the second.
     "I9_insurable_differs_in_d1": [r"осигурителен доход|т\.? ?21",
                                    r"разлика|разминав|не съвпада|различ|по-малък|"
-                                   r"по-нисък|занижен"],
+                                   r"по-нисък|занижен|грешн|вместо|при \d"],
     "I9_sick_days_differ_in_d1":  [r"болничн|неработоспособност|т\.? ?16",
                                    r"дни|дн\.",
                                    r"разминав|не съвпада|различ|повече|по-малко|"
@@ -1718,6 +1727,20 @@ def summarize_refusal(runs):
     return 1 if failed else 0
 
 
+def scenario_universe(pair=False, komplekt=False):
+    """The ids a batch of this mode can grade, in the order the summary prints them.
+
+    Read from the fixture's own catalogue rather than assumed: a komplekt batch used to
+    print the summary header and not one row, because its ids are in neither
+    `M.SCENARIOS` nor `M.PAIR_SCENARIOS` and the loop simply skipped them. The seeds
+    were paid for and graded correctly; only the table at the end was empty.
+    """
+    if komplekt:
+        import generate_komplekt as GK
+        return list(GK.ORDER)
+    return M.PAIR_SCENARIOS if pair else M.SCENARIOS
+
+
 def summarize(runs, scenarios, threshold=None):
     """The batch summary of graded runs; returns the exit code."""
     per_scenario = defaultdict(lambda: [0, 0, 0])       # identified, located, missed
@@ -1801,8 +1824,12 @@ def regrade(threshold=None):
                    refusal=None)
         if rec.get("gradable") and rec.get("findings") is not None:
             man = dict(rec["manifest"])
-            universe = PAIR_KEYWORDS if mode == "pair" else KEYWORDS
-            if mode == "pair":
+            universe = (KOMPLEKT_KEYWORDS if mode == "komplekt" else
+                        PAIR_KEYWORDS if mode == "pair" else KEYWORDS)
+            if mode in ("pair", "komplekt"):
+                # The manifest is re-read from disk, and only the wide fixture's
+                # universe is the default inside grade(); every other mode has to
+                # attach its own or the re-grade dies on the first id it does not know.
                 man["keywords"] = universe
             if rec.get("keywords_sha") != keywords_sha(universe):
                 other_keywords[mode] += 1
@@ -1829,7 +1856,8 @@ def regrade(threshold=None):
         if mode == "refusal":
             code = summarize_refusal(runs) or code
         else:
-            scenarios = M.PAIR_SCENARIOS if mode == "pair" else M.SCENARIOS
+            scenarios = scenario_universe(pair=mode == "pair",
+                                          komplekt=mode == "komplekt")
             code = summarize(runs, scenarios, threshold) or code
     return code
 
@@ -2058,8 +2086,13 @@ def main():
     # Refuse to spend money on a run the grader cannot score. Complete today; this
     # exists for the day a scenario is added without its KEYWORDS entry - the checklist
     # step easiest to forget, and the one whose absence used to score as a pass.
-    ungradable = (sorted(set(M.PAIR_SCENARIOS) - set(PAIR_KEYWORDS)) if a.pair
-                  else sorted(set(M.SCENARIOS) - set(KEYWORDS)))
+    if a.komplekt:
+        import generate_komplekt as GK
+        ungradable = sorted(set(GK.BREAKS) - set(KOMPLEKT_KEYWORDS))
+    elif a.pair:
+        ungradable = sorted(set(M.PAIR_SCENARIOS) - set(PAIR_KEYWORDS))
+    else:
+        ungradable = sorted(set(M.SCENARIOS) - set(KEYWORDS))
     if ungradable and not a.dry:
         print("refusing to run: scenarios with no KEYWORDS entry, so their findings "
               "cannot be graded: " + ", ".join(ungradable))
@@ -2069,8 +2102,13 @@ def main():
     # starts, so a batch is refused whole rather than after nine seeds; prepare() checks
     # again, for callers that reach it some other way.
     if not a.dry and not a.overwrite:
-        kept = [d for d in (seed_dir(s, pair=a.pair, refusal=a.refusal) for s in seeds)
-                if has_paid_run(d)]
+        # Per mode, because each mode has its own directory. Before 05.09.2026 this
+        # asked about `seed-<n>` whatever the mode, so the first --komplekt batch was
+        # refused for the wide seeds' transcripts - which it would never have touched.
+        def _dir(s_):
+            return (komplekt_dir(s_) if a.komplekt
+                    else seed_dir(s_, pair=a.pair, refusal=a.refusal))
+        kept = [d for d in (_dir(s) for s in seeds) if has_paid_run(d)]
         if kept:
             print("refusing to run: these directories hold the transcripts of paid runs "
                   "(stream.jsonl), and a new session would erase them:")
@@ -2083,7 +2121,7 @@ def main():
         print(f"About to run {len(seeds)} Claude sessions. That costs money and takes "
               f"minutes per seed. Each seed is saved in {RESULTS_DIR} as it finishes.")
 
-    scenarios = M.PAIR_SCENARIOS if a.pair else M.SCENARIOS
+    scenarios = scenario_universe(pair=a.pair, komplekt=a.komplekt)
     runs = []
     try:
         for s in seeds:
