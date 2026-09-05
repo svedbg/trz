@@ -118,8 +118,15 @@ KEYWORDS = {
     # The defect is a control cell that reads zero while the two figures it compares
     # differ. A bare `0` would match any zero digit and `0\.00` the tail of „250.00", so
     # the zero is taken only when nothing numeric touches it.
+    # (?![.,]?\d), not (?![\d.,]): the old lookahead rejected a bare zero followed by a
+    # sentence comma, so „контролната колона показва 0, докато разлика има" - the most
+    # natural phrasing of this very check - could not match at all. Still refuses the 0
+    # inside 0.5 and 1,0; „0,00" keeps its own branch. Found while reading the 05.09.2026
+    # refusal run, which wrote exactly that sentence; note it did NOT change that run's
+    # score, because the finding sat on the totals row and K4 is attributed to the row
+    # whose difference the blind cell hides. The lookahead was wrong on its own terms.
     "K4_control_column_blind":    [r"изплат|разлика|контрол",
-                                   r"нула|\b0[.,]00\b|(?<![\d.,])0(?![\d.,])|тъждеств|"
+                                   r"нула|\b0[.,]00\b|(?<![\d.,])0(?![.,]?\d)|тъждеств|"
                                    r"винаги|не улавя|равна на|не отчита|не показва|скрива|"
                                    r"празн"],
     # „вместо" only before a COMMA-decimal figure, this file's convention for a total
