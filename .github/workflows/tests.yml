@@ -57,6 +57,13 @@ jobs:
       - name: Skill packaging - frontmatter, references, manifests, licences
         run: python test/skill_test.py
 
+      - name: Pre-flight check for real payroll workbooks
+        # tools/preflight.py is what a real export meets before the audit. Its
+        # vocabulary is pinned against trz_model.COLUMNS here, so renaming a canonical
+        # column cannot quietly send real ones to the unknown list, and its fixtures
+        # are built in memory - no payroll, real or generated, is read.
+        run: python test/preflight_test.py
+
       - name: Refusal grader self-test
         # Free: it builds synthetic findings and checks that the grading in
         # eval_skill.py --refusal separates a skill that refused from one that
