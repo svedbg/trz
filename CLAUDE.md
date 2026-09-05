@@ -32,6 +32,7 @@ python test/rates_test.py     # rates vs. the reference file. No dependencies. R
 python test/skill_test.py     # packaging: frontmatter, references, manifests, licences, dates
 python test/checks_test.py    # suite 1: static payroll against the key in expected_findings.md
 python test/eval_skill.py --selftest      # free: checks the refusal grading itself
+python test/preflight_test.py # tools/preflight.py: shape checks on a real workbook, no payroll read
 python test/run_tests.py      # all five, 50 seeds
 python test/run_tests.py --seeds 300      # what CI runs
 ```
@@ -80,6 +81,13 @@ A false positive fails exactly like a miss.
   row, check, severity, stated and due to the cent.
 - **Adding a check or a scenario** has a checklist in `CONTRIBUTING.md`. Prove a new
   check has teeth: break something on purpose, confirm the suite goes red, revert.
+- **`tools/` is not part of the skill.** `tools/preflight.py` checks whether a real
+  payroll workbook can be audited at all — header row, formulas, period, missing
+  columns, and the two values no file carries (КИД and ТЗПБ). It lives outside
+  `skills/trz-expert` on purpose: SKILL.md promises prose only, and installing copies
+  the skill directory whole. It never writes to the workbook — the file is evidence —
+  and never guesses a period, because guessing the period picks the thresholds. Its
+  column vocabulary is pinned against `trz_model.COLUMNS` by `preflight_test.py`.
 - **Hooks are opt-in:** `git config core.hooksPath .githooks` once.
 - **A fourth channel with no manifest.** `.agents/skills/trz-expert/SKILL.md` is what
   Codex CLI's repository-skill discovery finds — no plugin, no marketplace, just that
