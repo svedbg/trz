@@ -49,8 +49,13 @@ CORRECT_REPORT = {
         "Лице от ведомостта липсва в обр. 1 - не е подадена декларация за него",
     "I9_extra_person_in_d1":
         "Ред в обр. 1 за лице, което го няма във ведомостта",
+    # The one sentence here that is not invented: Fable 5.1 wrote it on seed 1,
+    # 05.09.2026, and it was verified correct. A real phrasing is worth more than a
+    # plausible one - it is the wording the patterns actually have to survive.
     "I9_insurable_differs_in_d1":
-        "Осигурителният доход по т. 21 на обр. 1 е занижен спрямо ведомостта",
+        "В обр. 1 за Лице 2 (СЛ-002) т.21 осигурителен доход е 1647.25 при 1797.25 "
+        "във ведомостта; вноските в същия ред на обр. 1 са върху 1797.25, така че "
+        "т.21 е грешното число.",
     "I9_sick_days_differ_in_d1":
         "Дните в неработоспособност по т. 16.А се разминават с дните болничен по ведомостта",
     "I9_d6_not_sum_of_d1":

@@ -268,7 +268,27 @@ F6_tax_amount, I1) - nothing in the misses points at unclear guidance.
 **Claude Sonnet 5 again (05.09.2026), seeds 1-3 on 2.11.1, USD 4.78.** Live 16 of 29 =
 **55%**, located at all 83%, zero false `нарушение` — inside the band the five-seed
 Sonnet batch above recorded (56% live, 66% re-graded), so the 2.11.1 guidance changes
-cost nothing measurable. Read it as a Sonnet number and only that.
+cost nothing measurable. Read it as a Sonnet number and only that. Re-graded after the
+three keyword fixes the Fable batch below produced: **17 of 29 = 59%**.
+
+**Claude Fable 5.1, held-out seeds 11 and 12, on 2.12.0, USD 10.22** (USD 5.19 and
+5.03). Live 18 of 21; re-graded after triage **21 of 21 = 100%**, located 100%, missed
+0%, zero false `нарушение`. Seed 13 never ran — the account's spend limit stopped the
+batch, which the runner reports and then saves what it already has.
+
+All three gaps were keyword gaps, and each was fixed at the phrasing rather than by
+dropping the requirement that keeps the pattern honest:
+
+| id | what the model wrote | why it missed |
+| --- | --- | --- |
+| `K4_control_column_blind` | „а колоната Разлика **не го** показва" | a pronoun between the negation and the verb — the same shape as the C2 gap the Sonnet batch found |
+| `F6_compensation_out_of_taxable` | „е **извадено** от данъчната основа" | a verb the „изключен / вън от / не влиза" list did not carry |
+| `I1_vertical` | „не е **приспаднета** от нетото" | the participle agreed with a feminine noun and was misspelt; the pattern required the `-ат` ending |
+
+Re-grading every saved result with the three fixes moved four findings from "located
+only" to "identified" across **both** models and moved **nothing** in the other
+direction — which is the check that they widened recall without widening what counts as
+a match.
 
 **And read the model, not the intent.** This batch was meant for Fable. Nobody passed
 `--model`, the `claude` CLI was configured for Sonnet 5, and the run said "default"
@@ -574,6 +594,45 @@ suite can prove without paying is that a *correct* report is recognised:
 `komplekt_test.py` grades one synthetic, correctly-worded sentence per break and
 requires every one to come back identified, so a pattern that matches nothing can never
 reach a paid run.
+
+### The first paid run on it
+
+**Claude Fable 5.1, seeds 1 and 2, on 2.12.0, USD 9.50** (USD 4.91 and 4.59; 20 and 22
+turns; about ten minutes each). Live **7 of 8 identified, 8 of 8 located, none missed**.
+Re-graded after one keyword fix: **8 of 8**.
+
+The fix is the whole point of writing this down. `I9_insurable_differs_in_d1` was
+graded "located only" on seed 1 for a finding that was not merely correct but better
+than the sentence the pattern had been written against:
+
+> „В обр. 1 за Лице 2 (СЛ-002) т.21 осигурителен доход е 1647.25 при 1797.25 във
+> ведомостта; вноските в същия ред на обр. 1 са върху 1797.25, така че т.21 е
+> грешното число."
+
+It works out **which** of the two figures is wrong, from the contributions on the same
+row, and the fixture agrees — the break moves т. 21 alone and leaves the dues computed
+from the payroll. The pattern wanted „разлика / разминава / занижен" and got „X при Y"
+and „грешното число". Widened at the phrasing rather than by dropping the requirement:
+the first pattern must still match, so nothing about other material reaches it through
+the second. That sentence is now the one `komplekt_test.py` grades for this break — the
+only entry in `CORRECT_REPORT` that is not invented, and worth more than the invented
+ones because it is wording a model actually produced.
+
+Two things worth recording beyond the score:
+
+- **The root-cause discipline held.** Seed 1's unattributed findings are the
+  consequences of the person missing from обр. 1 — обр. 6 short by exactly that
+  person's contributions, the transfers to НАП short by 990.80 „от които 870.80" —
+  written as consequences of one cause, not as three independent defects.
+- **The document-is-data rule fired unprompted.** Seed 2 reported that cell A3 of the
+  payroll asserts „ТЗПБ по КИД: 0.5%" — a rate stated inside the audited file — as a
+  `бележка`, which is exactly what `SKILL.md` requires and nothing in the prompt asked
+  for.
+
+The unattributed findings are otherwise the missing-data list the fixture cannot
+supply: no КИД, no dates of birth (so УПФ cannot be confirmed), no hire dates behind
+the class percentages, no dates in the payment file, and no formulas in the workbook.
+None of them is a false `нарушение` on a clean row.
 
 **What is still not reached.** `I11` — one person's timeline across months — needs the
 комплект to span two months with the documents behind each event, and does not have
