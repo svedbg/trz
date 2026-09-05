@@ -44,7 +44,7 @@ CLEAN_SHEET = "05.2026"          # inside a regime that starts on 1 January
 HEADER_ROW = 3                   # a title above it, the way real files are laid out
 
 
-def cache_formula_values(path, cached):
+def cache_formula_values(path, cached, sheets=("xl/worksheets/sheet1.xml",)):
     """Fill in the cached results Excel stores next to each formula.
 
     openpyxl writes `<f>C4+D4</f><v />` - the formula with an empty cached value - so a
@@ -54,13 +54,16 @@ def cache_formula_values(path, cached):
     two *is* one of the shapes under test: S10 is this same workbook with the patch
     withheld.
 
-    `cached` maps a cell reference to the value to store, e.g. {"E4": 1050.0}.
+    `cached` maps a cell reference to the value to store, e.g. {"E4": 1050.0}. `sheets`
+    names the worksheet parts to patch - more than one when a shape adds a second sheet
+    that also carries formulas, since a sheet left unpatched raises NO_CACHED_VALUES and
+    the shape would then be testing two things.
     """
     tmp = path + ".tmp"
     with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
             blob = zin.read(item.filename)
-            if item.filename == "xl/worksheets/sheet1.xml":
+            if item.filename in sheets:
                 xml = blob.decode("utf8")
                 for ref, value in cached.items():
                     # The cell element for this ref, up to its closing tag; only the
@@ -161,6 +164,48 @@ def s_mid_year(wb):
     wb.active.title = "08.2026"
 
 
+def s_error_cells(wb):
+    """A formula that never resolved, the way a real export carries one.
+
+    openpyxl cannot produce a cached error, so the value is written directly - which is
+    also exactly what Excel stores: the error is a string beside the formula.
+    """
+    ws = wb.active
+    col = HEADERS.index("Осигурителен доход") + 1
+    ws.cell(HEADER_ROW + 2, col, "#N/A")
+
+
+def s_hidden_rows(wb):
+    """A row inside the data block that the printed sheet does not show."""
+    wb.active.row_dimensions[HEADER_ROW + 2].hidden = True
+
+
+def s_hidden_sheet(wb):
+    """A second, well-formed month, hidden.
+
+    Deliberately a complete sheet rather than a scratch tab: a hidden scratch tab has no
+    header and raises NO_HEADER as well, and then the fixture would be testing two things
+    at once. What is under test is that hiding, by itself, is reported - so everything
+    else about the sheet is in order.
+    """
+    ws = wb.create_sheet("04.2026")
+    ws.cell(1, 1, "ВЕДОМОСТ ЗА РАБОТНИ ЗАПЛАТИ — Измислено ЕООД")
+    for c, h in enumerate(HEADERS, start=1):
+        ws.cell(HEADER_ROW, c, h)
+    for i, row in enumerate(ROWS):
+        for c, v in enumerate(row, start=1):
+            ws.cell(HEADER_ROW + 1 + i, c, v)
+    gross = HEADERS.index("БРУТО") + 1
+    base = HEADERS.index("Основна за отработеното") + 1
+    klas = HEADERS.index("Клас сума") + 1
+    for i in range(len(ROWS)):
+        r = HEADER_ROW + 1 + i
+        ws.cell(r, gross, f"={openpyxl.utils.get_column_letter(base)}{r}"
+                          f"+{openpyxl.utils.get_column_letter(klas)}{r}")
+    ws.cell(HEADER_ROW + 1 + len(ROWS), 1, "Общо")
+    ws.sheet_state = "hidden"
+
+
 def s_no_cached_values(wb):
     # Nothing to change in the workbook: this shape is the clean file with the cached
     # values never patched in - what a script that writes .xlsx produces and Excel
@@ -189,6 +234,12 @@ SHAPES = {
                              "a month inside a regime that starts mid-year"),
     "S10_no_cached_values": (s_no_cached_values, "NO_CACHED_VALUES",
                              "formulas whose computed results were never stored"),
+    "S11_error_cells":      (s_error_cells,     "ERROR_CELLS",
+                             "a cell holding #N/A where money should be"),
+    "S12_hidden_rows":      (s_hidden_rows,     "HIDDEN_ROWS",
+                             "a row inside the data block that does not print"),
+    "S13_hidden_sheet":     (s_hidden_sheet,    "HIDDEN_SHEET",
+                             "a hidden sheet in the workbook"),
 }
 
 
@@ -222,7 +273,9 @@ def build(shape_id, path, cached=True):
     # column they would be written to, so the patch is skipped for those.
     if cached and shape_id not in ("S10_no_cached_values", "S3_values_only",
                                    "S1_no_header"):
-        cache_formula_values(path, gross_cache())
+        parts = ("xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml") \
+            if shape_id == "S13_hidden_sheet" else ("xl/worksheets/sheet1.xml",)
+        cache_formula_values(path, gross_cache(), parts)
     return path
 
 
