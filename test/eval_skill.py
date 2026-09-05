@@ -11,9 +11,15 @@ findings it reports back onto the manifest.
     python test/eval_skill.py --regrade        # free: re-grade saved results with the current keywords
 
 IT COSTS MONEY, and the amount depends on the model. Measured on 04.09.2026: Claude
-Fable 5.1, the default, ~USD 4.5-6.2 per seed (16-25 turns, 11-15 minutes); Claude
-Sonnet 5 (--model claude-sonnet-5) ~USD 1.5-2.2 per seed, at a lower identified rate -
-see scenarios.md for the comparison. Use --dry to see what will happen before paying.
+Fable 5.1 ~USD 4.5-6.2 per seed (16-25 turns, 11-15 minutes); Claude Sonnet 5
+~USD 1.5-2.2 per seed, at a lower identified rate - see scenarios.md for the
+comparison. Use --dry to see what will happen before paying.
+
+**Without `--model` the session runs on whatever model the `claude` CLI is currently
+configured to use, which is not a property of this file and can change under it.** On
+05.09.2026 a batch meant for Fable ran on Sonnet 5 for that reason and the numbers,
+read against Fable's band, looked like a regression the release had not caused. So the
+model is now read back out of the transcript, printed, and saved with the score.
 
 How this differs from the other suites. They test the rules - arithmetic,
 thresholds, composition logic - with independent Python against a generated
@@ -669,6 +675,11 @@ def scan_stream(path, trace):
         except Exception:
             continue
         if event.get("type") == "assistant":
+            # Which model actually answered. Without --model the CLI picks it, so this
+            # is the only place the run's model is stated at all.
+            served = event.get("message", {}).get("model")
+            if served and served not in trace.setdefault("models", []):
+                trace["models"].append(served)
             for c in event.get("message", {}).get("content", []):
                 if c.get("type") == "tool_use":
                     trace["tool_calls"] += 1
@@ -1453,13 +1464,20 @@ def results_path(mode, seed, model=None):
     this is why. Existing files from before this change keep their old two-part name
     and are still found and read by --regrade, which globs *.json rather than
     parsing the name.
+
+    Since 05.09.2026 the model is the one that ANSWERED, not the one asked for on the
+    command line: without `--model` the flag is None and every such run - Fable's and
+    Sonnet's alike - landed on `<mode>-<seed>-default.json`, which is the very
+    collision the paragraph above is about, still open in the case where nobody named
+    a model.
     """
     return os.path.join(RESULTS_DIR, f"{mode}-{seed}-{_model_slug(model)}.json")
 
 
 def persist(rec):
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    path = results_path(rec["mode"], rec["seed"], rec.get("model"))
+    path = results_path(rec["mode"], rec["seed"],
+                        rec.get("model") or rec.get("model_used"))
     with open(path, "w", encoding="utf8") as f:
         json.dump(rec, f, ensure_ascii=False, indent=1)
     print(f"saved: {path}")
@@ -1512,11 +1530,18 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
         return None
 
     trace = invoke(d, model=model, timeout=timeout)
+    served = trace.get("models") or []
+    model_used = served[0] if len(served) == 1 else (", ".join(served) or None)
     print(f"turns {trace.get('turns')} · tool calls {trace['tool_calls']} · "
-          f"{trace['seconds']} s · USD {trace.get('cost') or 0:.3f}")
+          f"{trace['seconds']} s · USD {trace.get('cost') or 0:.3f} · "
+          f"model {model_used or 'unknown'}")
+    if model is None and model_used:
+        print(f"  no --model given, so the CLI chose {model_used}; the score belongs "
+              f"to that model, not to whichever one you had in mind")
     # The keyword universe is not stored with the manifest: a re-grade attaches the
     # current one by mode, and keywords_sha records which one produced this score.
-    rec = dict(seed=seed, mode=mode, model=model, skill_sig=tree_skill_signature(),
+    rec = dict(seed=seed, mode=mode, model=model, model_used=model_used,
+               skill_sig=tree_skill_signature(),
                keywords_sha=keywords_sha(man.get("keywords") or KEYWORDS),
                generator_sha=generator_sha(pair),
                manifest={k: v for k, v in man.items() if k != "keywords"},
