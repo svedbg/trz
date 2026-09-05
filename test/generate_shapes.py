@@ -206,6 +206,25 @@ def s_hidden_sheet(wb):
     ws.sheet_state = "hidden"
 
 
+def s_hidden_columns(wb):
+    """A recognised column hidden from the printed sheet."""
+    col = openpyxl.utils.get_column_letter(HEADERS.index("Осигурителен доход") + 1)
+    wb.active.column_dimensions[col].hidden = True
+
+
+def s_numbers_as_text(wb):
+    """A money column stored as text: prints like a number, sums to zero.
+
+    Deliberately not БРУТО - that is the one computed column in the clean layout, and
+    overwriting it with text removes the file's only formulas, so the shape would raise
+    NO_FORMULAS as well and test two things.
+    """
+    ws = wb.active
+    col = HEADERS.index("Данъчна основа") + 1
+    for i, row in enumerate(ROWS):
+        ws.cell(HEADER_ROW + 1 + i, col, f"{row[col - 1]:.2f}")
+
+
 def s_no_cached_values(wb):
     # Nothing to change in the workbook: this shape is the clean file with the cached
     # values never patched in - what a script that writes .xlsx produces and Excel
@@ -240,6 +259,10 @@ SHAPES = {
                              "a row inside the data block that does not print"),
     "S13_hidden_sheet":     (s_hidden_sheet,    "HIDDEN_SHEET",
                              "a hidden sheet in the workbook"),
+    "S14_hidden_columns":   (s_hidden_columns,  "HIDDEN_COLUMNS",
+                             "a recognised column hidden from the printed sheet"),
+    "S15_numbers_as_text":  (s_numbers_as_text, "NUMBERS_AS_TEXT",
+                             "a money column stored as text"),
 }
 
 
