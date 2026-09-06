@@ -190,7 +190,7 @@ DEPENDS = {
     "изплатено":      "I9 - веригата до изплатеното не може да се затвори",
 }
 
-TOTALS_LABEL = re.compile(r"^\s*(общо|всичко|тотал|сума)\b", re.I)
+TOTALS_LABEL = re.compile(r"(общо|всичко|тотал|сума|\btotal\b)", re.I)
 MONTHS = {"януари": 1, "февруари": 2, "март": 3, "април": 4, "май": 5, "юни": 6,
           "юли": 7, "август": 8, "септември": 9, "октомври": 10, "ноември": 11,
           "декември": 12}
@@ -370,12 +370,20 @@ def data_range(ws, header_row):
 
     The totals row is excluded because it is not a person, and every per-row check that
     treats it as one produces a finding against nobody.
+
+    TOTALS_LABEL is searched anywhere in the cell, not anchored to its start: a real
+    export's label was "Report Total in EUR (from 24 records):" - "Total" is not the
+    first word, so an anchored match missed it entirely, and the totals row was then
+    read as a 25th person. A B4 finding at that row (the sum of everyone's insurable
+    income, always "over the cap") is the visible symptom - caught by auditing real
+    payrolls, not by any suite here, since every generated fixture's totals row starts
+    with the label word.
     """
     first = header_row + 1
     last, totals = ws.max_row, None
     for r in range(first, (ws.max_row or first) + 1):
         for c in range(1, min(4, (ws.max_column or 1) + 1)):
-            if TOTALS_LABEL.match(str(ws.cell(r, c).value or "")):
+            if TOTALS_LABEL.search(str(ws.cell(r, c).value or "")):
                 totals = r
                 break
         if totals:
