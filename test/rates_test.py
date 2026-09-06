@@ -136,6 +136,14 @@ CHECKS = [
     ("control sum of the employee contributions",
      r"Лични вноски, трета категория \|\s*\*\*([\d.]+)%\*\*",
      M.EMPLOYEE_TOTAL),
+    # scripts/rates.py's FLAT_PATTERNS["employer_no_tzpb_pct"] uses this exact pattern
+    # to feed audit.py's F5 (ТЗПБ). Kept here too, against the model's own sum of the
+    # three funds it stands for, so the value is cross-checked, not only "matched
+    # somewhere" - the new FLAT_PATTERNS loop below only proves the pattern matches
+    # once, never that the number is right.
+    ("control sum of the employer contributions, excluding ТЗПБ",
+     r"без ТЗПБ, трета категория \|\s*\*\*([\d.]+)%\*\*",
+     M.r2(M.EMPLOYER_SOCIAL + M.EMPLOYER_UPF + M.EMPLOYER_HEALTH)),
     ("rounding allowance when summing the five contributions",
      r"осигурителния доход с до \*\*([\d.]+)\*\*",
      0.03),
@@ -268,11 +276,18 @@ def main():
     print()
     # scripts/rates.py is audit.py's own extraction layer - a second, independent set of
     # patterns against the same reference text, not covered by CHECKS above. Only two of
-    # its nine FLAT_PATTERNS entries are read by audit.py today (employer_no_tzpb_pct,
+    # its ten FLAT_PATTERNS entries are read by audit.py today (employer_no_tzpb_pct,
     # social_expense_threshold_eur); the rest are reserved for checks not wired up yet.
-    # Without this loop a stavki.md restructure could silently break one of those seven -
+    # Without this loop a stavki.md restructure could silently break one of those eight -
     # load_flat() fails closed (the name is just absent from its result, per its own
     # docstring), so audit.py would never crash, and no other suite exercises them.
+    #
+    # This loop only proves each pattern matches EXACTLY ONCE (load_flat()'s own
+    # contract) - it does not compare the extracted number against anything, so a
+    # pattern that matches the wrong row would still print `ok`. Where a CHECKS entry
+    # above happens to use the identical pattern text, that entry is the real value
+    # check; employer_no_tzpb_pct now has one for exactly this reason. A FLAT_PATTERNS
+    # name added later without a matching CHECKS entry is "exists" but not "correct".
     flat = SR.load_flat(SKILL_DIR)
     for name in SR.FLAT_PATTERNS:
         label = f"scripts/rates.py FLAT_PATTERNS[{name!r}]"
@@ -285,8 +300,15 @@ def main():
                   "silently, per rates.py's fail-closed contract")
             failed.append(label)
 
-    # PERIOD_PATTERNS need a period known to exist; 2026 is split into the same two
-    # halves the CHECKS above already cross-check against trz_model.py.
+    # PERIOD_PATTERNS need a period known to exist. max_insurable genuinely has two
+    # different rows for 2026 (the CHECKS above cross-check both against
+    # trz_model.py); min_wage_month does not change mid-year, so both months here read
+    # the SAME row for it - still worth keeping, since a row that vanished entirely
+    # would still fail either way, but it is not a second regime the way max_insurable
+    # is. for_period() itself has no "matches more than once" guard the way extract()
+    # and load_flat() do (it returns the first match via re.finditer), so this loop
+    # cannot catch two conflicting rows for the same period the way the FLAT_PATTERNS
+    # loop above would - only that *a* row exists.
     for name in SR.PERIOD_PATTERNS:
         for year, month in ((2026, 1), (2026, 8)):
             label = f"scripts/rates.py PERIOD_PATTERNS[{name!r}] for {year}-{month:02d}"
