@@ -1,13 +1,13 @@
 ---
 name: trz-expert
-description: Старши експертиза по ТРЗ (труд и работна заплата) за България. Анализира ведомости, фишове за заплати, трудови договори, графици и присъствени форми спрямо Кодекса на труда, КСО, ЗДДФЛ и Наредбата за структурата и организацията на работната заплата. Използвай при работа с ведомост, рекапитулация, фиш за заплата, трудов договор, допълнително споразумение, график при СИРВ, осигуровки, МОД, МРЗ, извънреден труд, нощен труд, клас прослужено време, обезщетение при уволнение, удръжки и запори върху заплата, или когато потребителят иска проверка дали заплащането в дадена фирма е законосъобразно. Also use for English requests to audit or check a Bulgarian payroll, payslip, employment contract or shift schedule for compliance with Bulgarian labour, social-security and income-tax law.
+description: Старши експертиза по ТРЗ (труд и работна заплата) за България. Анализира ведомости, фишове за заплати, трудови договори, графици и присъствени форми спрямо Кодекса на труда, КСО, ЗДДФЛ и Наредбата за структурата и организацията на работната заплата. Използвай при работа с ведомост, рекапитулация, фиш за заплата, трудов договор, допълнително споразумение, график при СИРВ, осигуровки, декларация обр. 1 и обр. 6, МОД, МРЗ, извънреден труд, нощен труд, клас прослужено време, обезщетение при уволнение, удръжки и запори върху заплата, или когато потребителят иска проверка дали заплащането в дадена фирма е законосъобразно. Also use for English requests to audit or check a Bulgarian payroll, payslip, employment contract or shift schedule for compliance with Bulgarian labour, social-security and income-tax law, including checking Декларация обр. 1 or обр. 6 against the payroll.
 license: CC-BY-4.0
-compatibility: Bundles scripts/preflight.py and scripts/k_checker.py, both read-only
-  against the workbook. Needs a Bulgarian payroll context and a working Python with
-  openpyxl for spreadsheet work. The rates in references/stavki.md were verified on
-  01.09.2026 and must be re-verified for any later period; the skill refuses to guess
-  one. Installed as a Claude Code plugin it asks one question when enabled; anywhere
-  else that answer is absent and the documented default applies.
+compatibility: Bundles scripts/ (preflight.py, k_checker.py, audit.py), all read-only
+  against the workbook. Needs a Bulgarian payroll context and Python 3.10+ with
+  openpyxl and PyYAML. The rates in references/stavki.md were verified on 01.09.2026
+  and must be re-verified for any later period; the skill refuses to guess one.
+  Installed as a Claude Code plugin it asks one question when enabled; anywhere else
+  that answer is absent and the documented default applies.
 metadata:
   jurisdiction: BG
   rates_verified: '2026-09-01'
@@ -47,16 +47,14 @@ metadata:
 от която вноската се смята: без ставката за периода не можеш да напишеш нито колко се
 дължи, нито основата му. При период без потвърдени стойности липсващо начисление се
 пише `за проверка` с назована липсващата стойност — не `нарушение`. Точно тук се греши,
-защото пропускът изглежда безспорен: първият платен отказен прогон завърши с `нарушение`
-за липсваща здравна вноска върху МОД за самоосигуряващите се за година, за която
-справочникът няма този МОД.
+защото пропускът изглежда безспорен (случаят, който доведе до това правило, е в
+`references/uroci.md`).
 
 **Сравнението с тавана също.** Осигурителен доход под начисленията за труд е находка само
 ако начисленията са под максималния осигурителен доход **за периода** — над него законният
 доход е самият таван и редът може да е прав. Без потвърден таван за периода такава находка
-е `за проверка`, не `нарушение`. Вторият отказен прогон (2.7.0) написа `нарушение`
-„занижен осигурителен доход … под тавана“ за ведомост от 2027 г., мерейки с тавана за
-2026 г. — същата грешка като горната, в другата посока.
+е `за проверка`, не `нарушение` (същата грешка като горната, в обратната посока — виж
+`references/uroci.md`).
 
 Извод, изчислен с измислена ставка, е по-вреден от липсващ извод. Той изглежда
 категоричен и води до грешно управленско решение.
@@ -64,10 +62,12 @@ metadata:
 ## Второ правило: изчисленията стават с код
 
 Ведомостта е таблица със стотици редове. Не смятай наум и не смятай "на око" по извадка.
-Напиши Python скрипт с openpyxl (pandas само ако е наличен — не разчитай на него), който:
+Част от проверките вече имат готов скрипт в `scripts/` (`preflight.py`, `k_checker.py`,
+`audit.py` — стъпка 4 казва кои и как се пускат); за останалите напиши Python скрипт с
+openpyxl, който:
 
 - чете файла,
-- прилага проверките от `references/proverki.md` ред по ред,
+- прилага проверките от отворените групи в `references/proverki/` ред по ред,
 - връща таблица с отклоненията.
 
 Така резултатът е възпроизводим и потребителят може да го провери. Ръчно смятане се
