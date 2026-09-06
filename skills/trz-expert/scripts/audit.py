@@ -36,11 +36,16 @@ What is covered, and why the rest of each group is not:
   belongs. Not the proverki.md text's second clause ("or above the norm"): the norm
   varies by contract and this script has no calendar for it, the same reason B1/B5
   stand in the sheet's own maximum instead of computing one.
-* **I8 (duplicated people)** - flagged only when a name repeats AND
+* **I8 (duplicated people)** - flagged when a name repeats AND
   бруто/осигурителен доход/нето all agree exactly with an earlier row under that
-  name: a copy-pasted row, not two different employees who happen to share a name.
-  Never prints the name itself, the same rule preflight.py already follows for its
-  own report.
+  name. Read as "probably" a copy-pasted row, not settled as one: preflight.py's
+  CONCEPTS has no identity column (no ЕГН, by design - it is personal data this
+  tool never reads), so two different employees on identical МРЗ pay who happen to
+  share a name cannot be told apart from a genuine duplicate by any column this
+  script has. Under-reports rather than over-reports as a result: proverki/i.md's
+  I8 is "a person appearing twice", broader than what a name-plus-three-figures
+  match can prove. Never prints the name itself, the same rule preflight.py
+  already follows for its own report.
 * **F1 / F10 (insurable-income composition) and the two statutory placements it also
   settles** - ported from test/structural_test.py's "solve the composition" method:
   which subset of the contested elements (доход в натура, превишение над необлагаемия
@@ -87,6 +92,7 @@ closed-vocabulary risk.
 """
 import argparse
 import os
+import re
 import sys
 from collections import Counter
 
@@ -130,6 +136,16 @@ I8_DUPLICATED_PEOPLE = "I8_duplicated_people"
 # the norm"): the norm varies by contract and this script has no calendar, the same
 # reason B1/B5 stand in the sheet's own maximum rather than compute one.
 DAY_CONCEPTS = ("отработени дни", "дни отпуск", "дни болничен", "дни майчинство")
+
+# A header carrying one of these words names a BALANCE, an ENTITLEMENT or an AVERAGE,
+# not the count of days this row actually states - a different quantity that is
+# legitimately fractional (a proportional leave entitlement under чл. 155, ал. 2 КТ,
+# 20 x 5/12 = 8.33; an average). preflight.classify()'s substring pass reads a
+# DAY_CONCEPTS spelling out of "Остатък дни отпуск" or "Средно отработени дни" just
+# the same as out of the plain concept header, so K2 excludes by the header's own
+# wording rather than trusting the concept name alone.
+K2_HEADER_EXCLUDE = re.compile(r"остатък|полагаем|неизползван|среден|средно|баланс",
+                               re.I)
 
 DEDUCTION_CONCEPTS = ("удръжка доброволно осиг.", "удръжка живот", "удръжка карта")
 
@@ -264,14 +280,26 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
             # two decimals, so its fractional part can be as small as .01 or .99 away
             # from the nearest whole number - a threshold of 0.01 or looser missed
             # those at the boundary (172.01 read as "close enough" to 172).
+            #
+            # preflight.classify()'s substring pass reads "дни отпуск" out of
+            # "Остатък дни отпуск" or "Полагаеми дни отпуск" (a leave BALANCE or
+            # ENTITLEMENT, legitimately fractional under чл. 155, ал. 2 КТ's
+            # proportional accrual - 20 x 5/12 = 8.33) and "отработени дни" out of
+            # "Средно отработени дни" (an average). Those are a different quantity
+            # from the concept, not a typo, so K2_HEADER_EXCLUDE skips them by the
+            # header's own wording - found by adversarial review asking exactly this
+            # question, not by any suite here.
             for concept in DAY_CONCEPTS:
-                v = _num(ws, known.get(concept), r)
+                meta = known.get(concept)
+                if meta is None or K2_HEADER_EXCLUDE.search(meta["header"]):
+                    continue
+                v = _num(ws, meta, r)
                 if v is not None and abs(v - round(v)) > 0.005:
                     findings.append({
                         "id": K2_AMOUNT_IN_DAY_COLUMN, "sheet": s["name"], "row": r,
-                        "text": f"{ref}: „{concept}“ е {v:.2f} — дробна част в колона "
-                                f"за дни означава, че там е въведена сума, не брой "
-                                f"дни",
+                        "text": f"{ref}: „{meta['header']}“ ({concept}) е {v:.2f} — "
+                                f"дробна част в колона за дни означава, че там е "
+                                f"въведена сума, не брой дни",
                     })
 
             # --- I1: vertical reconciliation ---------------------------------
@@ -386,14 +414,22 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                 if None in (bruto_r, osig_r, neto_r):
                     continue
                 fig = (bruto_r, osig_r, neto_r)
+                # One finding per repeated row, not one per EARLIER match: three
+                # identical rows are one copy-pasted error repeated twice, not three
+                # things to fix, the same "one cause, not N findings" principle
+                # otchet.md states for the report as a whole - so stop at the first
+                # match instead of reporting against every earlier occurrence.
                 for other_r, other_fig in seen.get(key_name, []):
                     if all(abs(a - b) <= TOL for a, b in zip(fig, other_fig)):
                         findings.append({
                             "id": I8_DUPLICATED_PEOPLE, "sheet": s["name"], "row": r,
                             "text": f"{s['name']}!{r}: същото име и същите "
                                     f"бруто/осиг. доход/нето като ред {other_r} — "
-                                    f"вероятно копиран ред",
+                                    f"може да е копиран ред, а може и да са две "
+                                    f"лица със същото име и еднакво заплащане; "
+                                    f"провери преди да заключиш",
                         })
+                        break
                 seen.setdefault(key_name, []).append((r, fig))
 
         # --- F1/F10/F9(insurable)/F1(compensation): insurable-income composition --
@@ -535,7 +571,7 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
 
 
 def report(path, findings):
-    L = [f"# B/F/I — `{os.path.basename(path)}`\n",
+    L = [f"# B/F/I/K — `{os.path.basename(path)}`\n",
          "Само механичните проверки, изброени в докстринга на скрипта; останалите "
          "от групите остават на анализа.\n"]
     if not findings:
