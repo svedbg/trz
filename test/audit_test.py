@@ -189,14 +189,29 @@ def run_static():
 HEADERS = ["Име", "Отраб. дни", "Основна за отработеното", "БРУТО",
            "Осигурителен доход", "Данъчна основа", "ДДФЛ", "Лични вноски общо",
            "НЕТО преди удръжки", "НЕТО за изплащане", "Дни болничен",
-           "Болнични (работодател)"]
+           "Болнични (работодател)",
+           # The insurable-income composition (F1/F9/F10) refuses to run at all
+           # unless every one of COMPOSITION_CONCEPTS is a recognised column (see
+           # audit.py's module docstring) - added zero-valued here so the
+           # composition pass engages for every shape below, not only a
+           # dedicated one, the same way a real file's columns are all present
+           # whether or not a given row uses them.
+           "Клас сума", "Бонус", "Платен отпуск", "Обезщетение чл. 224",
+           "Карта (за сметка на работодателя)",
+           "Доброволно здравно осигуряване (премия)"]
 # Everyone this month took at least a little leave or sick time - nobody has the true
 # 22-day calendar norm, so the highest count on the sheet (20) is itself partial. Row
 # 3 sits at 20 with основна scaled down for it, correctly, and must not be flagged.
+# The six composition columns are zero for everyone by default: work_base then equals
+# основна exactly, which already equals Осигурителен доход above, so the composition
+# pass finds nothing to explain and the clean fixture stays clean.
 ROWS = [
-    ["Лице 1", 18, 900.00, 900.00, 900.00, 810.00, 81.00, 90.00, 729.00, 729.00, 0, 0.00],
-    ["Лице 2", 19, 950.00, 950.00, 950.00, 855.00, 85.50, 95.00, 769.50, 769.50, 0, 0.00],
-    ["Лице 3", 20, 1127.45, 1127.45, 1127.45, 1014.70, 101.47, 112.75, 913.23, 913.23, 0, 0.00],
+    ["Лице 1", 18, 900.00, 900.00, 900.00, 810.00, 81.00, 90.00, 729.00, 729.00, 0, 0.00,
+     0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
+    ["Лице 2", 19, 950.00, 950.00, 950.00, 855.00, 85.50, 95.00, 769.50, 769.50, 0, 0.00,
+     0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
+    ["Лице 3", 20, 1127.45, 1127.45, 1127.45, 1014.70, 101.47, 112.75, 913.23, 913.23, 0, 0.00,
+     0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
 ]
 HEADER_ROW = 1
 
@@ -217,22 +232,57 @@ def build(path, mutate=None):
 
 
 def s_i5_sick_pay_without_days(ws):
-    """Sick pay accrued, zero sick days recorded - the narrow I5 shape."""
+    """Sick pay accrued, zero sick days recorded - the narrow I5 shape.
+
+    Since the composition columns went live, this same edit is also a genuine
+    F9: the accrual sits outside Осигурителен доход, which never moved. Both
+    findings are real and independent (zero days is one defect, the excluded
+    accrual is another), so SHAPES expects both rather than pretending this
+    edit only ever meant one thing.
+    """
     name_row = HEADER_ROW + 1
     ws.cell(name_row, HEADERS.index("Болнични (работодател)") + 1, 45.00)
     # Дни болничен stays 0
 
 
 def s_b5_insurable_below_min_wage(ws):
-    """Insurable income below the minimum wage, full attendance - a real B5."""
+    """Insurable income below the minimum wage, full attendance - a real B5.
+
+    Дropping Осигурителен доход to 500.00 while основна (1127.45) and every
+    composition column stay put also makes the row's own composition
+    unexplainable - a real file with income this far below the norm would
+    fail both checks, so F1_insurable_unexplained is expected here too.
+    """
     row = HEADER_ROW + 3        # Лице 3, the one with full (highest) attendance
     ws.cell(row, HEADERS.index("Осигурителен доход") + 1, 500.00)
 
 
+def s_f9_sick_pay_out_of_insurable(ws):
+    """Sick pay from the employer (чл. 40, ал. 5 КСО), correctly logged with sick
+    days > 0 - unlike s_i5_sick_pay_without_days, this is not a zero-days
+    contradiction - but Осигурителен доход is left unchanged, so it does not carry
+    the accrual. чл. 3, ал. 1 НЕВДПОВ puts sick pay inside insurable income
+    unconditionally: no majority-practice inference is needed, unlike the contested
+    elements (доход в натура, превишение), so this fires even alone in the sheet.
+
+    Hand-verified: work_base for Лице 1 is основна (900.00) plus the six
+    zero-valued composition columns, i.e. 900.00. With болнични = 45.00 correctly
+    inside, insurable income should be 945.00; the sheet still states 900.00 - the
+    exact 45.00 gap `audit.py`'s "removed" branch is built to explain.
+    """
+    row = HEADER_ROW + 1        # Лице 1
+    ws.cell(row, HEADERS.index("Болнични (работодател)") + 1, 45.00)
+    ws.cell(row, HEADERS.index("Дни болничен") + 1, 3)
+    # Осигурителен доход stays at 900.00 - excludes the sick pay
+
+
 SHAPES = {
     None: {},
-    "s_i5_sick_pay_without_days": {A.I5_SICK_PAY_WITHOUT_DAYS: 1},
-    "s_b5_insurable_below_min_wage": {A.B5_INSURABLE_BELOW_MIN_WAGE: 1},
+    "s_i5_sick_pay_without_days": {A.I5_SICK_PAY_WITHOUT_DAYS: 1,
+                                   A.F9_SICK_PAY_OUT_OF_INSURABLE: 1},
+    "s_b5_insurable_below_min_wage": {A.B5_INSURABLE_BELOW_MIN_WAGE: 1,
+                                      A.F1_INSURABLE_UNEXPLAINED: 1},
+    "s_f9_sick_pay_out_of_insurable": {A.F9_SICK_PAY_OUT_OF_INSURABLE: 1},
 }
 
 
