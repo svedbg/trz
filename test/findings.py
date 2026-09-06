@@ -18,9 +18,13 @@ does not carry — the way an article gets invented to fill the field.
 """
 import os
 import re
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REFERENCES = os.path.normpath(os.path.join(HERE, "..", "skills", "trz-expert", "references"))
+SCRIPTS = os.path.normpath(os.path.join(HERE, "..", "skills", "trz-expert", "scripts"))
+sys.path.insert(0, SCRIPTS)
+import finding as FN                                          # noqa: E402
 
 # The one basis that is not a citation. Group K (file construction) and group I
 # (arithmetic and cross-document consistency) are proven by the file's own numbers;
@@ -32,16 +36,20 @@ ARITHMETIC_GROUPS = ("K", "I")
 ARITHMETIC_PREFIXES = ("F10_",)
 
 # Citations are quoted from the reference files - see grounded(). Several on one line
-# are separated by ";".
+# are separated by ";". Entries for ids skills/trz-expert/scripts/audit.py and
+# k_checker.py themselves raise (I1_vertical, K2/K5/K6, B1/B4/B5, F1/F5/F9/F10) live in
+# scripts/finding.BASIS, imported below, not copied here - CLAUDE.md's "reference file
+# leads" rule applied to citations, not only rates: one owner per fact, so a citation
+# cannot drift between what the script asserts and what this file grades it against.
 BASIS = {
+    **FN.BASIS,
     # K - file construction. Proven by arithmetic; normativna-baza.md forbids inventing
-    # a basis for these.
+    # a basis for these. K1/K3/K4/K7/K8 and the KF ids are not computed by any script
+    # (k_checker.py's own module docstring explains why) - only their citation lives
+    # here.
     "K1_sum_omits_column": ARITHMETIC,
-    "K2_amount_in_day_column": ARITHMETIC,
     "K3_stale_contributions": ARITHMETIC,
     "K4_control_column_blind": ARITHMETIC,
-    "K5_total_not_sum": ARITHMETIC,
-    "K6_unrounded_accrual": ARITHMETIC,
     "K7_cost_from_net": ARITHMETIC,
     "K8_stale_thresholds": ARITHMETIC,
     "KF1_sum_omits_column": ARITHMETIC,
@@ -51,7 +59,6 @@ BASIS = {
     "KF5_constant_in_formula": ARITHMETIC,
     "KF_shape_deviates": ARITHMETIC,
     # I - arithmetic and cross-document consistency.
-    "I1_vertical": ARITHMETIC,
     "I5_days_do_not_reconcile": ARITHMETIC,
     "I7_unexplained_jump": ARITHMETIC,
     # I9/I10 - the chain below the payroll (suite 5, the комплект). Document against
@@ -77,28 +84,18 @@ BASIS = {
     "I11_sick_days_restart": ARITHMETIC,
     "I11_class_raised_early": ARITHMETIC,
     "I11_class_not_raised": ARITHMETIC,
-    # F10 - the contested material. The basis is the file's inconsistency, not a ruling
-    # on which reading is right.
-    "F10_in_kind_asymmetry": ARITHMETIC,
-    "F10_excess_asymmetry": ARITHMETIC,
-    "F10_practice_not_establishable": ARITHMETIC,
     # A-J - quoted from the reference files.
     "A6_base_vs_contract": "чл. 66 КТ; чл. 128 КТ",
     "A10_midmonth_annex": "чл. 66 КТ; чл. 128 КТ",
-    "B4_cap_from_wrong_period": "чл. 9 ЗБДОО за 2026 г",
     "C2_seniority_on_gross": "чл. 12, ал. 1 НСОРЗ",
     "E3_leave_without_seniority": "чл. 17, ал. 1 НСОРЗ",
     "E3_leave_base": "чл. 17, ал. 1 НСОРЗ; чл. 18, ал. 1 НСОРЗ; чл. 18, ал. 2 НСОРЗ",
-    "F1_compensation_in_insurable": "чл. 1, ал. 8, т. 7 НЕВДПОВ",
-    "F1_insurable_unexplained": "чл. 3, ал. 1 НЕВДПОВ; чл. 6, ал. 2 КСО",
-    "F5_tzpb_below_due": "приложения № 2 и № 2А към ЗБДОО",
     "F6_taxable_unexplained": "чл. 42, ал. 2 ЗДДФЛ",
     "F6_tax_amount": "чл. 42, ал. 4 ЗДДФЛ",
     "F6_compensation_out_of_taxable": "чл. 24, ал. 2, т. 8 ЗДДФЛ",
     "F7_relief_over_limit": "чл. 19, ал. 2 във вр. с чл. 42, ал. 3 ЗДДФЛ",
     "F7_relief_combined_limit": "чл. 19, ал. 2 във вр. с чл. 42, ал. 3 ЗДДФЛ",
     "F7_relief_not_applied": "чл. 19, ал. 2 във вр. с чл. 42, ал. 3 ЗДДФЛ",
-    "F9_sick_pay_out_of_insurable": "чл. 3, ал. 1 НЕВДПОВ",
     "F9_sick_pay_in_taxable": "чл. 24, ал. 2, т. 14 ЗДДФЛ",
     "F9_sick_pay_amount": "чл. 40, ал. 5 КСО; чл. 17, ал. 1 НСОРЗ",
     "F9_health_on_sick_days": "чл. 40, ал. 1, т. 5 ЗЗО",

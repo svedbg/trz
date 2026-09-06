@@ -114,6 +114,36 @@ To add one:
 Prove the check has teeth: break something on purpose and confirm the suite goes
 red. A check that has never failed has not been tested.
 
+## Every real miss becomes a permanent scenario
+
+A finding this skill missed against a real audit, a real payroll, or a paid eval
+transcript is not closed by fixing the guidance or the check alone. It stays open
+until the shape that produced it is a scenario one of these suites injects and
+requires found — permanently, so nothing that fixed it once can regress in silence.
+This is not a new idea here; it is what already happened without being written down:
+suite 4 (the formula layer) exists because the first real audit this skill performed
+found every one of its defects in formulas no suite could see, and the "не по-малко
+от" incident (`test/scenarios.md`) is in `structural_test.py`'s closed-form pins today
+because a shared helper's bug once agreed with itself across every seed. Neither would
+have stayed fixed as a sentence in a report.
+
+What "permanent" requires, concretely:
+
+* the mutation exists in a generator (`generate_wide.py`, `generate_komplekt.py`,
+  `generate_lifecycle.py`, `generate_formula.py`, or a hand-built fixture when none of
+  those fit), not only in the one real file that exposed it;
+* a suite requires it found, the same way every other scenario is required — a miss
+  fails the suite, not just this one case;
+* if the miss was a guidance gap rather than a missing check, the fix in `SKILL.md` or
+  `references/` is one sentence at the site the miss happened, citing the case that
+  found it, not a rewritten section — and the same scenario proves the fix, not a new
+  paid transcript, once it is in a suite that runs for free.
+
+A miss that cannot be turned into a scenario (a document shape this skill does not
+yet read, a rule with no fixture format to carry it) is still recorded — in
+`test/scenarios.md` if it concerns the suites, or as a one-line note at the guidance
+site otherwise — so the gap is visible rather than quietly repeated next time.
+
 ## Running the tests
 
 ```sh

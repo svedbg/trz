@@ -462,6 +462,18 @@ scored the opposite finding as identified („ТЗПБ е приложен на�
 a rate applied *below* the due one); `--selftest` holds those sentences and fails the
 moment one of them scores again.
 
+**A number check that needs no expected amount.** The prompt already asks every
+finding for `nachisleno`/`dalzhimo` (the "Изчисление" fields `otchet.md` requires of
+every finding). Until now `grade()` never read them - only the `kratko` sentence
+counted. `asserts_a_defect()` now also refuses a finding whose two figures are both
+given and equal: every scenario here is constructed as a genuine discrepancy, so a
+finding that names the right row and the right words but states the same number
+twice is not asserting the defect its sentence claims, and no keyword pattern catches
+that. This is not the same thing as grading against a *true* expected amount -
+`trz_model.py`'s manifest carries no such figure, and adding one to every generator's
+mutations to compare against is a larger change with its own drift risk, not
+attempted here - it only catches the finding contradicting itself.
+
 The unattributed ones are **not counted automatically as false positives**; they
 are printed for review. The generated payroll is random and some of what the model
 finds may be a true observation about it that simply was not injected on purpose.
