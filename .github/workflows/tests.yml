@@ -79,16 +79,16 @@ jobs:
         run: python test/skill_test.py
 
       - name: Pre-flight check for real payroll workbooks
-        # tools/preflight.py is what a real export meets before the audit. Its
+        # scripts/preflight.py is what a real export meets before the audit. Its
         # vocabulary is pinned against trz_model.COLUMNS here, so renaming a canonical
         # column cannot quietly send real ones to the unknown list, and its fixtures
         # are built in memory - no payroll, real or generated, is read.
         run: python test/preflight_test.py
 
       - name: K5/K6 computed from a workbook, against generate_wide.py's manifest
-        # tools/k_checker.py's own hand-built fixture, plus 300 seeds of the same
+        # scripts/k_checker.py's own hand-built fixture, plus 300 seeds of the same
         # generated payrolls suite 2 checks - the depth this job runs everything else
-        # at. 2.14.0 shipped this checker walking only tools/preflight.py's known-concept
+        # at. 2.14.0 shipped this checker walking only scripts/preflight.py's known-concept
         # columns and went 0 for 28 on K5 against these same fixtures; this step is
         # what would have caught it.
         run: python test/k_checker_test.py --seeds 300

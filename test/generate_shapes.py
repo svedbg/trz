@@ -4,7 +4,7 @@
 The five generated suites break the numbers. These break the file: a renamed header, a
 merged cell, an export that lost its formulas, a tab with no month on it. They are the
 reasons a real audit stalls before it reaches a single figure, and each one has to be
-caught by tools/preflight.py exactly once with nothing else raised.
+caught by scripts/preflight.py exactly once with nothing else raised.
 
 Every value here is invented. No real payroll is read, and nothing personal is written:
 the name column holds „Лице 1", „Лице 2" and so on, which is also what the suite uses to

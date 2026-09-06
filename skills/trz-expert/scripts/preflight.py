@@ -39,7 +39,7 @@ because they are data rather than prose: the column headers, matched by their re
 and the report, read by Bulgarian payroll staff in the same words as the audit it feeds.
 
 Usage:
-    python tools/preflight.py ВЕДОМОСТ.xlsx [--mapping mapping.yaml]
+    python skills/trz-expert/scripts/preflight.py ВЕДОМОСТ.xlsx [--mapping mapping.yaml]
                               [--kid 62] [--group 3] [--tzpb 0.4]
                               [--out report.md] [--extract extract.json]
 
@@ -59,8 +59,8 @@ try:
 except ImportError:                                          # pragma: no cover
     sys.exit("openpyxl is required: pip install -r test/requirements.txt")
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STAVKI = os.path.join(ROOT, "skills", "trz-expert", "references", "stavki.md")
+SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STAVKI = os.path.join(SKILL_DIR, "references", "stavki.md")
 
 # ------------------------------------------------------------------------- signals
 # Blocking signals stop the audit; the rest travel into the report's closing section.

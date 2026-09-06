@@ -701,7 +701,7 @@ and only one of the two survives in a diff.
 | --- | --- | --- |
 | 1 | an I11 end-to-end test | suite 6 |
 | 2 | stronger provenance in `stavki.md` | 16 КТ rows and the чл. 446 ГПК scale verified verbatim, `вторичен` → `ДВ`; per-section verification dates. The *structured* source model was not built — see below |
-| 3 | a canonical normalised payroll schema | the mapping must now be stated before any arithmetic, and `tools/preflight.py` already emits a normalised extract with a cell reference per value |
+| 3 | a canonical normalised payroll schema | the mapping must now be stated before any arithmetic, and `scripts/preflight.py` already emits a normalised extract with a cell reference per value |
 | 4 | an explicit `AMBIGUOUS` state | answered without a sixth state: a column whose meaning is uncertain makes its dependent checks `недостатъчни данни`, naming the column |
 | 5 | LLM eval as a regression gate | refused as a PR gate; answered by `PAID_GUIDANCE`, which is free, and a dispatch-only paid job |
 | 6 | cause → consequences in the output | **open.** The prose rule is in `otchet.md`; putting it in `findings.json` changes the eval contract mid-measurement and should follow a paid run, not precede one |

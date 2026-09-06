@@ -2,11 +2,12 @@
 name: trz-expert
 description: Старши експертиза по ТРЗ (труд и работна заплата) за България. Анализира ведомости, фишове за заплати, трудови договори, графици и присъствени форми спрямо Кодекса на труда, КСО, ЗДДФЛ и Наредбата за структурата и организацията на работната заплата. Използвай при работа с ведомост, рекапитулация, фиш за заплата, трудов договор, допълнително споразумение, график при СИРВ, осигуровки, МОД, МРЗ, извънреден труд, нощен труд, клас прослужено време, обезщетение при уволнение, удръжки и запори върху заплата, или когато потребителят иска проверка дали заплащането в дадена фирма е законосъобразно. Also use for English requests to audit or check a Bulgarian payroll, payslip, employment contract or shift schedule for compliance with Bulgarian labour, social-security and income-tax law.
 license: CC-BY-4.0
-compatibility: Prose and reference material only; no bundled scripts. Needs a Bulgarian
-  payroll context and a working Python with openpyxl for spreadsheet work. The rates in
-  references/stavki.md were verified on 01.09.2026 and must be re-verified for any later
-  period; the skill refuses to guess one. Installed as a Claude Code plugin it asks one question when
-  enabled; anywhere else that answer is absent and the documented default applies.
+compatibility: Bundles scripts/preflight.py and scripts/k_checker.py, both read-only
+  against the workbook. Needs a Bulgarian payroll context and a working Python with
+  openpyxl for spreadsheet work. The rates in references/stavki.md were verified on
+  01.09.2026 and must be re-verified for any later period; the skill refuses to guess
+  one. Installed as a Claude Code plugin it asks one question when enabled; anywhere
+  else that answer is absent and the documented default applies.
 metadata:
   jurisdiction: BG
   rates_verified: '2026-09-01'
@@ -145,9 +146,9 @@ fs = openpyxl.load_workbook(path, data_only=False)    # формулите
 ръчни сборове, съседни листове — и какво да правиш, когато формулите не са достъпни, е в
 `references/proverki/k.md`, раздел „Как се чете електронна таблица“ над самата група K.
 
-За K5 (ръчно вписан сбор) и K6 (закръгляване) конкретно репото носи `tools/k_checker.py` —
-смята и двете директно от файла, без допускания за смисъла на никоя друга колона. Когато
-можеш да го изпълниш, пусни го и вземи находките му вместо да ги пресмяташ наум; другите
+За K5 (ръчно вписан сбор) и K6 (закръгляване) конкретно скилът носи
+`scripts/k_checker.py` — смята и двете директно от файла, без допускания за смисъла на
+никоя друга колона. Пусни го и вземи находките му вместо да ги пресмяташ наум; другите
 шест проверки на групата остават на анализа тук.
 
 ## Работен процес
@@ -221,9 +222,9 @@ fs = openpyxl.load_workbook(path, data_only=False)    # формулите
 той знае файла си.
 
 Липсваща колона е находка сама по себе си — отбележи я, не я запълвай с допускане.
-`tools/preflight.py` в репозиторито на скила прави точно това съответствие с
-речник от понятия и `mapping.yaml` на дружеството; когато докладът му е наличен, вземи
-съответствията оттам, вместо да ги установяваш наново.
+`scripts/preflight.py` прави точно това съответствие с речник от понятия и
+`scripts/mapping.example.yaml` на дружеството; пусни го и вземи съответствията оттам,
+вместо да ги установяваш наново.
 
 ### 3а. Какво изобщо може да се провери с подаденото
 
