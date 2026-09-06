@@ -14,25 +14,35 @@ reasons: K3 needs to know contributions are stale rather than merely fixed, K4 n
 control column's formula, K7 needs a number the workbook does not carry, K8 needs the
 neighbouring sheet.
 
-K5 (a hand-typed total) and K6 (rounding beyond two decimals) ask nothing about any
-column but the one being checked, so they carry no such risk - a totals row either sums
-its column or it does not, and a money cell either rounds to two decimals or it does,
-regardless of what else the file contains. That is the whole scope of this script.
+K5 (a hand-typed total) and K6 (rounding beyond two decimals) ask nothing about what a
+money column *means*, only about its own numbers, so they carry no such risk - a money
+column either sums to its totals-row cell or it does not, and a money cell either
+rounds to two decimals or it does, regardless of what else the file contains. K5 does
+still need one piece of column meaning, learned the hard way (below): a percentage
+column is not money, because its totals row is often an average rather than a sum, and
+"totals row" alone cannot tell the two apart.
 
 Reuses tools/preflight.py's column resolution (Mapping, classify()) so a company's
 layout is declared once, in one file, not twice - but neither check is limited to the
 concept vocabulary. 2.14.0 iterated `analyse()`'s known-concept columns only, and missed
 every K5 defect landing in a column outside that closed list (a benefit column, a
 deduction column - real ones, just not ones this tool names): 0 of 28 found against
-test/generate_wide.py's injected fixtures. K5 and K6 ask nothing about what a column
-*means*, only about its own numbers, so both now walk every header on the sheet.
+test/generate_wide.py's injected fixtures. Both checks now walk every header on the
+sheet instead.
 
-K6 also counted a chain reaction as two findings: an unrounded class supplement flows
-into the gross by construction, so the same defect surfaced once in its own column and
-once in БРУТО. `otchet.md` forbids counting a cause and its consequence twice, and
-test/structural_test.py already enforces "one finding per row" for this same check -
-this tool now does too, reporting the first money-like column found and moving on to
-the next row.
+That same release counted a K6 chain reaction as two findings: an unrounded class
+supplement flows into the gross by construction, so the same defect surfaced once in
+its own column and once in БРУТО. `otchet.md` forbids counting a cause and its
+consequence twice, and test/structural_test.py already enforces "one finding per row"
+for this same check - this tool now does too, reporting the first money-like column
+found and moving on to the next row.
+
+2.14.1 walking every header for K5 also opened a new false positive: a real layout
+sometimes writes the *average* of a percentage column (e.g. „Клас %“) into the totals
+row rather than its sum, which a generic sum check cannot distinguish from a hand-typed
+total. K5 now excludes the same day/percentage/hour columns K6 already excluded for the
+same reason - the trade is giving up K5 on a day-column total, which would still sum
+validly, for removing a confirmed false positive on percentage columns.
 
 Usage:
     python tools/k_checker.py ВЕДОМОСТ.xlsx [--mapping tools/mapping.example.yaml]
@@ -67,7 +77,10 @@ SUM_EPS = 0.01                   # a cent: what a rate rounded before multiplyin
 # name a day count or a percentage are excluded by concept; an unrecognised header is
 # excluded by the same words a real layout uses for those columns.
 _DAY_OR_PERCENT_CONCEPTS = {"отработени дни", "дни отпуск", "дни болничен", "клас %"}
-_NOT_MONEY = re.compile(r"дни|%|час", re.I)
+# Whole words only: a bare "час" as a substring also matches "**час**т" ("частта",
+# "лична част" - a real column name of one of the three generate_wide.py targets for
+# K5), which is a share, not an hour.
+_NOT_MONEY = re.compile(r"\bдни\b|%|\bчас(а|ове)?\b", re.I)
 
 
 def _is_money_like(header, concept):
@@ -122,6 +135,11 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
 
         if s["totals_row"]:
             for c, (header, concept) in headers.items():
+                if not _is_money_like(header, concept):
+                    continue          # a percentage column's total is often an average,
+                                      # not a sum - a real layout writes it there and a
+                                      # day-column total, while it would sum validly, is
+                                      # not worth the same risk for the coverage it buys
                 stated = ws.cell(s["totals_row"], c).value
                 if not (isinstance(stated, (int, float)) and not isinstance(stated, bool)):
                     continue
