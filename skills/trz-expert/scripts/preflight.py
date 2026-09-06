@@ -117,10 +117,21 @@ CONCEPTS = {
     "данък":          (True,  ["ддфл", "данък", "данък общ доход", "дод"]),
     "лични вноски":   (True,  ["лични вноски общо", "лични осигуровки",
                                "осигуровки лице", "лични вноски"]),
-    "нето":           (True,  ["нето за изплащане", "нето преди удръжки", "нето",
-                               "сума за получаване", "за получаване"]),
-    "вноски раб-л":   (False, ["вноски работодател общо", "вноски работодател",
-                               "осигуровки работодател"]),
+    # A real file rarely carries both, but scripts/audit.py's I1 needs to walk the
+    # chain from one to the other - "НЕТО преди удръжки" is гросс minus contributions
+    # minus tax, "НЕТО за изплащане" is that minus the personal deductions. Collapsing
+    # them into one concept, as before 2.17.0, raised DUPLICATE_CONCEPT on any file
+    # that names both, which every generate_wide.py fixture does.
+    "нето":           (True,  ["нето за изплащане", "нето", "сума за получаване",
+                               "за получаване"]),
+    "нето преди удръжки": (False, ["нето преди удръжки"]),
+    # Same reason, same fix: "Вноски работодател ДОО+ТЗПБ" is one fund's contribution,
+    # "Вноски работодател общо" is the sum across all funds - a bare "вноски
+    # работодател" spelling matched both by substring, because it is a literal prefix
+    # of the first. Removed rather than widened: an exact "Вноски работодател" header
+    # still matches through the exact-match pass this concept's remaining spellings
+    # cover.
+    "вноски раб-л":   (False, ["вноски работодател общо", "осигуровки работодател"]),
     # „Клас %" and „Клас сума" are the rate and the amount - different quantities, and
     # collapsing them into one concept made a correct real layout look like it named the
     # same thing twice. Found by running this tool against test/vedomost_05_2026.xlsx.
@@ -150,6 +161,12 @@ CONCEPTS = {
     "удръжка карта":  (False, ["удръжка карта (лична част)"]),
     "карта работодател": (False, ["карта (за сметка на работодателя)"]),
     "доброволно здравно осиг. премия": (False, ["доброволно здравно осигуряване (премия)"]),
+    # B1/B5 (2.18.0): the minimum wage is proportional to contracted time (chl 1 ал.2
+    # НСОРЗ), and a part-time row compared against the full МРЗ is a false positive
+    # audit.py's own suite-1 fixture caught directly - Стефка Ангелова, 4 hours a day,
+    # correctly under the full МРЗ and flagged anyway before this concept existed.
+    "часове на ден":  (False, ["раб. време (ч/ден)", "работно време (часове)",
+                               "часове на ден", "договорени часове"]),
 }
 
 # Concepts never written into the normalised extract. „име" is the payroll's personal
@@ -166,6 +183,7 @@ DEPENDS = {
     "данък":          "F6, F7, I1 - данъкът не може да се сверява",
     "лични вноски":   "F2, I1 - разпределението на вноските не може да се провери",
     "нето":           "I1, K7 - вертикалната сверка не може да се затвори",
+    "нето преди удръжки": "I1 - веригата бруто -> нето преди удръжки не може да се провери отделно от крайното нето",
     "бруто":          "I2, K1 - хоризонталната сверка не може да се затвори",
     "клас":           "C1, C2, C3 - класът не може да се провери",
     "дни болничен":   "F9 - дните за сметка на работодателя не могат да се разделят",
