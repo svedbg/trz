@@ -27,6 +27,10 @@ sys.path.insert(0, HERE)
 
 import trz_model as M                                          # noqa: E402
 
+SKILL_DIR = os.path.normpath(os.path.join(HERE, "..", "skills", "trz-expert"))
+sys.path.insert(0, os.path.join(SKILL_DIR, "scripts"))
+import rates as SR                                             # noqa: E402
+
 REFERENCES = os.path.normpath(os.path.join(
     HERE, "..", "skills", "trz-expert", "references"))
 RATES_FILE = os.path.join(REFERENCES, "stavki.md")
@@ -261,8 +265,43 @@ def main():
                   f"and drop it from this list.")
             failed.append(label)
 
+    print()
+    # scripts/rates.py is audit.py's own extraction layer - a second, independent set of
+    # patterns against the same reference text, not covered by CHECKS above. Only two of
+    # its nine FLAT_PATTERNS entries are read by audit.py today (employer_no_tzpb_pct,
+    # social_expense_threshold_eur); the rest are reserved for checks not wired up yet.
+    # Without this loop a stavki.md restructure could silently break one of those seven -
+    # load_flat() fails closed (the name is just absent from its result, per its own
+    # docstring), so audit.py would never crash, and no other suite exercises them.
+    flat = SR.load_flat(SKILL_DIR)
+    for name in SR.FLAT_PATTERNS:
+        label = f"scripts/rates.py FLAT_PATTERNS[{name!r}]"
+        if name in flat:
+            print(f"  ok          {label:58} {flat[name]}")
+        else:
+            print(f"  NOT FOUND   {label}")
+            print("              pattern matched zero or more than once in the current "
+                  "reference tree - a check reading it would get None and refuse "
+                  "silently, per rates.py's fail-closed contract")
+            failed.append(label)
+
+    # PERIOD_PATTERNS need a period known to exist; 2026 is split into the same two
+    # halves the CHECKS above already cross-check against trz_model.py.
+    for name in SR.PERIOD_PATTERNS:
+        for year, month in ((2026, 1), (2026, 8)):
+            label = f"scripts/rates.py PERIOD_PATTERNS[{name!r}] for {year}-{month:02d}"
+            v = SR.for_period(SKILL_DIR, name, year, month)
+            if v is None:
+                print(f"  NOT FOUND   {label}")
+                print("              for_period() returned None for a period the skill "
+                      "is meant to cover")
+                failed.append(label)
+            else:
+                print(f"  ok          {label:58} {v}")
+
     print("=" * 78)
-    total = len(CHECKS) + len(PHRASES) + len(UNCONFIRMED)
+    total = len(CHECKS) + len(PHRASES) + len(UNCONFIRMED) + len(SR.FLAT_PATTERNS) + \
+        2 * len(SR.PERIOD_PATTERNS)
     if failed:
         print(f"FAILED: {len(failed)} of {total}")
         print("A rate in the reference file has drifted from test/trz_model.py. Fix "
