@@ -51,7 +51,7 @@ contract, one severance calculation.
 
 ## What it checks
 
-Eleven groups, 85 checks, in
+Eleven groups, 86 checks, in
 [`references/proverki.md`](skills/trz-expert/references/proverki.md):
 
 | | |

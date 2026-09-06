@@ -54,6 +54,10 @@ def cache_formula_values(path, cached, sheets=("xl/worksheets/sheet1.xml",)):
     two *is* one of the shapes under test: S10 is this same workbook with the patch
     withheld.
 
+    With lxml installed, openpyxl serialises the empty tag as `<v></v>` instead of
+    `<v/>` - both forms are matched here so the fixture doesn't depend on which XML
+    backend produced it.
+
     `cached` maps a cell reference to the value to store, e.g. {"E4": 1050.0}. `sheets`
     names the worksheet parts to patch - more than one when a shape adds a second sheet
     that also carries formulas, since a sheet left unpatched raises NO_CACHED_VALUES and
@@ -68,7 +72,7 @@ def cache_formula_values(path, cached, sheets=("xl/worksheets/sheet1.xml",)):
                 for ref, value in cached.items():
                     # The cell element for this ref, up to its closing tag; only the
                     # empty <v/> inside it is replaced, so nothing else can be touched.
-                    pattern = re.compile(r'(<c r="%s"[^>]*>.*?)<v\s*/>(.*?</c>)' % ref)
+                    pattern = re.compile(r'(<c r="%s"[^>]*>.*?)(?:<v\s*/>|<v></v>)(.*?</c>)' % ref)
                     xml = pattern.sub(lambda m: f"{m.group(1)}<v>{value}</v>{m.group(2)}",
                                       xml, count=1)
                 blob = xml.encode("utf8")

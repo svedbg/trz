@@ -48,7 +48,7 @@
 
 ## Какво проверява
 
-Единадесет групи, 85 проверки, в
+Единадесет групи, 86 проверки, в
 [`references/proverki.md`](skills/trz-expert/references/proverki.md):
 
 | | |
