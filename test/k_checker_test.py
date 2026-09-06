@@ -34,13 +34,16 @@ import generate_wide as GW                                     # noqa: E402
 
 HEADERS = ["Име", "Отраб. дни", "Основна за отработеното", "Клас сума", "БРУТО",
            "Осигурителен доход", "Данъчна основа", "ДДФЛ", "Лични вноски общо",
-           "НЕТО за изплащане", "Карта (за сметка на работодателя)"]
+           "НЕТО за изплащане", "Карта (за сметка на работодателя)", "Клас %"]
 ROWS = [
-    ["Лице 1", 21, 1000.00, 50.00, 1050.00, 1050.00, 945.00, 94.50, 105.00, 850.50, 40.00],
-    ["Лице 2", 18, 1200.00, 96.00, 1296.00, 1296.00, 1166.40, 116.64, 129.60, 1049.76, 40.00],
-    ["Лице 3", 21, 900.00, 18.00, 918.00, 918.00, 826.20, 82.62, 91.80, 743.58, 40.00],
+    ["Лице 1", 21, 1000.00, 50.00, 1050.00, 1050.00, 945.00, 94.50, 105.00, 850.50, 40.00, 5.0],
+    ["Лице 2", 18, 1200.00, 96.00, 1296.00, 1296.00, 1166.40, 116.64, 129.60, 1049.76, 40.00, 8.0],
+    ["Лице 3", 21, 900.00, 18.00, 918.00, 918.00, 826.20, 82.62, 91.80, 743.58, 40.00, 2.0],
 ]
 HEADER_ROW = 1
+# Left out of the totals row's default per-column sum, the way a real export leaves it:
+# a percentage column's total is not one more sum, it just isn't sensible as one.
+NOT_SUMMED = {"Клас %"}
 
 failures = []
 
@@ -62,6 +65,8 @@ def build(path, mutate=None):
     totals_row = HEADER_ROW + 1 + len(ROWS)
     ws.cell(totals_row, 1, "Общо")
     for c in range(2, len(HEADERS) + 1):
+        if HEADERS[c - 1] in NOT_SUMMED:
+            continue
         ws.cell(totals_row, c, round(sum(row[c - 1] for row in ROWS), 2))
     if mutate:
         mutate(ws, totals_row)
@@ -116,10 +121,22 @@ def s_k6_chains_into_gross(ws, totals_row):
             round(ws.cell(totals_row, gross_col).value + delta, 6))
 
 
+def s_k5_percent_average_is_not_a_defect(ws, totals_row):
+    """A real layout's totals row holds the *average* of a percentage column, not
+    its sum - the 2.14.1 false positive. Walking every header for K5 (the fix for
+    s_k5_unknown_column, above) made a percentage column eligible for the same sum
+    check as any other, and a hand-typed average then read as K5.
+    """
+    col = HEADERS.index("Клас %") + 1
+    values = [row[col - 1] for row in ROWS]
+    ws.cell(totals_row, col, round(sum(values) / len(values), 2))
+
+
 SHAPES = {
     None: {},
     "s_k5_total_not_sum": {KC.K5_TOTAL_NOT_SUM: 1},
     "s_k5_unknown_column": {KC.K5_TOTAL_NOT_SUM: 1},
+    "s_k5_percent_average_is_not_a_defect": {},
     "s_k6_unrounded_accrual": {KC.K6_UNROUNDED_ACCRUAL: 1},
     "s_k6_chains_into_gross": {KC.K6_UNROUNDED_ACCRUAL: 1},   # one row, not two columns
 }
