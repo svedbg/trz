@@ -208,11 +208,22 @@ def _statutory_misplacements(work_base, insurable, el, tol):
 
 
 def check(path, mapping=None, kid=None, group=None, tzpb=None):
-    """Findings as a list of dicts. Never writes; reads the workbook once, values only."""
+    """(findings, coverage): findings as a list of dicts, coverage as one dict per
+    sheet describing how many rows this script actually evaluated against how many
+    are there - never writes, reads the workbook once, values only.
+
+    A finding says what is wrong; coverage says what was looked at, which a reader
+    cannot get from the findings alone - a clean sheet and an unevaluated one both
+    raise nothing. The insurable-income composition pass in particular is gated on
+    the whole sheet (any unrecognised column blocks it entirely, see the module
+    docstring) and skips individual rows at the cap or with no accruals for work -
+    both silent before this return value existed.
+    """
     mapping = mapping or PF.Mapping()
     data = PF.analyse(path, mapping, kid, group, tzpb)
     wb = openpyxl.load_workbook(path, data_only=True)
     findings = []
+    coverage = []
 
     flat = R.load_flat(SKILL_DIR)
     employer_no_tzpb = flat.get("employer_no_tzpb_pct")
@@ -220,12 +231,23 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
 
     for s in data["sheets"]:
         if s["header_row"] is None or not s["first_row"]:
+            coverage.append(dict(sheet=s["name"], rows_total=0,
+                                 skip_reason="no header row found"))
             continue
         ws = wb[s["name"]]
         last = (s["totals_row"] - 1) if s["totals_row"] else ws.max_row
         if last < s["first_row"]:
+            coverage.append(dict(sheet=s["name"], rows_total=0,
+                                 skip_reason="no data row found"))
             continue
         known = s["known"]
+        sheet_cov = dict(sheet=s["name"], rows_total=last - s["first_row"] + 1,
+                         composition_ran=False, composition_gate_reason=None,
+                         composition_rows_evaluated=0,
+                         composition_rows_skipped_no_work=0,
+                         composition_rows_skipped_at_cap=0,
+                         composition_rows_skipped_no_value=0)
+        coverage.append(sheet_cov)
 
         min_wage = max_insurable = None
         other_caps = []
@@ -446,6 +468,7 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
         # once. See the module docstring for the method and its two hard limits
         # (nothing decided at the cap, nothing decided without accruals for work).
         if all(c in known for c in COMPOSITION_CONCEPTS) and not s["unknown"]:
+            sheet_cov["composition_ran"] = True
             social_threshold = flat.get("social_expense_threshold_eur")
             rows_data = []
             for r in range(s["first_row"], last + 1):
@@ -465,6 +488,7 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                     el["excess"] = round(max(0.0, premium - social_threshold), 2)
                 osig_c = _num(ws, known.get("осиг. доход"), r)
                 if osig_c is None:
+                    sheet_cov["composition_rows_skipped_no_value"] += 1
                     continue
                 at_cap = (max_insurable is not None
                          and any(abs(osig_c - c) < 0.005
@@ -505,9 +529,13 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                     ))
 
             for d in rows_data:
-                if d["no_work"] or d["at_cap"]:
-                    continue                # B4 already covers the cap; no
-                                             # composition without accruals for work
+                if d["no_work"]:
+                    sheet_cov["composition_rows_skipped_no_work"] += 1
+                    continue
+                if d["at_cap"]:
+                    sheet_cov["composition_rows_skipped_at_cap"] += 1
+                    continue                # B4 already covers the cap
+                sheet_cov["composition_rows_evaluated"] += 1
                 el = d["el"]
                 practice_clear = not any(el[k] and practice[k] is None
                                         for k in CONTESTED)
@@ -572,7 +600,15 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                                  f"комбинация от спорните елементи го достига без "
                                  f"него",
                         ))
-    return findings
+        else:
+            missing = [c for c in COMPOSITION_CONCEPTS if c not in known]
+            reasons = []
+            if missing:
+                reasons.append("липсващи понятия: " + ", ".join(missing))
+            if s["unknown"]:
+                reasons.append(f"{len(s['unknown'])} неразпознати колони")
+            sheet_cov["composition_gate_reason"] = "; ".join(reasons)
+    return findings, coverage
 
 
 def report(path, findings):
@@ -589,6 +625,39 @@ def report(path, findings):
         L.append(f"\n## Лист „{sheet}“\n")
         for f in items:
             L.append(f"- **{f['id']}** {f['text']}")
+    return "\n".join(L) + "\n"
+
+
+def coverage_report(coverage):
+    """How many rows this script actually evaluated, per sheet - not a percentage
+    (otchet.md's "Без процент на покритие" applies here just as much as to the model's
+    own report: a denominator like "86 checks" is not uniform across files, and this
+    script only ever claims the mechanical subset anyway). Counts only: found, ran,
+    skipped and why.
+    """
+    L = ["\n## Обхват\n"]
+    for c in coverage:
+        L.append(f"\n### Лист „{c['sheet']}“\n")
+        if c.get("skip_reason"):
+            L.append(f"- {c['skip_reason']} — този лист не е обходен от скрипта")
+            continue
+        L.append(f"- редове с данни: {c['rows_total']}")
+        if not c["composition_ran"]:
+            L.append(f"- съставът на осигурителния доход (F1/F9/F10) не е проверен "
+                     f"за целия лист — {c['composition_gate_reason']}")
+            continue
+        evaluated = c["composition_rows_evaluated"]
+        skipped_no_work = c["composition_rows_skipped_no_work"]
+        skipped_cap = c["composition_rows_skipped_at_cap"]
+        skipped_no_value = c["composition_rows_skipped_no_value"]
+        L.append(f"- съставът на осигурителния доход: {evaluated} от "
+                 f"{c['rows_total']} реда проверени"
+                 + (f"; {skipped_no_work} без начисления за труд (чл. 6, ал. 2 КСО)"
+                    if skipped_no_work else "")
+                 + (f"; {skipped_cap} на тавана (много съставки водят до същата сума)"
+                    if skipped_cap else "")
+                 + (f"; {skipped_no_value} без стойност в „Осигурителен доход“"
+                    if skipped_no_value else ""))
     return "\n".join(L) + "\n"
 
 
@@ -614,12 +683,12 @@ def main(argv=None):
             return 2
     try:
         tzpb = float(a.tzpb) if a.tzpb is not None else None
-        findings = check(a.workbook, mapping, a.kid, a.group, tzpb)
+        findings, coverage = check(a.workbook, mapping, a.kid, a.group, tzpb)
     except Exception as exc:                                  # noqa: BLE001
         print(f"файлът не може да бъде прочетен: {exc}", file=sys.stderr)
         return 2
 
-    text = report(a.workbook, findings)
+    text = report(a.workbook, findings) + coverage_report(coverage)
     if a.out:
         with open(a.out, "w", encoding="utf8") as f:
             f.write(text)

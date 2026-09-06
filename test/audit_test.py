@@ -98,10 +98,19 @@ def run_wide(seeds):
     for seed in range(1, seeds + 1):
         try:
             path, _, man = GW.generate(seed, None, 2026)
-            findings = A.check(path, mapping=mapping, tzpb=man["tzpb_due"])
+            findings, coverage = A.check(path, mapping=mapping, tzpb=man["tzpb_due"])
         except Exception as exc:                              # noqa: BLE001
             mismatches.append(f"seed {seed}: exception {exc!r}")
             continue
+        for c in coverage:
+            if c.get("composition_ran"):
+                total = (c["composition_rows_evaluated"]
+                        + c["composition_rows_skipped_no_work"]
+                        + c["composition_rows_skipped_at_cap"]
+                        + c["composition_rows_skipped_no_value"])
+                if total != c["rows_total"]:
+                    mismatches.append(f"seed {seed} {c['sheet']}: coverage accounts "
+                                      f"for {total} of {c['rows_total']} rows")
         got_ids = {f["id"] for f in findings}
         expected_ids_at_row = {(WIDE_HDR + 1 + idx if where == "row" else "file", x)
                                for where, idx, x in man["expected"]}
@@ -180,10 +189,21 @@ def run_static():
     if not os.path.exists(STATIC_FIXTURE):
         fail(f"{STATIC_FIXTURE} is missing - run test/generate_narrow.py first")
         return
-    findings = A.check(STATIC_FIXTURE, kid="62", group="3", tzpb=0.4)
+    findings, coverage = A.check(STATIC_FIXTURE, kid="62", group="3", tzpb=0.4)
     by_row = {}
     for f in findings:
         by_row.setdefault(f["row"], set()).add(f["id"])
+
+    # The static fixture's columns do not cover COMPOSITION_CONCEPTS - the composition
+    # pass must say so, not silently run or silently skip.
+    if len(coverage) != 1 or coverage[0]["rows_total"] <= 0:
+        fail(f"coverage should report one sheet with rows, got {coverage}")
+    elif coverage[0]["composition_ran"] or not coverage[0]["composition_gate_reason"]:
+        fail(f"the static fixture's composition pass must be gated off with a reason, "
+             f"got {coverage[0]}")
+    else:
+        print(f"  ok   coverage: composition pass gated off - "
+              f"{coverage[0]['composition_gate_reason']}")
 
     expected = {
         6: {"B1_below_minimum_wage"},
@@ -423,7 +443,7 @@ def run_hand_built(tmpdir):
     for name, expected in SHAPES.items():
         path = os.path.join(tmpdir, f"{name or 'clean'}.xlsx")
         build(path, mutate=globals()[name] if name else None)
-        findings = A.check(path, kid="62", group="3", tzpb=0.4)
+        findings, _ = A.check(path, kid="62", group="3", tzpb=0.4)
         got = {}
         for f in findings:
             got[f["id"]] = got.get(f["id"], 0) + 1

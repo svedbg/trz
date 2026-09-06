@@ -229,6 +229,18 @@ A false positive fails exactly like a miss.
   silent resolution CLAUDE.md's "fail closed" rule forbids. Pair and komplekt have no
   equivalent oracle yet - `expected_amounts` is absent there, and `_amount_mismatch()`
   is a no-op with nothing to compare against.
+- **`scripts/audit.py`'s `check()` returns `(findings, coverage)`, not findings alone.**
+  A finding says what is wrong; nothing said what was actually looked at, and a clean
+  sheet reads identically to one the composition pass never ran on at all. Coverage is
+  one dict per sheet: rows found, and - for the insurable-income composition pass
+  specifically, the one check here gated on the whole sheet having zero unrecognised
+  columns - whether it ran, why not when it didn't, and how many of its rows were
+  evaluated versus skipped at the cap or with no accruals for work. `coverage_report()`
+  renders it under its own "Обхват" heading; `otchet.md`'s new "Удостоверение за одита"
+  asks the model's own report to state the same kind of thing for the checks it does in
+  prose - counts, never a percentage, same reasoning as "Без процент на покритие"
+  already gave the coverage table above it. Four call sites needed the tuple
+  (`audit.py`'s own `main()`, three in `audit_test.py`); nothing else calls `check()`.
 - **Suite 6 may only compare a month with another month.** Every sheet in
   `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing
