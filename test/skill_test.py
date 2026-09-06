@@ -115,6 +115,14 @@ compatibility = frontmatter.get("compatibility", "")
 if len(compatibility) > COMPATIBILITY_CAP:
     fail(f"compatibility is {len(compatibility)} characters, over the "
          f"{COMPATIBILITY_CAP} cap")
+# compatibility used to carry a prose copy of the verification date (dropped when
+# DATE_COPIES went from 8 to 7); nothing but this line stops it coming back silently
+# with a stale date next to it - the field states environment requirements, and the
+# date already has a machine-readable home in metadata.rates_verified.
+if re.search(r"\d{2}\.\d{2}\.\d{4}", compatibility):
+    fail("compatibility carries a dd.mm.yyyy date - the verification date belongs "
+         "only in metadata.rates_verified, not restated here where nothing keeps it "
+         "in step")
 
 if "license" not in frontmatter:
     fail("no license field in the frontmatter - a skill published without one "
@@ -371,7 +379,7 @@ if plugin:
     # READMEs and, as its mirror image, in the eval fixture. Flip it in the manifest
     # alone and every test stays green while every other place describes the opposite
     # reading. That is the drift class this file already guards for the verification
-    # date, which is why that one is checked in its source plus all eight copies.
+    # date, which is why that one is checked in its source plus all seven copies.
     for key, spec in user_config.items():
         if not isinstance(spec, dict) or "default" not in spec:
             continue
