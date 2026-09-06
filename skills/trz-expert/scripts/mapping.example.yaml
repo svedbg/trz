@@ -4,7 +4,7 @@
 # български текст. Този файл казва кое как се казва тук, вместо да се гадае наново всеки
 # месец. Гадаенето остава за колоните, които не са описани.
 #
-#   python tools/preflight.py ВЕДОМОСТ.xlsx --mapping tools/mapping.example.yaml
+#   python skills/trz-expert/scripts/preflight.py ВЕДОМОСТ.xlsx --mapping skills/trz-expert/scripts/mapping.example.yaml
 #
 # Във файла няма лични данни — само заглавия на колони и данни за дружеството, — затова
 # може да се държи във версионен контрол. Реални ведомости не влизат в репозиторито.

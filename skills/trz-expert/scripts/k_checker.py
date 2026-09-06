@@ -5,7 +5,7 @@ Group K (`references/proverki.md`) has eight checks and none of them cites a sta
 they compare the file with itself. That should make all eight easy to hand to code, but
 most of them need something a generic tool cannot promise: K1 needs the full set of
 accrual columns, and a real file legitimately carries accrual columns this tool's closed
-concept vocabulary (`tools/preflight.py`'s CONCEPTS) does not name - a bonus, a
+concept vocabulary (`skills/trz-expert/scripts/preflight.py`'s CONCEPTS) does not name - a bonus, a
 severance payment, a benefit. Flagging БРУТО for not equalling the columns this tool
 happens to recognise would be a false positive on every clean file that has one more
 accrual column than the vocabulary does, and this project treats a false positive as no
@@ -22,7 +22,7 @@ still need one piece of column meaning, learned the hard way (below): a percenta
 column is not money, because its totals row is often an average rather than a sum, and
 "totals row" alone cannot tell the two apart.
 
-Reuses tools/preflight.py's column resolution (Mapping, classify()) so a company's
+Reuses skills/trz-expert/scripts/preflight.py's column resolution (Mapping, classify()) so a company's
 layout is declared once, in one file, not twice - but neither check is limited to the
 concept vocabulary. 2.14.0 iterated `analyse()`'s known-concept columns only, and missed
 every K5 defect landing in a column outside that closed list (a benefit column, a
@@ -54,7 +54,7 @@ it. The trade here is the same as for day columns - K5 on a rate column's total 
 up (a rate column rarely has a sum worth checking anyway) to remove the false positive.
 
 Usage:
-    python tools/k_checker.py ВЕДОМОСТ.xlsx [--mapping tools/mapping.example.yaml]
+    python skills/trz-expert/scripts/k_checker.py ВЕДОМОСТ.xlsx [--mapping skills/trz-expert/scripts/mapping.example.yaml]
                               [--kid 62] [--group 3] [--tzpb 0.4] [--out report.md]
 
 Exit codes: 0 nothing found, 1 at least one finding, 2 could not read the file.
@@ -104,7 +104,7 @@ def _is_money_like(header, concept):
 def check(path, mapping=None, kid=None, group=None, tzpb=None):
     """Findings as a list of dicts. Never writes; reads the workbook once, values only.
 
-    Every header on the sheet is walked, not only the ones tools/preflight.py's closed
+    Every header on the sheet is walked, not only the ones skills/trz-expert/scripts/preflight.py's closed
     concept vocabulary recognises - K5 and K6 are arithmetic on one column at a time and
     do not need to know what the column means. K6 finds at most one column per row
     (headers in sheet order, first money-like column that fails); K5 checks every

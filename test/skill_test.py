@@ -153,7 +153,7 @@ if lines > 500:
 # ------------------------------------------- the checklist and what counts it
 # Two numbers about `proverki.md` are written down elsewhere by hand, and both went
 # stale unnoticed once already: the set of results a check can have (five, after
-# `непроверимо` arrived with tools/preflight.py - the file's own header still said
+# `непроверимо` arrived with scripts/preflight.py - the file's own header still said
 # four over five bullets, and SKILL.md listed the old four), and how many checks
 # there are (scenarios.md said 78 while the file held 85). Neither is derivable by a
 # reader, so both are pinned here against the file itself.

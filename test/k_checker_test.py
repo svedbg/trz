@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Proves tools/k_checker.py has teeth, two ways.
+"""Proves scripts/k_checker.py has teeth, two ways.
 
 Part 1 is a self-contained fixture rather than test/generate_shapes.py's: K5 and K6 are
 checked from *values*, never formulas, so the fixture needs no formula caching at all -
 every cell, including the totals row, is a plain number chosen to already be
 self-consistent. It also pins three regressions directly: one shape plants K5 in a
-column outside tools/preflight.py's concept vocabulary (0 of 28 found against real
+column outside scripts/preflight.py's concept vocabulary (0 of 28 found against real
 fixtures before the 2.14.1 fix), another plants an unrounded value that flows into a
 second, known-concept column the way a class supplement flows into gross (found twice
 before the fix - a cause and its consequence counted as two findings, which otchet.md
@@ -34,7 +34,7 @@ import openpyxl
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(ROOT, "tools"))
+sys.path.insert(0, os.path.join(ROOT, "skills", "trz-expert", "scripts"))
 
 import k_checker as KC                                        # noqa: E402
 import generate_wide as GW                                     # noqa: E402
@@ -93,7 +93,7 @@ def s_k5_total_not_sum(ws, totals_row):
 
 
 def s_k5_unknown_column(ws, totals_row):
-    """K5 in a column tools/preflight.py's CONCEPTS does not name at all.
+    """K5 in a column scripts/preflight.py's CONCEPTS does not name at all.
 
     „Карта (за сметка на работодателя)" classifies to no concept - exactly the shape
     that went 0 for 28 against test/generate_wide.py's fixtures in 2.14.0, because the

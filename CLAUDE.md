@@ -32,8 +32,8 @@ python test/rates_test.py     # rates vs. the reference file. No dependencies. R
 python test/skill_test.py     # packaging: frontmatter, references, manifests, licences, dates
 python test/checks_test.py    # suite 1: static payroll against the key in expected_findings.md
 python test/eval_skill.py --selftest      # free: checks the refusal grading itself
-python test/preflight_test.py # tools/preflight.py: clean is silent, each shape defect found once
-python test/k_checker_test.py # tools/k_checker.py: K5/K6 vs. generate_wide.py's manifest, 60 seeds by default
+python test/preflight_test.py # scripts/preflight.py: clean is silent, each shape defect found once
+python test/k_checker_test.py # scripts/k_checker.py: K5/K6 vs. generate_wide.py's manifest, 60 seeds by default
 python test/komplekt_test.py  # suite 5: ведомост -> обр. 1 -> обр. 6 -> внесено -> счетоводство, one link at a time
 python test/lifecycle_test.py # suite 6: five months of the same people, one timeline break at a time
 python test/run_tests.py      # all five, 50 seeds
@@ -84,7 +84,7 @@ A false positive fails exactly like a miss.
 - **`stavki.md` is an index too, since 2.14.4** — statuses, the per-section
   verification-date table (now with a file column) and the changelog, plus a one-line
   "Ставки по теми" bullet per topic. The rate tables themselves are in
-  `references/stavki/<topic>.md`. `test/rates_test.py`'s `TEXT`, `tools/preflight.py`'s
+  `references/stavki/<topic>.md`. `test/rates_test.py`'s `TEXT`, `skills/trz-expert/scripts/preflight.py`'s
   `regime_boundaries()` and `test/findings.py`'s citation grounding all read the index
   plus every topic file concatenated, not the index alone - a rate or a citation moving
   into a topic file must not go blind to any of the three. `skill_test.py` pins the
@@ -108,21 +108,26 @@ A false positive fails exactly like a miss.
   `references/proverki/` too, not only the index, since a citation can now live in either
   one. Edit the group file's content; keep the index's title line in step only if the
   title itself changed.
-- **`tools/` is not part of the skill.** `tools/preflight.py` checks whether a real
-  payroll workbook can be audited at all — header row, formulas, period, missing
-  columns, and the two values no file carries (КИД and ТЗПБ). It lives outside
-  `skills/trz-expert` on purpose: SKILL.md promises prose only, and installing copies
-  the skill directory whole. It never writes to the workbook — the file is evidence —
-  and never guesses a period, because guessing the period picks the thresholds. Its
-  column vocabulary is pinned against `trz_model.COLUMNS` by `preflight_test.py`.
-  `tools/k_checker.py` sits beside it, same reasoning, and computes only K5 (a
-  hand-typed total) and K6 (rounding) from a real workbook — the two group-K checks
-  that ask nothing about any column but the one being checked. It walks every header on
-  the sheet, not only `preflight.py`'s known concepts: limiting it to those once meant
-  0 of 28 injected K5 defects were found, because a real file's benefit and deduction
-  columns are not all in that closed vocabulary. `test/k_checker_test.py` checks it
-  against `generate_wide.py`'s manifest, not only a hand-built fixture, for exactly
-  that reason.
+- **`skills/trz-expert/scripts/` ships with the plugin, since 2.16.0.** It used to be
+  `tools/` at the repo root, outside `skills/trz-expert`, because installing a plugin
+  copies the skill directory whole and `SKILL.md` once promised prose only. That promise
+  cost every installed user the two scripts entirely — they could only ever be reached
+  from a cloned checkout, never from `/plugin install`. `scripts/preflight.py` checks
+  whether a real payroll workbook can be audited at all — header row, formulas, period,
+  missing columns, and the two values no file carries (КИД and ТЗПБ). It never writes to
+  the workbook — the file is evidence — and never guesses a period, because guessing the
+  period picks the thresholds. Its column vocabulary is pinned against `trz_model.COLUMNS`
+  by `preflight_test.py`. `scripts/k_checker.py` sits beside it, same reasoning, and
+  computes only K5 (a hand-typed total) and K6 (rounding) from a real workbook — the two
+  group-K checks that ask nothing about any column but the one being checked. It walks
+  every header on the sheet, not only `preflight.py`'s known concepts: limiting it to
+  those once meant 0 of 28 injected K5 defects were found, because a real file's benefit
+  and deduction columns are not all in that closed vocabulary. `test/k_checker_test.py`
+  checks it against `generate_wide.py`'s manifest, not only a hand-built fixture, for
+  exactly that reason. Moving the directory took `sys.path` edits in both test files,
+  `preflight.py`'s own `SKILL_DIR`-relative path to `stavki.md`, and the pre-commit
+  hook's trigger regex - a change under `scripts/` that stops matching that regex would
+  go untested locally again, the exact failure mode the move was meant to close.
 - **Suite 6 may only compare a month with another month.** Every sheet in
   `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing
@@ -144,8 +149,8 @@ A false positive fails exactly like a miss.
   its own signal and nothing else — a false positive fails like a miss, as everywhere
   else here. Adding a shape means a mutation in `generate_shapes.py`, its signal in
   `SHAPES`, and proving it: break the detection, watch it go red, revert.
-- **A company's layout is declared once** in a `mapping.yaml`
-  (`tools/mapping.example.yaml`), not re-guessed monthly. A typo in a concept key
+- **A company's layout is declared once** in a `mapping.yaml`, templated by
+  `scripts/mapping.example.yaml`, not re-guessed monthly. A typo in a concept key
   blocks rather than doing nothing quietly, and a mapping pointing at a column that is
   no longer there is reported as stale. The file holds headers and КИД only — no
   personal data — so it belongs in version control.

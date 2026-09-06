@@ -71,20 +71,20 @@ fi
 
 # --- all five suites (0-4): only when Python changed ------------------------
 # run_tests.py repeats suite 0 and adds the static payroll and the three generated
-# suites. tools/ is included too - tools/preflight.py and tools/k_checker.py are Python
-# just as much as anything under test/, and a change there was previously invisible
-# here and caught only in CI. There is no personal-data step here: that guard runs in
-# CI, over the text files and inside every tracked spreadsheet.
-if git diff --cached --name-only | grep -qE '^(test|tools)/.*\.py$'; then
+# suites. skills/trz-expert/scripts/ is included too - preflight.py and k_checker.py
+# are Python just as much as anything under test/, and a change there was previously
+# invisible here and caught only in CI. There is no personal-data step here: that guard
+# runs in CI, over the text files and inside every tracked spreadsheet.
+if git diff --cached --name-only | grep -qE '^(test/.*\.py|skills/trz-expert/scripts/.*\.py)$'; then
     if ! "$PY" -c 'import openpyxl' 2>/dev/null; then
         echo
-        echo "pre-commit: Python under test/ or tools/ was touched but openpyxl is"
-        echo "            missing - the five suites did NOT run. Create the environment once:"
+        echo "pre-commit: Python under test/ or skills/trz-expert/scripts/ was touched but"
+        echo "            openpyxl is missing - the five suites did NOT run. Create the environment once:"
         echo "              python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt"
         echo "Commit stopped so that unchecked code does not land. Skip: --no-verify"
         exit 1
     fi
-    echo "pre-commit: Python under test/ or tools/ was touched - running all five suites (0-4), 25 seeds"
+    echo "pre-commit: Python under test/ or skills/trz-expert/scripts/ was touched - running all five suites (0-4), 25 seeds"
     if ! "$PY" test/run_tests.py --seeds 25 > /tmp/trz-suites.$$ 2>&1; then
         tail -40 /tmp/trz-suites.$$
         rm -f /tmp/trz-suites.$$
@@ -100,7 +100,7 @@ if git diff --cached --name-only | grep -qE '^(test|tools)/.*\.py$'; then
         cat /tmp/trz-kchecker.$$
         rm -f /tmp/trz-kchecker.$$
         echo
-        echo "Commit stopped: tools/k_checker.py disagrees with generate_wide.py's"
+        echo "Commit stopped: k_checker.py disagrees with generate_wide.py's"
         echo "manifest. To skip: git commit --no-verify"
         exit 1
     fi

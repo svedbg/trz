@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for tools/preflight.py - the pre-flight check that runs before an audit.
+"""Tests for scripts/preflight.py - the pre-flight check that runs before an audit.
 
 Standalone, like skill_test.py: run it directly, not through run_tests.py, which owns
 the five generated suites and says so in four places.
@@ -26,7 +26,7 @@ import openpyxl
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-sys.path.insert(0, os.path.join(ROOT, "tools"))
+sys.path.insert(0, os.path.join(ROOT, "skills", "trz-expert", "scripts"))
 sys.path.insert(0, HERE)
 
 import generate_shapes as G                                    # noqa: E402
