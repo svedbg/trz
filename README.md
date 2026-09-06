@@ -304,11 +304,12 @@ python test/eval_skill.py --seeds 3   # three seeds
 **Where it stands on 2.12.0 (05.09.2026), Claude Fable 5.1 across all three fixtures:**
 **34 of 35** injected defects identified on three held-out payrolls, **8 of 8** broken
 links on the комплект — the whole month of ведомост, обр. 1, обр. 6 and payment file —
-and **2 of 2** on the two-month fixture. **Nothing missed anywhere, and zero false
-`нарушение`.** Claude Sonnet 5 on the same wide fixture: 17 of 29. Every gap was triaged
-against the saved transcript: five were keyword gaps, fixed at the phrasing and recorded
-in `test/scenarios.md` with the sentence that caused each, and the one that was a real
-miss is left standing as one rather than papered over with a wider pattern.
+and **2 of 2** on the two-month fixture, with **zero false `нарушение`** anywhere.
+Claude Sonnet 5 on the same wide fixture: 17 of 29. Every gap was triaged against the
+saved transcript: five were keyword gaps, fixed at the phrasing and recorded in
+`test/scenarios.md` with the sentence that caused each. One remains a genuine model
+miss — left standing as a miss rather than papered over with a wider pattern that would
+also catch other, unrelated wordings.
 
 Cost, measured: Claude Fable 5.1 about USD 4.5–6.2 per seed (16–25 turns, 11–15
 minutes); Claude Sonnet 5 about USD 1.5–2.2, at a lower identified rate. **Without
