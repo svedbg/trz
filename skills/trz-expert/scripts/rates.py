@@ -137,15 +137,27 @@ def for_period(skill_dir, name, year, month):
     """The PERIOD_PATTERNS value of `name` whose table row's date range contains the
     first of (year, month), or None when no row does - a period this file has no
     rate for, not a guess at the nearest one.
+
+    Every OTHER value this module returns is guarded against matching more than
+    once (load_flat()'s docstring states the same contract for FLAT_PATTERNS); this
+    one used to return the first match via re.finditer() instead, so two rows that
+    both cover the same period - a duplicated or decoy line above the real one, the
+    same failure test/rates_test.py's extract() exists to catch in the reference
+    file itself - would silently hand back whichever came first, not necessarily the
+    right one. Collecting every match and refusing on a genuine disagreement between
+    them keeps that same guarantee here: an ambiguous period is None, not a guess.
     """
     text = _read_all(skill_dir)
     pattern = PERIOD_PATTERNS[name]
     target = dt.date(year, month, 1)
+    values = []
     for m in re.finditer(pattern, text):
         try:
             start, end = _parse(m.group(1)), _parse(m.group(2))
         except ValueError:
             continue
         if start <= target <= end:
-            return float(m.group(3).replace(",", "."))
-    return None
+            values.append(float(m.group(3).replace(",", ".")))
+    if len(set(values)) > 1:
+        return None
+    return values[0] if values else None
