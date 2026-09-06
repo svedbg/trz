@@ -102,10 +102,13 @@ A false positive fails exactly like a miss.
   drift, or if the mirror does.
 - **Two READMEs.** `README.md` and `README.bg.md` are the same document. A change to
   one that skips the other is a defect; the figures in them must agree.
-- **The verification date is in the source plus eight copies** (stavki.md is the
-  source; SKILL.md `compatibility` and `metadata`, plugin.json, a badge plus a sentence
-  in each README, and `.github/social-preview.html` are the copies). `skill_test.py`
+- **The verification date is in the source plus seven copies** (stavki.md is the
+  source; SKILL.md/plugin.json `metadata.rates_verified`, a badge plus a sentence in
+  each README, and `.github/social-preview.html` are the copies). `skill_test.py`
   checks all of them — let it, rather than updating by hand and hoping.
+  `compatibility` used to carry an eighth, prose copy; trimmed (2.19.3) because the
+  field is meant to state environment requirements, and the date was already
+  machine-readable in `metadata` — do not put it back there.
 - **`stavki.md` is an index too, since 2.14.4** — statuses, the per-section
   verification-date table (now with a file column) and the changelog, plus a one-line
   "Ставки по теми" bullet per topic. The rate tables themselves are in

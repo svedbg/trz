@@ -41,9 +41,9 @@ echo "pre-commit: rates match"
 # references, both plugin manifests, the bundled licence), the marketplace and its
 # .github/plugin mirror, the root licences, the READMEs, the social-preview card, and
 # the three test files it consults - eval_skill.py for the fixture pin, trz_model.py for
-# the scenario count, and itself. The READMEs are here because four of the eight copies
+# the scenario count, and itself. The READMEs are here because four of the seven copies
 # of the verification date are in them - a badge and a sentence in each; skill_test.py
-# checks the source plus all eight, and without README in the list it never ran for the
+# checks the source plus all seven, and without README in the list it never ran for the
 # commit that broke one. The same goes for the card and the mirror, which were missing
 # from an earlier version of this pattern.
 PACKAGING='^(skills/|\.claude-plugin/|\.github/plugin/|\.github/social-preview\.html$|LICENSE|README|test/(eval_skill|skill_test|trz_model)\.py$)'
