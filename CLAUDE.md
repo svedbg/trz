@@ -25,6 +25,30 @@ seed. Need a realistic case? `python test/generate_wide.py --seed 12345`.
 **A finding needs a basis.** Statutory reference for groups A–J; for group K say
 plainly that it rests on arithmetic. Do not invent an article to fill the field.
 
+**Two sides that check each other must not compute the same way.** `trz_model.py`
+(the fixture generator) and `scripts/rates.py` (the auditor's own rate reader) get
+their numbers by two different paths on purpose — one a hardcoded copy
+`rates_test.py` cross-checks, the other extracted fresh from the reference text at
+call time — so a mistake in one is not invisible to the other. This was learned the
+hard way, not assumed: `sick_daily_base()` was once called by both the generator and
+`structural_test.py`'s checker, so a wrong formula in it agreed with itself and
+passed every payroll suite at 60 seeds (`test/scenarios.md`, the "не по-малко от"
+incident). This is not a rule against all shared code — `scripts/audit.py`'s
+composition-solving method is ported verbatim from `test/structural_test.py` on
+purpose, because that algorithm is the thing both sides already agree should behave
+identically, and `audit_test.py` cross-checks the port against the original directly
+rather than trusting a copy to have survived intact. The line: never let two things
+meant to catch each other's mistakes get their numbers from one formula; sharing an
+algorithm both sides already agree is correct, and proving the copy is faithful, is a
+different thing. Do not "simplify" this duplication away.
+
+**Fail closed.** An ambiguous rate (`for_period()` on two disagreeing rows), an
+unmapped column, an unconfirmed reference status, a legal reading with more than one
+defensible answer, a test that only counts findings instead of pinning their
+figures — every one of these refuses or downgrades rather than resolves the
+ambiguity for you. If a change makes one of these "smarter" by picking an answer
+silently, that is the wrong direction for this project.
+
 ## Commands
 
 ```sh
