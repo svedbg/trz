@@ -81,6 +81,15 @@ A false positive fails exactly like a miss.
   source; SKILL.md `compatibility` and `metadata`, plugin.json, a badge plus a sentence
   in each README, and `.github/social-preview.html` are the copies). `skill_test.py`
   checks all of them — let it, rather than updating by hand and hoping.
+- **`stavki.md` is an index too, since 2.14.4** — statuses, the per-section
+  verification-date table (now with a file column) and the changelog, plus a one-line
+  "Ставки по теми" bullet per topic. The rate tables themselves are in
+  `references/stavki/<topic>.md`. `test/rates_test.py`'s `TEXT`, `tools/preflight.py`'s
+  `regime_boundaries()` and `test/findings.py`'s citation grounding all read the index
+  plus every topic file concatenated, not the index alone - a rate or a citation moving
+  into a topic file must not go blind to any of the three. `skill_test.py` pins the
+  exact set of files under `references/stavki/` against the index's own linking bullets,
+  the same way it does for `references/proverki/`.
 - **The suite-1 fixture is generated.** If `test/generate_narrow.py` changes, rerun it
   to rebuild `test/vedomost_05_2026.xlsx` — `checks_test.py` rebuilds the fixture and
   fails on a stale file — and keep the machine-readable key in
@@ -88,6 +97,17 @@ A false positive fails exactly like a miss.
   row, check, severity, stated and due to the cent.
 - **Adding a check or a scenario** has a checklist in `CONTRIBUTING.md`. Prove a new
   check has teeth: break something on purpose, confirm the suite goes red, revert.
+- **`proverki.md` is an index, not the checklist.** Since 2.14.4 it carries only every
+  check's title, grouped A–K; the full text — basis, arithmetic, example — is in
+  `references/proverki/<letter>.md`, loaded only for groups SKILL.md's step 3a leaves
+  open. `skill_test.py`'s bullet-count regex still runs against the index (the title
+  lines it needs are still there, just trimmed), but the set of files under
+  `references/proverki/` is pinned separately, against the letters the index's check ids
+  actually use — a stale or missing group file fails on its own, not just as a broken
+  link. `test/findings.py`'s citation grounding reads every file under
+  `references/proverki/` too, not only the index, since a citation can now live in either
+  one. Edit the group file's content; keep the index's title line in step only if the
+  title itself changed.
 - **`tools/` is not part of the skill.** `tools/preflight.py` checks whether a real
   payroll workbook can be audited at all — header row, formulas, period, missing
   columns, and the two values no file carries (КИД and ТЗПБ). It lives outside
@@ -108,7 +128,7 @@ A false positive fails exactly like a miss.
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing
   that disagrees is the sequence. A check in `lifecycle_test.py` that could be written
   inside one sheet belongs in another suite, and a break that stops corresponding to a
-  bullet of I11 in `proverki.md` should be deleted rather than kept.
+  bullet of I11 in `proverki/i.md` should be deleted rather than kept.
 - **The комплект chain is built forward, and that is what makes it testable.** In
   `test/generate_komplekt.py` обр. 1 comes from the payroll, обр. 6 from обр. 1 and the
   payments from обр. 6 — so a break stops the copying at one link and the other three

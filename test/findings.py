@@ -151,6 +151,17 @@ def _reference_text():
         parts.append(_squash(text))
         if name == "normativna-baza.md":
             parts.append(_map_expansions(text))
+    # stavki.md and proverki.md are index/summary files; the full text - and any citation
+    # quoted inside it - lives in the per-group/per-topic files under these two
+    # subdirectories. Read every one, so a citation moving with its bullet does not stop
+    # being grounded.
+    for sub in ("proverki", "stavki"):
+        subdir = os.path.join(REFERENCES, sub)
+        if os.path.isdir(subdir):
+            for fn in sorted(os.listdir(subdir)):
+                if fn.endswith(".md"):
+                    with open(os.path.join(subdir, fn), encoding="utf8") as f:
+                        parts.append(_squash(f.read()))
     return " \n ".join(parts)
 
 

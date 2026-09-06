@@ -10,9 +10,10 @@ percentage, not a threshold. This repository exists because a payroll report tha
 confidently applies last year's figure is worse than no report: it reads as
 authoritative and it is wrong.
 
-Every figure in
-[`skills/trz-expert/references/stavki.md`](skills/trz-expert/references/stavki.md)
-carries a status:
+Every figure, in whichever topic file under
+[`skills/trz-expert/references/stavki/`](skills/trz-expert/references/stavki) actually
+carries the table — `stavki.md` itself is an index of statuses, per-section
+verification dates and links, not the tables — carries a status:
 
 | Status | Means |
 | --- | --- |
@@ -25,9 +26,11 @@ carries a status:
 To add or change a rate:
 
 1. Find the primary source. State Gazette issue and date if you have it.
-2. Add or edit the row in `stavki.md` with its status.
-3. Add a line to the changelog table at the bottom of the file, with the date and
-   what you verified.
+2. Add or edit the row in its topic file under `stavki/` with its status. A new topic
+   needs a file of its own plus a linking bullet in `stavki.md`'s "Ставки по теми".
+3. Add a line to the changelog table at the bottom of `stavki.md` (the index), with the
+   date and what you verified - the changelog stays centralised, not duplicated per
+   topic file.
 4. If a test needs the figure, update `test/trz_model.py` to match. The reference
    file is the source of truth; the model follows it, never the other way round.
 5. Run `python test/rates_test.py`. It cross-checks every figure the model carries
@@ -38,9 +41,13 @@ it looked — say so in the changelog. That is as valuable as adding one.
 
 ## Adding a check
 
-Checks live in
-[`references/proverki.md`](skills/trz-expert/references/proverki.md), grouped
-A–K. A check needs three things:
+`references/proverki.md` is an index — every check's title, grouped A–K, and nothing
+else. The full text of a check — its statement, basis, arithmetic, example — lives in
+[`references/proverki/`](skills/trz-expert/references/proverki), one file per group
+(`a.md`…`k.md`); group K's file also carries "Как се чете електронна таблица" above its
+own bullets and "Формули" below them, in that order. Edit the group file, then keep the
+index's one-line title in step if you changed the title itself. A check needs three
+things:
 
 * a statement of what passes and what does not;
 * a statutory basis in

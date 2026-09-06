@@ -59,7 +59,7 @@ POLICY = dict(bonus_in_base=False, in_kind_in_bases=False,
 
 # Class rises on a completed year of service, so the anniversary is what the check
 # measures against - not the calendar year and not the month the payroll happens to run.
-CLASS_PER_YEAR = 0.6            # `stavki.md`, „клас"; the model carries the same figure
+CLASS_PER_YEAR = 0.6            # `stavki/klas.md`; the model carries the same figure
 
 
 def seniority_pct(start, on):

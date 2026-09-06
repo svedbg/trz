@@ -6,8 +6,9 @@
 
 - [ ] `python test/run_tests.py` passes (all five suites, 0–4)
 - [ ] No real payroll data anywhere — fixtures are generated, not collected
-- [ ] If a **rate** changed: the source is cited in `stavki.md` with a status, the
-      changelog table has a new line, and `test/rates_test.py` passes
+- [ ] If a **rate** changed: the source is cited in its topic file under
+      `references/stavki/` with a status, `stavki.md`'s changelog table has a new
+      line, and `test/rates_test.py` passes
 - [ ] If a **check** changed: it has a statutory basis in `normativna-baza.md`, or
       it is a group-K check and says plainly that it rests on arithmetic
 - [ ] If a **test scenario** was added: I broke it on purpose once and confirmed
