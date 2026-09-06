@@ -198,7 +198,8 @@ A false positive fails exactly like a miss.
 
 Code, comments and documentation under `test/` are English. Two things stay
 Bulgarian because they are *data*: the spreadsheet column headers the checkers look
-up by exact text, and the prompt and keyword patterns in `eval_skill.py`. The skill
+up by exact text, and the prompt and keyword patterns in `eval_scenarios.py` (split
+out of `eval_skill.py` in 2026-09). The skill
 itself — `SKILL.md` and `references/*.md` — is Bulgarian throughout, because it
 speaks to Bulgarian payroll staff and quotes Bulgarian statute.
 
