@@ -80,9 +80,10 @@ Suite 5 (`test/generate_komplekt.py` + `test/komplekt_test.py`) is the whole mon
    with.
 4. Teach `reconcile()` in `komplekt_test.py` to find it, and add an entry to `BASIS` in
    `test/findings.py`.
-5. Add a sentence to `CORRECT_REPORT` and a pattern set to `KOMPLEKT_KEYWORDS` in
-   `test/eval_skill.py`. The suite grades that sentence against those patterns, so a
-   pattern that matches nothing fails here instead of turning a paid seed into a miss.
+5. Add a sentence to `CORRECT_REPORT` in `test/komplekt_test.py` and a pattern set to
+   `KOMPLEKT_KEYWORDS` in `test/eval_scenarios.py`. The suite grades that sentence
+   against those patterns, so a pattern that matches nothing fails here instead of
+   turning a paid seed into a miss.
 6. Prove it: break the detection on purpose, watch the suite go red, revert.
 
 ## Adding a test scenario
