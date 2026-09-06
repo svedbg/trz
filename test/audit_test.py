@@ -202,14 +202,18 @@ HEADERS = ["Име", "Отраб. дни", "Основна за отработе
 # Everyone this month took at least a little leave or sick time - nobody has the true
 # 22-day calendar norm, so the highest count on the sheet (20) is itself partial. Row
 # 3 sits at 20 with основна scaled down for it, correctly, and must not be flagged.
-# The six composition columns are zero for everyone by default: work_base then equals
-# основна exactly, which already equals Осигурителен доход above, so the composition
-# pass finds nothing to explain and the clean fixture stays clean.
+# Five of the six composition columns are zero for everyone; Лице 2 carries a real,
+# non-zero Клас сума (50.00, an always-in element, never one of CONTESTED) so the
+# composition pass is proven to add a genuine element correctly, not only to match
+# trivially on an all-zero row. Осигурителен доход for that row is 1000.00 =
+# основна (950.00) + клас (50.00) - I1 never reads Осигурителен доход, so this does
+# not need a matching change to БРУТО/данъчна основа/данък/нето. No shape below
+# touches Лице 2, so this stays untouched and correct in every shape, including clean.
 ROWS = [
     ["Лице 1", 18, 900.00, 900.00, 900.00, 810.00, 81.00, 90.00, 729.00, 729.00, 0, 0.00,
      0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
-    ["Лице 2", 19, 950.00, 950.00, 950.00, 855.00, 85.50, 95.00, 769.50, 769.50, 0, 0.00,
-     0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
+    ["Лице 2", 19, 950.00, 950.00, 1000.00, 855.00, 85.50, 95.00, 769.50, 769.50, 0, 0.00,
+     50.00, 0.00, 0.00, 0.00, 0.00, 0.00],
     ["Лице 3", 20, 1127.45, 1127.45, 1127.45, 1014.70, 101.47, 112.75, 913.23, 913.23, 0, 0.00,
      0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
 ]
@@ -235,10 +239,13 @@ def s_i5_sick_pay_without_days(ws):
     """Sick pay accrued, zero sick days recorded - the narrow I5 shape.
 
     Since the composition columns went live, this same edit is also a genuine
-    F9: the accrual sits outside Осигурителен доход, which never moved. Both
-    findings are real and independent (zero days is one defect, the excluded
-    accrual is another), so SHAPES expects both rather than pretending this
-    edit only ever meant one thing.
+    F9: the accrual sits outside Осигурителен доход, which never moved. The two
+    are not independent violations - if the accrual is legitimate the days are
+    wrong (F9 is real, I5 names why); if the accrual is bogus, removing it would
+    clear both - but they are independent OBSERVATIONS a human auditor needs
+    both of, and fixing one does not silently fix the finding for the other, so
+    SHAPES expects both rather than pretending this edit only ever meant one
+    thing.
     """
     name_row = HEADER_ROW + 1
     ws.cell(name_row, HEADERS.index("Болнични (работодател)") + 1, 45.00)
@@ -285,6 +292,24 @@ SHAPES = {
     "s_f9_sick_pay_out_of_insurable": {A.F9_SICK_PAY_OUT_OF_INSURABLE: 1},
 }
 
+# Which figures must appear (as "%.2f") in the text of a given id's finding, for a
+# given shape - not just that the id fired, but that it named the right numbers.
+# {shape: {id: [figures]}}. Pins the arithmetic hand-computed in each shape's own
+# docstring, which the count-only check above cannot: deleting a composition column
+# from work_base left every count in SHAPES unchanged while the wrong number was
+# reported (proved by sabotage, see the PR this was added in).
+EXPECTED_TEXT = {
+    # Fires via the "removed" branch (audit.py: expected_insurable minus el[k] equals
+    # the stated insurable income) - that branch's text names only el[k], not the
+    # insurable figure itself.
+    "s_i5_sick_pay_without_days": {
+        A.F9_SICK_PAY_OUT_OF_INSURABLE: [45.00]},
+    "s_b5_insurable_below_min_wage": {
+        A.F1_INSURABLE_UNEXPLAINED: [500.00, 1127.45]},
+    "s_f9_sick_pay_out_of_insurable": {
+        A.F9_SICK_PAY_OUT_OF_INSURABLE: [45.00]},
+}
+
 
 def run_hand_built(tmpdir):
     for name, expected in SHAPES.items():
@@ -297,8 +322,15 @@ def run_hand_built(tmpdir):
         label = name or "clean"
         if got != expected:
             fail(f"{label}: expected {expected or '{}'}, got {got or '{}'}")
-        else:
-            print(f"ok   {label:32s} -> {got or 'nothing'}")
+            continue
+        for ident, figures in EXPECTED_TEXT.get(name, {}).items():
+            texts = [f["text"] for f in findings if f["id"] == ident]
+            for figure in figures:
+                needle = f"{figure:.2f}"
+                if not any(needle in t for t in texts):
+                    fail(f"{label}: {ident}'s finding text does not carry {needle} - "
+                        f"got {texts}")
+        print(f"ok   {label:32s} -> {got or 'nothing'}")
 
 
 if __name__ == "__main__":
