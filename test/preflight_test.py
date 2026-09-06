@@ -90,6 +90,14 @@ def main():
               != P.classify("Доброволно здравно осигуряване (премия)"),
               "the employee's own life-insurance deduction is not the employer's "
               "voluntary-health premium")
+        # A real generate_wide.py fixture carries both of each pair below, and once
+        # did raise DUPLICATE_CONCEPT for both - blocking, so nothing past it could be
+        # checked at all.
+        check(P.classify("НЕТО преди удръжки") != P.classify("НЕТО за изплащане"),
+              "net before personal deductions is not net paid out")
+        check(P.classify("Вноски работодател ДОО+ТЗПБ")
+              != P.classify("Вноски работодател общо"),
+              "one employer fund's contribution is not the employer total")
         check(P.classify("Извънр. часове (раб. дни)") != "отработени дни",
               "an overtime-hours column is not mistaken for days worked")
         check(P.classify("Отработени часове") != "отработени дни",

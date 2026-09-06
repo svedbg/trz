@@ -93,6 +93,13 @@ jobs:
         # what would have caught it.
         run: python test/k_checker_test.py --seeds 300
 
+      - name: B/F/I computed from a workbook, against generate_wide.py's manifest
+        # scripts/audit.py's own hand-built fixtures for I5/B5, the suite-1 static
+        # fixture checked against expected_findings.md (including the part-time row
+        # that must stay silent - the exact row that caught a false positive in this
+        # script before anyone else did), plus 300 seeds for I1/B4/F5.
+        run: python test/audit_test.py --seeds 300
+
       - name: Suite 5 - the chain below the payroll
         # ведомост -> обр. 1 -> обр. 6 -> внесено, one link broken at a time. The
         # checks that reconcile the payroll against the documents downstream of it had
@@ -315,3 +322,5 @@ jobs:
         run: python test/run_tests.py --seeds 3000
       - name: K5/K6 checker at the same depth
         run: python test/k_checker_test.py --seeds 3000
+      - name: B/F/I checker at the same depth
+        run: python test/audit_test.py --seeds 3000

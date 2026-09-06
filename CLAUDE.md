@@ -34,6 +34,7 @@ python test/checks_test.py    # suite 1: static payroll against the key in expec
 python test/eval_skill.py --selftest      # free: checks the refusal grading itself
 python test/preflight_test.py # scripts/preflight.py: clean is silent, each shape defect found once
 python test/k_checker_test.py # scripts/k_checker.py: K5/K6 vs. generate_wide.py's manifest, 60 seeds by default
+python test/audit_test.py     # scripts/audit.py: I1/B4/F5 vs. the manifest, B1/I5/B5 vs. hand-built and suite-1 fixtures
 python test/komplekt_test.py  # suite 5: ведомост -> обр. 1 -> обр. 6 -> внесено -> счетоводство, one link at a time
 python test/lifecycle_test.py # suite 6: five months of the same people, one timeline break at a time
 python test/run_tests.py      # all five, 50 seeds
@@ -128,6 +129,24 @@ A false positive fails exactly like a miss.
   `preflight.py`'s own `SKILL_DIR`-relative path to `stavki.md`, and the pre-commit
   hook's trigger regex - a change under `scripts/` that stops matching that regex would
   go untested locally again, the exact failure mode the move was meant to close.
+- **`scripts/audit.py` (2.18.0) covers I1, I5 (narrow), B1, B4, B5 and F5 - not the
+  rest of B/F/I/K.** Each is mechanical (a row's own numbers, or a rate read fresh
+  from `references/stavki/` via `scripts/rates.py`, never typed into either file) and
+  safe for a generic tool - B2/B3/B6 need a company-specific number `mapping.yaml`
+  doesn't carry, F1/F2/F3/F4/F6/F7/F9's composition method needs a judgment call this
+  script isn't positioned to make safely yet, F8/F10 need information one workbook
+  doesn't hold, and K1/K3/K4/K7/K8 are `k_checker.py`'s same closed-vocabulary risk.
+  Building it against `generate_wide.py` at scale (not just a hand-built fixture)
+  found a real, pre-existing `preflight.py` vocabulary bug before it ever shipped:
+  "НЕТО преди удръжки"/"НЕТО за изплащане" and "Вноски работодател ДОО+ТЗПБ"/"Вноски
+  работодател общо" both collapsed into one concept each, raising the blocking
+  `DUPLICATE_CONCEPT` signal on every realistic fixture and stopping every check cold -
+  split now, the same way "Клас %"/"Клас сума" already were. B1/B5 also went through
+  two rounds of false positives from partial attendance (part-time hours, then a
+  partial month from leave/sick days) before landing on "the highest count declared
+  on the sheet" as the least-wrong stand-in for the full-time/full-month norm this
+  script has no public-holiday calendar to compute directly - the suite-1 fixture's
+  own part-time row (Стефка Ангелова) caught the first one.
 - **Suite 6 may only compare a month with another month.** Every sheet in
   `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing

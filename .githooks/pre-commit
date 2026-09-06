@@ -106,4 +106,16 @@ if git diff --cached --name-only | grep -qE '^(test/.*\.py|skills/trz-expert/scr
     fi
     rm -f /tmp/trz-kchecker.$$
     echo "pre-commit: K5/K6 checker matches the manifest"
+
+    echo "pre-commit: B/F/I checker against generate_wide.py's manifest, 25 seeds"
+    if ! "$PY" test/audit_test.py --seeds 25 > /tmp/trz-audit.$$ 2>&1; then
+        cat /tmp/trz-audit.$$
+        rm -f /tmp/trz-audit.$$
+        echo
+        echo "Commit stopped: audit.py disagrees with generate_wide.py's manifest "
+        echo "or expected_findings.md. To skip: git commit --no-verify"
+        exit 1
+    fi
+    rm -f /tmp/trz-audit.$$
+    echo "pre-commit: B/F/I checker matches the manifest"
 fi
