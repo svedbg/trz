@@ -27,11 +27,26 @@ sys.path.insert(0, HERE)
 
 import trz_model as M                                          # noqa: E402
 
-RATES_FILE = os.path.normpath(os.path.join(
-    HERE, "..", "skills", "trz-expert", "references", "stavki.md"))
+REFERENCES = os.path.normpath(os.path.join(
+    HERE, "..", "skills", "trz-expert", "references"))
+RATES_FILE = os.path.join(REFERENCES, "stavki.md")
 
+# stavki.md is an index since 2.14.4: the rate tables themselves live in per-topic
+# files under references/stavki/, one topic per file, loaded only when that topic is
+# still relevant. A rate this test cross-checks can now be in either place, so every
+# topic file is read alongside the index and searched as one text - the "exactly one
+# match" rule in extract() below still holds, and now also catches a rate accidentally
+# duplicated between the index and a topic file.
+_STAVKI_DIR = os.path.join(REFERENCES, "stavki")
+_parts = []
 with open(RATES_FILE, encoding="utf8") as f:
-    TEXT = f.read()
+    _parts.append(f.read())
+if os.path.isdir(_STAVKI_DIR):
+    for _fn in sorted(os.listdir(_STAVKI_DIR)):
+        if _fn.endswith(".md"):
+            with open(os.path.join(_STAVKI_DIR, _fn), encoding="utf8") as f:
+                _parts.append(f.read())
+TEXT = "\n".join(_parts)
 
 
 def extract(pattern):

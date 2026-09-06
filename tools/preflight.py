@@ -175,12 +175,26 @@ def regime_boundaries(path=STAVKI):
     wrong, and a second copy of those dates here would be one more place to forget when
     the budget moves them. Same reason rates_test.py parses the file instead of trusting
     trz_model.py.
+
+    stavki.md is an index since 2.14.4 - the МРЗ and МОД tables that carry these date
+    ranges live in references/stavki/<topic>.md now, not in the index itself. Every file
+    under that directory is read alongside `path`, so a topic move does not silently
+    empty this function out.
     """
     try:
         with open(path, encoding="utf8") as f:
             text = f.read()
     except OSError:
         return []
+    subdir = os.path.join(os.path.dirname(path), "stavki")
+    if os.path.isdir(subdir):
+        for fn in sorted(os.listdir(subdir)):
+            if fn.endswith(".md"):
+                try:
+                    with open(os.path.join(subdir, fn), encoding="utf8") as f:
+                        text += "\n" + f.read()
+                except OSError:
+                    continue
     seen, out = set(), []
     for a, b in re.findall(r"\|\s*(\d{2}\.\d{2}\.\d{4})\s*[–-]\s*(\d{2}\.\d{2}\.\d{4})",
                            text):

@@ -1419,8 +1419,7 @@ def check_isolation():
     if trace.get("turns") != 3:
         problems.append("isolation: the result event was not read")
 
-    for rel in ("SKILL.md", "references/stavki.md", "references/proverki.md",
-                "references/normativna-baza.md"):
+    for rel in _skill_files(REPO_SKILL):
         path = os.path.join(REPO_SKILL, rel)
         if not os.path.exists(path):
             continue
@@ -1894,11 +1893,26 @@ def regrade(threshold=None):
 # one matches the tree being tested. Comparing content rather than modelling precedence
 # is deliberate - it does not matter which copy wins if a stale copy exists at all.
 
+def _skill_files(root):
+    """Every file a session reading this skill could load: the four base references
+    plus, since 2.14.4, the per-group/per-topic files stavki.md and proverki.md summarise
+    and link to rather than carry inline. Listed dynamically - a fifth split later must
+    not need a third copy of this enumeration.
+    """
+    rels = ["SKILL.md", "references/stavki.md", "references/proverki.md",
+            "references/normativna-baza.md"]
+    for sub in ("proverki", "stavki"):
+        subdir = os.path.join(root, "references", sub)
+        if os.path.isdir(subdir):
+            rels += [f"references/{sub}/{fn}" for fn in sorted(os.listdir(subdir))
+                     if fn.endswith(".md")]
+    return rels
+
+
 def _skill_signature(root):
     """Content of the files a session actually reads, or None if incomplete."""
     parts = []
-    for rel in ("SKILL.md", "references/stavki.md", "references/proverki.md",
-                "references/normativna-baza.md"):
+    for rel in _skill_files(root):
         path = os.path.join(root, rel)
         if not os.path.exists(path):
             return None

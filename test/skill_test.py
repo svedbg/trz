@@ -193,6 +193,29 @@ else:
     if len(check_ids) != len(set(check_ids)):
         dupes = sorted({i for i in check_ids if check_ids.count(i) > 1})
         fail(f"proverki.md has duplicate check ids: {dupes}")
+
+    # proverki.md is an index since 2.14.4: the full text of each group - basis,
+    # arithmetic, example - lives in references/proverki/<letter>.md, loaded only for
+    # the groups still "проверява се" after step 3a. The index is filename-agnostic to
+    # skill_test.py's generic orphan check (it does not recurse into subdirectories), so
+    # this pins the one invariant that check cannot: every letter the index promises a
+    # check for has exactly one file, and no file exists the index does not promise.
+    PROVERKI_DIR = os.path.join(SKILL_DIR, "references", "proverki")
+    expected_letters = {i[0] for i in check_ids}
+    if not os.path.isdir(PROVERKI_DIR):
+        fail(f"{PROVERKI_DIR} is missing - proverki.md promises full detail there for "
+             f"every group, but the directory does not exist")
+    else:
+        on_disk_letters = {os.path.splitext(fn)[0].upper()
+                           for fn in os.listdir(PROVERKI_DIR) if fn.endswith(".md")}
+        missing = sorted(expected_letters - on_disk_letters)
+        extra = sorted(on_disk_letters - expected_letters)
+        if missing:
+            fail(f"references/proverki/ has no file for group(s) {missing} - "
+                 f"proverki.md's index links there for the full text")
+        if extra:
+            fail(f"references/proverki/ has file(s) for group(s) {extra}, which no "
+                 f"check id in proverki.md's index names - orphaned or stale")
     if not os.path.exists(SCENARIOS):
         fail(f"{SCENARIOS} is missing")
     else:
@@ -254,11 +277,19 @@ PAID_GUIDANCE = [
 ]
 # Searched across SKILL.md AND the reference files, because the point is that the lesson
 # has not been LOST, not that it lives in one particular file. A rule may legitimately
-# move to a reference when SKILL.md is trimmed; it may not quietly disappear.
+# move to a reference when SKILL.md is trimmed; it may not quietly disappear - including
+# by moving into references/proverki/ or references/stavki/, which os.listdir() above
+# would not otherwise see, since it does not recurse.
 _bundle = {"SKILL.md": text}
-for _name in sorted(os.listdir(os.path.join(SKILL_DIR, "references"))):
+_REFS_ROOT = os.path.join(SKILL_DIR, "references")
+for _name in sorted(os.listdir(_REFS_ROOT)):
+    _path = os.path.join(_REFS_ROOT, _name)
     if _name.endswith(".md"):
-        _bundle[f"references/{_name}"] = read(os.path.join(SKILL_DIR, "references", _name))
+        _bundle[f"references/{_name}"] = read(_path)
+    elif os.path.isdir(_path):
+        for _sub in sorted(os.listdir(_path)):
+            if _sub.endswith(".md"):
+                _bundle[f"references/{_name}/{_sub}"] = read(os.path.join(_path, _sub))
 
 for phrase, why in PAID_GUIDANCE:
     if not any(phrase in body_text for body_text in _bundle.values()):
@@ -629,6 +660,30 @@ else:
     else:
         note(f"rates verification date {dotted} agrees in the source plus all "
              f"{DATE_COPIES} copies")
+
+# stavki.md is an index since 2.14.4, the same shape as proverki.md above: every rate
+# table - МРЗ, вноски, състав на базата, and the rest - lives in references/stavki/,
+# one topic per file, and the index's own "Ставки по теми" section links each one with
+# a one-line bullet. Pinned here the same way: every file the index promises must exist,
+# and no file may exist the index does not mention - an orphan under references/stavki/
+# is invisible to skill_test.py's generic orphan check, which does not recurse.
+STAVKI_DIR = os.path.join(SKILL_DIR, "references", "stavki")
+stavki_promised = set(re.findall(r"^- \*\*`stavki/([^`]+\.md)`\*\*", rates_text, re.M))
+if not stavki_promised:
+    fail("references/stavki.md's index names no topic file under `stavki/<name>.md` - "
+         "the pattern this test reads for the promised file list may have changed")
+elif not os.path.isdir(STAVKI_DIR):
+    fail(f"{STAVKI_DIR} is missing - stavki.md's index promises full tables there")
+else:
+    stavki_on_disk = {fn for fn in os.listdir(STAVKI_DIR) if fn.endswith(".md")}
+    missing = sorted(stavki_promised - stavki_on_disk)
+    extra = sorted(stavki_on_disk - stavki_promised)
+    if missing:
+        fail(f"references/stavki/ has no file for {missing} - stavki.md's index links "
+             f"there")
+    if extra:
+        fail(f"references/stavki/ has file(s) {extra} that stavki.md's index does not "
+             f"mention - orphaned or stale")
 
 # ------------------------------------------------- the social-preview figures
 # The card GitHub shows when the repository link is shared quotes three numbers: how
