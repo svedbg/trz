@@ -103,6 +103,38 @@ def main():
         check(P.classify("Отработени часове") != "отработени дни",
               "hours worked are not mistaken for days worked")
 
+        # -------------------------------------------------- totals-row label variants
+        # Found auditing a real payroll (not by any suite): its export's totals row was
+        # labelled "Report Total in EUR (from 24 records):" - "Total" is not the first
+        # word, and the old TOTALS_LABEL was anchored to the start of the cell, so the
+        # row was silently read as a 25th person. The visible symptom was a B4 finding
+        # (insurable-income cap exceeded) on the sum of everyone's insurable income -
+        # always "over the cap", for no real person. Every generated fixture's totals
+        # row starts with the label word, so this variant is hand-built, not generated.
+        for label in ("Общо", "Report Total in EUR (from 24 records):", "Grand Total"):
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "07-2026"
+            for c, h in enumerate(["Име", "Отраб. дни", "Основна за отработеното"],
+                                  start=1):
+                ws.cell(1, c, h)
+            for r, name in enumerate(["Иван Иванов", "Мария Петрова"], start=2):
+                ws.cell(r, 1, name)
+                ws.cell(r, 2, 20)
+                ws.cell(r, 3, 1000.00)
+            ws.cell(4, 1, label)
+            ws.cell(4, 2, 40)
+            ws.cell(4, 3, 2000.00)
+            path = os.path.join(tmp, "totals-label.xlsx")
+            wb.save(path)
+            _, data = signals_for(path)
+            sheet = data["sheets"][0]
+            check(sheet["totals_row"] == 4,
+                  f"totals row found for label {label!r}, got {sheet['totals_row']}")
+            check(sheet["rows"] == 2,
+                  f"only the two people count as data rows for label {label!r}, "
+                  f"got {sheet['rows']}")
+
         # --------------------------------------------------- the clean file is silent
         good = os.path.join(tmp, "clean.xlsx")
         G.save(G.clean(), good)
