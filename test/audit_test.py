@@ -352,4 +352,5 @@ if __name__ == "__main__":
         sys.exit(1)
     print("OK: I1/B4/F5 match generate_wide.py's manifest exactly, the suite-1 "
           "fixture matches expected_findings.md including the part-time row that "
-          "must stay silent, and the hand-built shapes for I5/B5 each fire once")
+          "must stay silent, and the hand-built shapes for I5/B5/F9 each fire once "
+          "with the right figures")
