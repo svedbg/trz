@@ -540,6 +540,25 @@ def location(finding, total_row):
     return "file" if row >= total_row else row
 
 
+def _numbers_consistent(finding):
+    """False only when the finding names both nachisleno and dalzhimo as numbers AND
+    they agree - every scenario here is constructed as a genuine discrepancy, so a
+    finding whose own two figures match is not asserting the defect it claims to have
+    found, whatever its kratko sentence says. This is the one semantic check grade()
+    can make without a per-scenario expected amount (trz_model.py's manifest carries
+    no such figure - see CONTRIBUTING.md on why a second, driftable copy of one is not
+    worth adding for this alone): it costs nothing when either figure is absent
+    (most scenarios leave one or both null, which is not this check's concern), and it
+    catches a finding that repeats the right words at the right row with a number that
+    contradicts its own claim, which no keyword pattern can.
+    """
+    stated, due = finding.get("nachisleno"), finding.get("dalzhimo")
+    if isinstance(stated, (int, float)) and isinstance(due, (int, float)) \
+            and not isinstance(stated, bool) and not isinstance(due, bool):
+        return abs(stated - due) > 0.005
+    return True
+
+
 def asserts_a_defect(finding, ident=None):
     """Does this finding claim a defect, rather than note, deny or decline one?
 
@@ -552,6 +571,8 @@ def asserts_a_defect(finding, ident=None):
     if ident and ident.startswith(NOTE_IS_RIGHT_FOR_GROUP):
         allowed.add("бележка")
     if tezhest not in allowed:
+        return False
+    if not _numbers_consistent(finding):
         return False
     text = str(finding.get("kratko", ""))
     m = DENIES.search(text)
@@ -797,6 +818,16 @@ def check_grading():
                  "не мога да потвърдя ставката", "сумата е в съответствие с чл. 262"):
         if asserts_a_defect(dict(tezhest="нарушение", kratko=text)):
             problems.append(f"a denial was read as an assertion: {text!r}")
+    # A finding that names both figures must have them disagree, or it is not
+    # asserting the discrepancy its words claim - see _numbers_consistent's docstring.
+    for stated, due, want in ((100.0, 100.0, False), (100.0, 100.005, False),
+                              (100.0, 100.5, True), (None, 100.0, True), (None, None, True)):
+        f = dict(tezhest="нарушение", kratko="сумата не съответства на дължимата",
+                 nachisleno=stated, dalzhimo=due)
+        got = asserts_a_defect(f)
+        if got != want:
+            problems.append(f"nachisleno={stated} dalzhimo={due}: asserts_a_defect="
+                            f"{got}, expected {want}")
     # The two "unexplained" scenarios are correctly reported as `за проверка`; every
     # other scenario is not.
     for ident in sorted(UNRESOLVED_IS_RIGHT):

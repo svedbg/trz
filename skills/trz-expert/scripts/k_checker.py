@@ -73,6 +73,7 @@ except ImportError:                                          # pragma: no cover
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import finding as FN                                          # noqa: E402
 import preflight as PF                                       # noqa: E402
 
 K5_TOTAL_NOT_SUM = "K5_total_not_sum"
@@ -138,11 +139,13 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                 v = ws.cell(r, c).value
                 if isinstance(v, (int, float)) and not isinstance(v, bool) \
                         and abs(v - round(v, 2)) > ROUND_EPS:
-                    findings.append({
-                        "id": K6_UNROUNDED_ACCRUAL, "sheet": s["name"],
-                        "ref": f"{get_column_letter(c)}{r}", "label": concept or header,
-                        "value": v,
-                    })
+                    findings.append(FN.make_finding(
+                        K6_UNROUNDED_ACCRUAL, sheet=s["name"],
+                        ref=f"{get_column_letter(c)}{r}", label=concept or header,
+                        value=v,
+                        text=f"{get_column_letter(c)}{r} ({concept or header}): "
+                             f"{v!r} не се закръгля до {round(v, 2):g}",
+                    ))
                     break               # one finding per row: the rest is the chain
 
         if s["totals_row"]:
@@ -160,12 +163,15 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                                   for r in range(s["first_row"], last_data_row + 1))
                     if isinstance(cv, (int, float)) and not isinstance(cv, bool))
                 if abs(stated - computed) > SUM_EPS:
-                    findings.append({
-                        "id": K5_TOTAL_NOT_SUM, "sheet": s["name"],
-                        "ref": f"{get_column_letter(c)}{s['totals_row']}",
-                        "label": concept or header, "stated": stated,
-                        "computed": round(computed, 2),
-                    })
+                    computed = round(computed, 2)
+                    findings.append(FN.make_finding(
+                        K5_TOTAL_NOT_SUM, sheet=s["name"],
+                        ref=f"{get_column_letter(c)}{s['totals_row']}",
+                        label=concept or header, stated=stated, due=computed,
+                        text=f"{get_column_letter(c)}{s['totals_row']} "
+                             f"({concept or header}): редът с общите суми показва "
+                             f"{stated:g}, сборът на клетките е {computed:g}",
+                    ))
     return findings
 
 
@@ -182,12 +188,8 @@ def report(path, findings):
     for sheet, items in by_sheet.items():
         L.append(f"\n## Лист „{sheet}“\n")
         for f in items:
-            if f["id"] == K5_TOTAL_NOT_SUM:
-                L.append(f"- **K5** {f['ref']} ({f['label']}): редът с общите суми "
-                         f"показва {f['stated']:g}, сборът на клетките е {f['computed']:g}")
-            else:
-                L.append(f"- **K6** {f['ref']} ({f['label']}): {f['value']!r} не се "
-                         f"закръгля до {round(f['value'], 2):g}")
+            short = "K5" if f["id"] == K5_TOTAL_NOT_SUM else "K6"
+            L.append(f"- **{short}** {f['text']}")
     return "\n".join(L) + "\n"
 
 

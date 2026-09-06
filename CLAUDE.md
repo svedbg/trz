@@ -188,6 +188,18 @@ A false positive fails exactly like a miss.
   half-covered (the taxable-base side of the same two ids is the deferred piece) -
   verified directly against `test/structural_test.py`'s own reference implementation,
   not only the manifest, because the two share ids with a check this file doesn't do.
+- **`scripts/finding.py` is the one place `audit.py` and `k_checker.py` build a
+  finding.** Before it, the two scripts built findings as ad hoc dicts with different
+  field names for the same idea, and neither carried a `basis` field at all - a real
+  gap against the "a finding needs a basis" rule above. `make_finding()` refuses to
+  build a finding whose id has no entry in its `BASIS` table and no basis passed
+  explicitly, so the rule is enforced at construction, not left to whoever renders the
+  report afterward. `test/findings.py` imports this table for the ids `audit.py`/
+  `k_checker.py` raise instead of keeping a second, driftable copy - the same
+  single-owner principle CLAUDE.md states for rates, applied to citations. `severity`
+  and `confidence` fields exist on every finding already but are left `None` by both
+  callers today; otchet.md's status-caps-severity rule stays the model's to apply when
+  it folds these findings into the full report.
 - **Suite 6 may only compare a month with another month.** Every sheet in
   `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing

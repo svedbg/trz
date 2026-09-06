@@ -105,6 +105,7 @@ except ImportError:                                          # pragma: no cover
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import finding as FN                                          # noqa: E402
 import preflight as PF                                       # noqa: E402
 import rates as R                                             # noqa: E402
 
@@ -295,40 +296,42 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                     continue
                 v = _num(ws, meta, r)
                 if v is not None and abs(v - round(v)) > 0.005:
-                    findings.append({
-                        "id": K2_AMOUNT_IN_DAY_COLUMN, "sheet": s["name"], "row": r,
-                        "text": f"{ref}: „{meta['header']}“ ({concept}) е {v:.2f} — "
-                                f"дробна част в колона за дни означава, че там е "
-                                f"въведена сума, не брой дни",
-                    })
+                    findings.append(FN.make_finding(
+                        K2_AMOUNT_IN_DAY_COLUMN, sheet=s["name"], row=r,
+                        text=f"{ref}: „{meta['header']}“ ({concept}) е {v:.2f} — "
+                             f"дробна част в колона за дни означава, че там е "
+                             f"въведена сума, не брой дни",
+                    ))
 
             # --- I1: vertical reconciliation ---------------------------------
             if None not in (bruto, lichni, danak, neto_pre):
                 expected_pre = round(bruto - lichni - danak, 2)
                 if abs(neto_pre - expected_pre) > TOL:
-                    findings.append({
-                        "id": I1_VERTICAL, "sheet": s["name"], "row": r,
-                        "text": f"{ref}: НЕТО преди удръжки е {neto_pre:.2f}, а "
-                                f"БРУТО − лични вноски − данък = {expected_pre:.2f}",
-                    })
+                    findings.append(FN.make_finding(
+                        I1_VERTICAL, sheet=s["name"], row=r,
+                        stated=neto_pre, due=expected_pre,
+                        text=f"{ref}: НЕТО преди удръжки е {neto_pre:.2f}, а "
+                             f"БРУТО − лични вноски − данък = {expected_pre:.2f}",
+                    ))
             if None not in (neto_pre, neto):
                 deductions = sum(_num(ws, known.get(c), r) or 0
                                  for c in DEDUCTION_CONCEPTS)
                 expected_neto = round(neto_pre - deductions, 2)
                 if abs(neto - expected_neto) > TOL:
-                    findings.append({
-                        "id": I1_VERTICAL, "sheet": s["name"], "row": r,
-                        "text": f"{ref}: НЕТО за изплащане е {neto:.2f}, а "
-                                f"НЕТО преди удръжки − удръжките = {expected_neto:.2f}",
-                    })
+                    findings.append(FN.make_finding(
+                        I1_VERTICAL, sheet=s["name"], row=r,
+                        stated=neto, due=expected_neto,
+                        text=f"{ref}: НЕТО за изплащане е {neto:.2f}, а "
+                             f"НЕТО преди удръжки − удръжките = {expected_neto:.2f}",
+                    ))
 
             # --- I5, narrow: sick pay accrued with zero sick days ------------
             if bolnichni and bolnichni > TOL and dni_bolnichen == 0:
-                findings.append({
-                    "id": I5_SICK_PAY_WITHOUT_DAYS, "sheet": s["name"], "row": r,
-                    "text": f"{ref}: болнични от работодателя {bolnichni:.2f}, но "
-                            f"дни болничен е 0",
-                })
+                findings.append(FN.make_finding(
+                    I5_SICK_PAY_WITHOUT_DAYS, sheet=s["name"], row=r,
+                    text=f"{ref}: болнични от работодателя {bolnichni:.2f}, но "
+                         f"дни болничен е 0",
+                ))
 
             # A row's own hours below the sheet's modal (full-time) hours, or its own
             # worked days below the modal (full-month) days, means B1/B5 cannot
@@ -345,38 +348,42 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
             # --- B1: основна below the minimum wage --------------------------
             if (not part_time and min_wage is not None and osnovna is not None
                     and osnovna < min_wage - TOL):
-                findings.append({
-                    "id": B1_BELOW_MIN_WAGE, "sheet": s["name"], "row": r,
-                    "text": f"{ref}: основна {osnovna:.2f} под МРЗ {min_wage:.2f} "
-                            f"за периода",
-                })
+                findings.append(FN.make_finding(
+                    B1_BELOW_MIN_WAGE, sheet=s["name"], row=r,
+                    stated=osnovna, due=min_wage,
+                    text=f"{ref}: основна {osnovna:.2f} под МРЗ {min_wage:.2f} "
+                         f"за периода",
+                ))
 
             # --- B5: осиг. доход below the minimum wage -----------------------
             if (not part_time and min_wage is not None and osig is not None
                     and osig < min_wage - TOL):
-                findings.append({
-                    "id": B5_INSURABLE_BELOW_MIN_WAGE, "sheet": s["name"], "row": r,
-                    "text": f"{ref}: осигурителен доход {osig:.2f} под МРЗ "
-                            f"{min_wage:.2f} за периода",
-                })
+                findings.append(FN.make_finding(
+                    B5_INSURABLE_BELOW_MIN_WAGE, sheet=s["name"], row=r,
+                    stated=osig, due=min_wage,
+                    text=f"{ref}: осигурителен доход {osig:.2f} под МРЗ "
+                         f"{min_wage:.2f} за периода",
+                ))
 
             # --- B4: осиг. доход above the maximum insurable income, or capped at a
             # neighbouring period's threshold instead of this period's own ----------
             if max_insurable is not None and osig is not None:
                 if osig > max_insurable + TOL:
-                    findings.append({
-                        "id": B4_ABOVE_MAX_INSURABLE, "sheet": s["name"], "row": r,
-                        "text": f"{ref}: осигурителен доход {osig:.2f} над "
-                                f"максималния {max_insurable:.2f} за периода",
-                    })
+                    findings.append(FN.make_finding(
+                        B4_ABOVE_MAX_INSURABLE, sheet=s["name"], row=r,
+                        stated=osig, due=max_insurable,
+                        text=f"{ref}: осигурителен доход {osig:.2f} над "
+                             f"максималния {max_insurable:.2f} за периода",
+                    ))
                 elif osig < max_insurable - TOL and any(
                         abs(osig - oc) < TOL for oc in other_caps):
-                    findings.append({
-                        "id": B4_ABOVE_MAX_INSURABLE, "sheet": s["name"], "row": r,
-                        "text": f"{ref}: осигурителен доход {osig:.2f} съвпада с "
-                                f"максималния за друг период, не {max_insurable:.2f} "
-                                f"за този",
-                    })
+                    findings.append(FN.make_finding(
+                        B4_ABOVE_MAX_INSURABLE, sheet=s["name"], row=r,
+                        stated=osig, due=max_insurable,
+                        text=f"{ref}: осигурителен доход {osig:.2f} съвпада с "
+                             f"максималния за друг период, не {max_insurable:.2f} "
+                             f"за този",
+                    ))
 
             # --- F5: ТЗПБ extracted below the declared rate -------------------
             # Skipped on sick/maternity days: the employer's total there also carries
@@ -388,11 +395,12 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                     and not has_sick_or_maternity):
                 implied_tzpb = round(vnoski_rab / osig * 100.0 - employer_no_tzpb, 4)
                 if implied_tzpb < declared_tzpb - 0.05:
-                    findings.append({
-                        "id": F5_TZPB_BELOW_DUE, "sheet": s["name"], "row": r,
-                        "text": f"{ref}: изведен ТЗПБ {implied_tzpb:.2f}% под "
-                                f"декларирания {declared_tzpb:.2f}%",
-                    })
+                    findings.append(FN.make_finding(
+                        F5_TZPB_BELOW_DUE, sheet=s["name"], row=r,
+                        stated=implied_tzpb, due=declared_tzpb,
+                        text=f"{ref}: изведен ТЗПБ {implied_tzpb:.2f}% под "
+                             f"декларирания {declared_tzpb:.2f}%",
+                    ))
 
         # --- I8: duplicated people ------------------------------------------
         # A copy-pasted row, not two different people who happen to share a name:
@@ -421,14 +429,14 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                 # match instead of reporting against every earlier occurrence.
                 for other_r, other_fig in seen.get(key_name, []):
                     if all(abs(a - b) <= TOL for a, b in zip(fig, other_fig)):
-                        findings.append({
-                            "id": I8_DUPLICATED_PEOPLE, "sheet": s["name"], "row": r,
-                            "text": f"{s['name']}!{r}: същото име и същите "
-                                    f"бруто/осиг. доход/нето като ред {other_r} — "
-                                    f"може да е копиран ред, а може и да са две "
-                                    f"лица със същото име и еднакво заплащане; "
-                                    f"провери преди да заключиш",
-                        })
+                        findings.append(FN.make_finding(
+                            I8_DUPLICATED_PEOPLE, sheet=s["name"], row=r,
+                            text=f"{s['name']}!{r}: същото име и същите "
+                                 f"бруто/осиг. доход/нето като ред {other_r} — "
+                                 f"може да е копиран ред, а може и да са две "
+                                 f"лица със същото име и еднакво заплащане; "
+                                 f"провери преди да заключиш",
+                        ))
                         break
                 seen.setdefault(key_name, []).append((r, fig))
 
@@ -489,13 +497,12 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                 value, size = practice_for(el_name)
                 practice[el_name] = value
                 if value is None and any(d["el"][el_name] for d in rows_data):
-                    findings.append({
-                        "id": F10_PRACTICE_NOT_ESTABLISHABLE, "sheet": s["name"],
-                        "row": None,
-                        "text": f"{s['name']}: практиката на файла за "
-                                f"{_NAMES[el_name]} в осигурителния доход не може да "
-                                f"се изведе от самия файл ({size} използваеми реда)",
-                    })
+                    findings.append(FN.make_finding(
+                        F10_PRACTICE_NOT_ESTABLISHABLE, sheet=s["name"], row=None,
+                        text=f"{s['name']}: практиката на файла за "
+                             f"{_NAMES[el_name]} в осигурителния доход не може да "
+                             f"се изведе от самия файл ({size} използваеми реда)",
+                    ))
 
             for d in rows_data:
                 if d["no_work"] or d["at_cap"]:
@@ -521,52 +528,50 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                                     - d["insurable"]) <= TOL]
                     if len(added) == 1:
                         k = added[0]
-                        findings.append({
-                            "id": _ID_FOR[k], "sheet": s["name"], "row": d["row"],
-                            "text": f"{ref}: {_NAMES[k]} ({el[k]:.2f}) е вътре в "
-                                    f"осигурителния доход, докато другите редове го "
-                                    f"оставят вън",
-                        })
+                        findings.append(FN.make_finding(
+                            _ID_FOR[k], sheet=s["name"], row=d["row"],
+                            text=f"{ref}: {_NAMES[k]} ({el[k]:.2f}) е вътре в "
+                                 f"осигурителния доход, докато другите редове го "
+                                 f"оставят вън",
+                        ))
                     elif len(removed) == 1:
                         k = removed[0]
-                        findings.append({
-                            "id": _ID_FOR[k], "sheet": s["name"], "row": d["row"],
-                            "text": f"{ref}: {_NAMES[k]} ({el[k]:.2f}) е вън от "
-                                    f"осигурителния доход, докато другите редове го "
-                                    f"включват",
-                        })
+                        findings.append(FN.make_finding(
+                            _ID_FOR[k], sheet=s["name"], row=d["row"],
+                            text=f"{ref}: {_NAMES[k]} ({el[k]:.2f}) е вън от "
+                                 f"осигурителния доход, докато другите редове го "
+                                 f"включват",
+                        ))
                     else:
-                        findings.append({
-                            "id": F1_INSURABLE_UNEXPLAINED, "sheet": s["name"],
-                            "row": d["row"],
-                            "text": f"{ref}: осигурителният доход {d['insurable']:.2f} "
-                                    f"не съвпада с работната база {d['work_base']:.2f} "
-                                    f"плюс допустимото по практиката на файла "
-                                    f"({expected_insurable:.2f})",
-                        })
+                        findings.append(FN.make_finding(
+                            F1_INSURABLE_UNEXPLAINED, sheet=s["name"], row=d["row"],
+                            stated=d["insurable"], due=expected_insurable,
+                            text=f"{ref}: осигурителният доход {d['insurable']:.2f} "
+                                 f"не съвпада с работната база {d['work_base']:.2f} "
+                                 f"плюс допустимото по практиката на файла "
+                                 f"({expected_insurable:.2f})",
+                        ))
                 elif el["sick_pay"] or el["comp_224"]:
                     wrong_side = _statutory_misplacements(d["work_base"],
                                                           d["insurable"], el, TOL)
                     if "sick_pay" in wrong_side:
-                        findings.append({
-                            "id": F9_SICK_PAY_OUT_OF_INSURABLE, "sheet": s["name"],
-                            "row": d["row"],
-                            "text": f"{ref}: {_NAMES['sick_pay']} "
-                                    f"({el['sick_pay']:.2f}) е вън от осигурителния "
-                                    f"доход {d['insurable']:.2f} — нито една "
-                                    f"комбинация от спорните елементи го достига с "
-                                    f"тях вътре",
-                        })
+                        findings.append(FN.make_finding(
+                            F9_SICK_PAY_OUT_OF_INSURABLE, sheet=s["name"], row=d["row"],
+                            text=f"{ref}: {_NAMES['sick_pay']} "
+                                 f"({el['sick_pay']:.2f}) е вън от осигурителния "
+                                 f"доход {d['insurable']:.2f} — нито една "
+                                 f"комбинация от спорните елементи го достига с "
+                                 f"тях вътре",
+                        ))
                     if "comp_224" in wrong_side:
-                        findings.append({
-                            "id": F1_COMPENSATION_IN_INSURABLE, "sheet": s["name"],
-                            "row": d["row"],
-                            "text": f"{ref}: {_NAMES['comp_224']} "
-                                    f"({el['comp_224']:.2f}) е вътре в осигурителния "
-                                    f"доход {d['insurable']:.2f} — нито една "
-                                    f"комбинация от спорните елементи го достига без "
-                                    f"него",
-                        })
+                        findings.append(FN.make_finding(
+                            F1_COMPENSATION_IN_INSURABLE, sheet=s["name"], row=d["row"],
+                            text=f"{ref}: {_NAMES['comp_224']} "
+                                 f"({el['comp_224']:.2f}) е вътре в осигурителния "
+                                 f"доход {d['insurable']:.2f} — нито една "
+                                 f"комбинация от спорните елементи го достига без "
+                                 f"него",
+                        ))
     return findings
 
 
