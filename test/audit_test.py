@@ -82,6 +82,10 @@ FILE_LEVEL_IDS = ("B4_cap_from_wrong_period", "F5_tzpb_below_due")
 ROW_LEVEL_IDS = ("I1_vertical", "F1_insurable_unexplained",
                  "F1_compensation_in_insurable", "F9_sick_pay_out_of_insurable")
 NO_FALSE_POSITIVE_IDS = ("F10_in_kind_asymmetry", "F10_excess_asymmetry")
+# K2's recall is partial by design (see audit.py's module docstring: an amount that
+# happens to be a whole number in a day column has no fractional-part signal to catch
+# it), so a miss here is expected and not a failure - only a false positive is.
+PARTIAL_RECALL_IDS = ("K2_amount_in_day_column",)
 
 
 def run_wide(seeds):
@@ -89,6 +93,7 @@ def run_wide(seeds):
     counts = {i: dict(tp=0, fn=0, fp=0) for i in FILE_LEVEL_IDS}
     row_counts = {i: dict(injected=0, found=0) for i in ROW_LEVEL_IDS}
     fp_counts = {i: 0 for i in NO_FALSE_POSITIVE_IDS}
+    partial_counts = {i: dict(injected=0, found=0) for i in PARTIAL_RECALL_IDS}
     mismatches = []
     for seed in range(1, seeds + 1):
         try:
@@ -125,6 +130,17 @@ def run_wide(seeds):
             if exp_rows != got_rows:
                 mismatches.append(f"seed {seed} {i}: expected {exp_rows}, "
                                   f"got {got_rows}")
+        for i in PARTIAL_RECALL_IDS:
+            exp_rows = {WIDE_HDR + 1 + idx for where, idx, x in man["expected"]
+                       if where == "row" and x == i}
+            got_rows = {f["row"] for f in findings if f["id"] == i}
+            partial_counts[i]["injected"] += len(exp_rows)
+            partial_counts[i]["found"] += len(exp_rows & got_rows)
+            fp_rows = got_rows - exp_rows
+            if fp_rows:
+                mismatches.append(f"seed {seed} {i}: false positive at rows "
+                                  f"{sorted(fp_rows)}")
+
         # B1/B5 have no generate_wide.py scenario - any finding here at all, across
         # a random fixture with random partial attendance, would be the false
         # positive part 2 exists to catch directly against a hand-checked row.
@@ -142,6 +158,10 @@ def run_wide(seeds):
     for i in NO_FALSE_POSITIVE_IDS:
         print(f"  {i:28s} false positives={fp_counts[i]:4d} (recall is partial by "
               f"design - see the module docstring)")
+    for i in PARTIAL_RECALL_IDS:
+        c = partial_counts[i]
+        print(f"  {i:28s} injected={c['injected']:4d} found={c['found']:4d} "
+              f"(a miss is expected here; a false positive is not)")
 
     if mismatches:
         for m in mismatches[:20]:
@@ -150,8 +170,9 @@ def run_wide(seeds):
             fail(f"... and {len(mismatches) - 20} more mismatches")
     else:
         print(f"  -> OK: I1/B4/F5/F1/F9(insurable) match the manifest exactly, "
-              f"F10(insurable side) has zero false positives, B1/B5 silent, "
-              f"across {seeds} seeds")
+              f"F10(insurable side) has zero false positives, K2 has zero false "
+              f"positives (recall partial by design), B1/B5 silent, across {seeds} "
+              f"seeds")
 
 
 # --------------------------------------------------------- part 2: the static fixture
@@ -283,6 +304,35 @@ def s_f9_sick_pay_out_of_insurable(ws):
     # Осигурителен доход stays at 900.00 - excludes the sick pay
 
 
+def s_k2_amount_in_day_column(ws):
+    """An amount typed into "Дни болничен" instead of a day count - the fractional
+    part (.32) is the signal; Болнични (работодател) stays 0, so I5 does not also
+    fire (that check needs a nonzero amount there, which this shape has none of).
+    """
+    row = HEADER_ROW + 3        # Лице 3
+    ws.cell(row, HEADERS.index("Дни болничен") + 1, 45.32)
+
+
+def s_i8_duplicated_person(ws):
+    """Лице 2's row becomes an exact copy of Лице 1's - every column, not only
+    name/бруто/осиг.доход/нето, so the row stays internally consistent (I1 would
+    otherwise fire on a name+pay copied from one person with deductions left from
+    another). This is the shape a copy-pasted row actually makes.
+    """
+    src, dst = HEADER_ROW + 1, HEADER_ROW + 2        # Лице 1 -> Лице 2
+    for c in range(1, len(HEADERS) + 1):
+        ws.cell(dst, c, ws.cell(src, c).value)
+
+
+def s_i8_same_name_different_pay(ws):
+    """Лице 2 gets Лице 1's name but keeps its OWN pay - two different employees who
+    happen to share a name, not a copied row. Must NOT fire I8: audit.py requires
+    бруто/осиг.доход/нето to also match, not the name alone.
+    """
+    src, dst = HEADER_ROW + 1, HEADER_ROW + 2
+    ws.cell(dst, HEADERS.index("Име") + 1, ws.cell(src, HEADERS.index("Име") + 1).value)
+
+
 SHAPES = {
     None: {},
     "s_i5_sick_pay_without_days": {A.I5_SICK_PAY_WITHOUT_DAYS: 1,
@@ -290,6 +340,9 @@ SHAPES = {
     "s_b5_insurable_below_min_wage": {A.B5_INSURABLE_BELOW_MIN_WAGE: 1,
                                       A.F1_INSURABLE_UNEXPLAINED: 1},
     "s_f9_sick_pay_out_of_insurable": {A.F9_SICK_PAY_OUT_OF_INSURABLE: 1},
+    "s_k2_amount_in_day_column": {A.K2_AMOUNT_IN_DAY_COLUMN: 1},
+    "s_i8_duplicated_person": {A.I8_DUPLICATED_PEOPLE: 1},
+    "s_i8_same_name_different_pay": {},
 }
 
 # Which figures must appear (as "%.2f") in the text of a given id's finding, for a
@@ -308,6 +361,8 @@ EXPECTED_TEXT = {
         A.F1_INSURABLE_UNEXPLAINED: [500.00, 1127.45]},
     "s_f9_sick_pay_out_of_insurable": {
         A.F9_SICK_PAY_OUT_OF_INSURABLE: [45.00]},
+    "s_k2_amount_in_day_column": {
+        A.K2_AMOUNT_IN_DAY_COLUMN: [45.32]},
 }
 
 
@@ -352,5 +407,5 @@ if __name__ == "__main__":
         sys.exit(1)
     print("OK: I1/B4/F5 match generate_wide.py's manifest exactly, the suite-1 "
           "fixture matches expected_findings.md including the part-time row that "
-          "must stay silent, and the hand-built shapes for I5/B5/F9 each fire once "
-          "with the right figures")
+          "must stay silent, and the hand-built shapes for I5/B5/F9/I8 each fire "
+          "once with the right figures")

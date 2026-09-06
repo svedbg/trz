@@ -156,8 +156,9 @@ A false positive fails exactly like a miss.
   `preflight.py`'s own `SKILL_DIR`-relative path to `stavki.md`, and the pre-commit
   hook's trigger regex - a change under `scripts/` that stops matching that regex would
   go untested locally again, the exact failure mode the move was meant to close.
-- **`scripts/audit.py` (2.18.0, extended 2.19.0) covers I1, I5 (narrow), B1, B4, B5,
-  F5, and F1/F9/F10's insurable-income-side composition - not the rest of B/F/I/K.**
+- **`scripts/audit.py` (2.18.0, extended 2.19.0 and 2.19.5) covers I1, I5 (narrow),
+  I8, K2, B1, B4, B5, F5, and F1/F9/F10's insurable-income-side composition - not the
+  rest of B/F/I/K.**
   Each is mechanical (a row's own numbers, or a rate read fresh from
   `references/stavki/` via `scripts/rates.py`, never typed into either file) and safe
   for a generic tool - B2/B3/B6 need a company-specific number `mapping.yaml` doesn't

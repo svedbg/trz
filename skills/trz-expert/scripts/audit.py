@@ -30,6 +30,17 @@ What is covered, and why the rest of each group is not:
   the company's КИД. Skipped for a row with sick or maternity days, because the
   employer's total there also carries the healthcare contribution on МОД (F9), which
   the same formula would misread as ТЗПБ.
+* **K2 (amount in a day column)** - a day count is always a whole number; a value
+  with a fractional part in one of the four day-count concepts (worked days, paid
+  leave, sick leave, maternity leave) means an amount was typed where a day count
+  belongs. Not the proverki.md text's second clause ("or above the norm"): the norm
+  varies by contract and this script has no calendar for it, the same reason B1/B5
+  stand in the sheet's own maximum instead of computing one.
+* **I8 (duplicated people)** - flagged only when a name repeats AND
+  бруто/осигурителен доход/нето all agree exactly with an earlier row under that
+  name: a copy-pasted row, not two different employees who happen to share a name.
+  Never prints the name itself, the same rule preflight.py already follows for its
+  own report.
 * **F1 / F10 (insurable-income composition) and the two statutory placements it also
   settles** - ported from test/structural_test.py's "solve the composition" method:
   which subset of the contested elements (доход в натура, превишение над необлагаемия
@@ -108,6 +119,17 @@ F9_SICK_PAY_OUT_OF_INSURABLE = "F9_sick_pay_out_of_insurable"
 F10_IN_KIND_ASYMMETRY = "F10_in_kind_asymmetry"
 F10_EXCESS_ASYMMETRY = "F10_excess_asymmetry"
 F10_PRACTICE_NOT_ESTABLISHABLE = "F10_practice_not_establishable"
+K2_AMOUNT_IN_DAY_COLUMN = "K2_amount_in_day_column"
+I8_DUPLICATED_PEOPLE = "I8_duplicated_people"
+
+# The four day-count concepts preflight.py's CONCEPTS names. A day count is always a
+# whole number; a value with a fractional part in one of these means an amount was
+# typed where a day count belongs (proverki/k.md's K2) - the same shape
+# test/generate_wide.py's m_amount_in_day_column() injects (a sick-pay amount typed
+# into "Дни болничен"). Not attempting the proverki.md text's second clause ("or above
+# the norm"): the norm varies by contract and this script has no calendar, the same
+# reason B1/B5 stand in the sheet's own maximum rather than compute one.
+DAY_CONCEPTS = ("отработени дни", "дни отпуск", "дни болничен", "дни майчинство")
 
 DEDUCTION_CONCEPTS = ("удръжка доброволно осиг.", "удръжка живот", "удръжка карта")
 
@@ -237,6 +259,21 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
             bolnichni = _num(ws, known.get("болнични"), r)
             ref = f"{s['name']}!{r}"
 
+            # --- K2: an amount typed into a column meant for days -------------
+            # 0.005, not the money TOL (0.02): a typed amount always ends in exactly
+            # two decimals, so its fractional part can be as small as .01 or .99 away
+            # from the nearest whole number - a threshold of 0.01 or looser missed
+            # those at the boundary (172.01 read as "close enough" to 172).
+            for concept in DAY_CONCEPTS:
+                v = _num(ws, known.get(concept), r)
+                if v is not None and abs(v - round(v)) > 0.005:
+                    findings.append({
+                        "id": K2_AMOUNT_IN_DAY_COLUMN, "sheet": s["name"], "row": r,
+                        "text": f"{ref}: „{concept}“ е {v:.2f} — дробна част в колона "
+                                f"за дни означава, че там е въведена сума, не брой "
+                                f"дни",
+                    })
+
             # --- I1: vertical reconciliation ---------------------------------
             if None not in (bruto, lichni, danak, neto_pre):
                 expected_pre = round(bruto - lichni - danak, 2)
@@ -328,6 +365,36 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                         "text": f"{ref}: изведен ТЗПБ {implied_tzpb:.2f}% под "
                                 f"декларирания {declared_tzpb:.2f}%",
                     })
+
+        # --- I8: duplicated people ------------------------------------------
+        # A copy-pasted row, not two different people who happen to share a name:
+        # flagged only when the name AND бруто/осиг. доход/нето all agree exactly,
+        # the same way F1/F9/F10 above never print the name column's own content
+        # (preflight.py's own rule: the name column is not reproduced in a report).
+        name_meta = known.get("име")
+        if (name_meta is not None and "бруто" in known and "осиг. доход" in known
+                and "нето" in known):
+            seen = {}
+            for r in range(s["first_row"], last + 1):
+                name = ws.cell(r, name_meta["col"]).value
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                key_name = " ".join(name.split()).casefold()
+                bruto_r = _num(ws, known.get("бруто"), r)
+                osig_r = _num(ws, known.get("осиг. доход"), r)
+                neto_r = _num(ws, known.get("нето"), r)
+                if None in (bruto_r, osig_r, neto_r):
+                    continue
+                fig = (bruto_r, osig_r, neto_r)
+                for other_r, other_fig in seen.get(key_name, []):
+                    if all(abs(a - b) <= TOL for a, b in zip(fig, other_fig)):
+                        findings.append({
+                            "id": I8_DUPLICATED_PEOPLE, "sheet": s["name"], "row": r,
+                            "text": f"{s['name']}!{r}: същото име и същите "
+                                    f"бруто/осиг. доход/нето като ред {other_r} — "
+                                    f"вероятно копиран ред",
+                        })
+                seen.setdefault(key_name, []).append((r, fig))
 
         # --- F1/F10/F9(insurable)/F1(compensation): insurable-income composition --
         # A second pass, over every row again: the file's practice for the contested
