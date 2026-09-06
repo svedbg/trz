@@ -582,15 +582,19 @@ if plugin:
                  f"is {plugin_meta.get(key)!r} - one fact under one key in both")
 
 # ------------------------------------- the rates-verification date, everywhere
-# `references/stavki.md` is the source of truth for the date, and eight copies of it
-# are advertised elsewhere: two manifest/frontmatter fields, the compatibility line, a
-# badge and a sentence in each README, and the social-preview image every visitor to
-# the repository page sees. A copy that is not updated with the reference file
-# promises a freshness the rates do not have. The social preview was added after it
-# was found two updates behind - the check before it did not know about that copy.
+# `references/stavki.md` is the source of truth for the date, and seven copies of it
+# are advertised elsewhere: two manifest/frontmatter fields, a badge and a sentence in
+# each README, and the social-preview image every visitor to the repository page sees.
+# A copy that is not updated with the reference file promises a freshness the rates do
+# not have. The social preview was added after it was found two updates behind - the
+# check before it did not know about that copy. The compatibility frontmatter field
+# used to carry an eighth copy in prose; it was trimmed (2.19.3) to state only
+# environment requirements, since the two frontmatter metadata.rates_verified fields
+# already carry the date in a machine-readable form the compatibility line only
+# repeated.
 # DATE_COPIES below is the count the messages quote; it is asserted against the list,
 # so adding a copy here without changing the wording is caught.
-DATE_COPIES = 8
+DATE_COPIES = 7
 MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July",
              "August", "September", "October", "November", "December"]
 MONTHS_BG = ["януари", "февруари", "март", "април", "май", "юни", "юли",
@@ -620,13 +624,6 @@ else:
             note(f"{label} is not set - nothing to keep in step")
         elif str(stated) != iso:
             stale.append(f"{label} says {stated}, references/stavki.md says {iso}")
-
-    # The compatibility line is a frontmatter field, so it is read from the parsed
-    # frontmatter rather than grepped out of the whole file - a grep over SKILL.md
-    # would be satisfied by the date appearing anywhere in the body.
-    copies += 1
-    if dotted not in str(compatibility):
-        stale.append(f"SKILL.md frontmatter compatibility does not carry {dotted}")
 
     # The prose copies. Each is matched in the exact shape it is written in, so that a
     # half-edit - badge updated, sentence forgotten - is still caught.
