@@ -4,12 +4,19 @@
 Part 1 is a self-contained fixture rather than test/generate_shapes.py's: K5 and K6 are
 checked from *values*, never formulas, so the fixture needs no formula caching at all -
 every cell, including the totals row, is a plain number chosen to already be
-self-consistent. It also pins the two 2.14.0 regressions directly: one shape plants K5
-in a column outside tools/preflight.py's concept vocabulary (0 of 28 found against real
-fixtures before the fix), another plants an unrounded value that flows into a second,
-known-concept column the way a class supplement flows into gross (found twice before
-the fix - a cause and its consequence counted as two findings, which otchet.md and
-test/structural_test.py both forbid).
+self-consistent. It also pins three regressions directly: one shape plants K5 in a
+column outside tools/preflight.py's concept vocabulary (0 of 28 found against real
+fixtures before the 2.14.1 fix), another plants an unrounded value that flows into a
+second, known-concept column the way a class supplement flows into gross (found twice
+before the fix - a cause and its consequence counted as two findings, which otchet.md
+and test/structural_test.py both forbid), and the fixture's own „Часова ставка" column
+carries four legitimate decimals throughout - a rate is not an accrual, and the clean
+fixture stays silent on it only because of the 2.14.3 fix below.
+
+`MONEY_LIKE_CASES`, further down, pins `_is_money_like()` against specific header
+strings directly - the fastest way to notice a future fix to the exclusion regex
+breaking a case it already handled, without waiting on a wide-fixture seed to happen to
+carry the same header.
 
 Part 2 runs the checker against test/generate_wide.py's actual injected fixtures across
 many seeds and compares the count against the manifest, the way structural_test.py does
@@ -34,16 +41,21 @@ import generate_wide as GW                                     # noqa: E402
 
 HEADERS = ["Име", "Отраб. дни", "Основна за отработеното", "Клас сума", "БРУТО",
            "Осигурителен доход", "Данъчна основа", "ДДФЛ", "Лични вноски общо",
-           "НЕТО за изплащане", "Карта (за сметка на работодателя)", "Клас %"]
+           "НЕТО за изплащане", "Карта (за сметка на работодателя)", "Клас %",
+           "Часова ставка"]
 ROWS = [
-    ["Лице 1", 21, 1000.00, 50.00, 1050.00, 1050.00, 945.00, 94.50, 105.00, 850.50, 40.00, 5.0],
-    ["Лице 2", 18, 1200.00, 96.00, 1296.00, 1296.00, 1166.40, 116.64, 129.60, 1049.76, 40.00, 8.0],
-    ["Лице 3", 21, 900.00, 18.00, 918.00, 918.00, 826.20, 82.62, 91.80, 743.58, 40.00, 2.0],
+    ["Лице 1", 21, 1000.00, 50.00, 1050.00, 1050.00, 945.00, 94.50, 105.00, 850.50,
+     40.00, 5.0, 5.9524],
+    ["Лице 2", 18, 1200.00, 96.00, 1296.00, 1296.00, 1166.40, 116.64, 129.60, 1049.76,
+     40.00, 8.0, 8.3333],
+    ["Лице 3", 21, 900.00, 18.00, 918.00, 918.00, 826.20, 82.62, 91.80, 743.58,
+     40.00, 2.0, 5.3571],
 ]
 HEADER_ROW = 1
 # Left out of the totals row's default per-column sum, the way a real export leaves it:
-# a percentage column's total is not one more sum, it just isn't sensible as one.
-NOT_SUMMED = {"Клас %"}
+# a percentage column's total is not one more sum, it just isn't sensible as one, and a
+# rate column's total is usually left blank entirely.
+NOT_SUMMED = {"Клас %", "Часова ставка"}
 
 failures = []
 
@@ -165,6 +177,33 @@ def run_fixture(tmpdir):
         fail("report() does not mention K5 for a workbook with a K5 finding")
 
 
+# Pinned so the next fix to _NOT_MONEY has to look at this table, not just at the one
+# header it is fixing. True = should be treated as money (K5/K6 eligible), False =
+# excluded (a day count, a percentage, an hour count, a rate or a coefficient).
+MONEY_LIKE_CASES = {
+    "Удръжка карта (лична част)": True,     # "час" inside "**час**т" - not an hour
+    "Обезщетение чл. 224": True,
+    "Клас сума": True,
+    "Ставка": False,
+    "Часова ставка": False,
+    "Дневна ставка": False,
+    "Коеф. СИРВ": False,
+    "Коефициент СИРВ": False,
+}
+
+
+def run_money_like():
+    import preflight as PF
+    mapping = PF.Mapping()
+    for header, expected in MONEY_LIKE_CASES.items():
+        concept = PF.classify(header, mapping)
+        got = KC._is_money_like(header, concept)
+        if got != expected:
+            fail(f"_is_money_like({header!r}): expected {expected}, got {got}")
+        else:
+            print(f"ok   money_like({header!r}) = {got}")
+
+
 def run_wide(seeds):
     """K5/K6 counts against test/generate_wide.py's manifest, seeds 1..seeds.
 
@@ -214,6 +253,8 @@ if __name__ == "__main__":
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         run_fixture(tmp)
+    print()
+    run_money_like()
     print()
     run_wide(a.seeds)
 

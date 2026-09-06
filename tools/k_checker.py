@@ -44,6 +44,15 @@ total. K5 now excludes the same day/percentage/hour columns K6 already excluded 
 same reason - the trade is giving up K5 on a day-column total, which would still sum
 validly, for removing a confirmed false positive on percentage columns.
 
+2.14.2 fixed a rate or a coefficient reading as an unrounded accrual: „Часова ставка“
+(1000/21/8 = 5.9524) or a чл. 9б НРВПО СИРВ coefficient (25/24 = 1.0417) legitimately
+carries four decimals and is not an accrual at all - proverki.md's K6 is explicit that
+it means a sum paid out, not a rate a sum is computed from. Excluded by whole word, the
+same way „час“ was corrected against matching inside „**час**т“: a substring match on
+„ставка“ or „коеф“ would have caught real accrual names in passing too readily to risk
+it. The trade here is the same as for day columns - K5 on a rate column's total is given
+up (a rate column rarely has a sum worth checking anyway) to remove the false positive.
+
 Usage:
     python tools/k_checker.py ВЕДОМОСТ.xlsx [--mapping tools/mapping.example.yaml]
                               [--kid 62] [--group 3] [--tzpb 0.4] [--out report.md]
@@ -79,8 +88,11 @@ SUM_EPS = 0.01                   # a cent: what a rate rounded before multiplyin
 _DAY_OR_PERCENT_CONCEPTS = {"отработени дни", "дни отпуск", "дни болничен", "клас %"}
 # Whole words only: a bare "час" as a substring also matches "**час**т" ("частта",
 # "лична част" - a real column name of one of the three generate_wide.py targets for
-# K5), which is a share, not an hour.
-_NOT_MONEY = re.compile(r"\bдни\b|%|\bчас(а|ове)?\b", re.I)
+# K5), which is a share, not an hour. Same reasoning for "ставка" and "коеф": a rate or
+# a coefficient is not an accrual, however many decimals it legitimately carries, but a
+# substring match would also catch it inside real accrual names in passing.
+_NOT_MONEY = re.compile(
+    r"\bдни\b|%|\bчас(а|ове)?\b|\bставк[аи]\b|\bкоеф(\.|ициент(и|а)?)?\b", re.I)
 
 
 def _is_money_like(header, concept):
