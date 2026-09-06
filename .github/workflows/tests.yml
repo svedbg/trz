@@ -85,6 +85,14 @@ jobs:
         # are built in memory - no payroll, real or generated, is read.
         run: python test/preflight_test.py
 
+      - name: K5/K6 computed from a workbook, against generate_wide.py's manifest
+        # tools/k_checker.py's own hand-built fixture, plus 300 seeds of the same
+        # generated payrolls suite 2 checks - the depth this job runs everything else
+        # at. 2.14.0 shipped this checker walking only tools/preflight.py's known-concept
+        # columns and went 0 for 28 on K5 against these same fixtures; this step is
+        # what would have caught it.
+        run: python test/k_checker_test.py --seeds 300
+
       - name: Suite 5 - the chain below the payroll
         # ведомост -> обр. 1 -> обр. 6 -> внесено, one link broken at a time. The
         # checks that reconcile the payroll against the documents downstream of it had
@@ -305,3 +313,5 @@ jobs:
         run: pip install -r test/requirements.txt
       - name: All five suites (0-4) at the 3000 seeds the README claims
         run: python test/run_tests.py --seeds 3000
+      - name: K5/K6 checker at the same depth
+        run: python test/k_checker_test.py --seeds 3000

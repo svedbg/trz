@@ -33,6 +33,7 @@ python test/skill_test.py     # packaging: frontmatter, references, manifests, l
 python test/checks_test.py    # suite 1: static payroll against the key in expected_findings.md
 python test/eval_skill.py --selftest      # free: checks the refusal grading itself
 python test/preflight_test.py # tools/preflight.py: clean is silent, each shape defect found once
+python test/k_checker_test.py # tools/k_checker.py: K5/K6 vs. generate_wide.py's manifest, 60 seeds by default
 python test/komplekt_test.py  # suite 5: ведомост -> обр. 1 -> обр. 6 -> внесено -> счетоводство, one link at a time
 python test/lifecycle_test.py # suite 6: five months of the same people, one timeline break at a time
 python test/run_tests.py      # all five, 50 seeds
@@ -94,6 +95,14 @@ A false positive fails exactly like a miss.
   the skill directory whole. It never writes to the workbook — the file is evidence —
   and never guesses a period, because guessing the period picks the thresholds. Its
   column vocabulary is pinned against `trz_model.COLUMNS` by `preflight_test.py`.
+  `tools/k_checker.py` sits beside it, same reasoning, and computes only K5 (a
+  hand-typed total) and K6 (rounding) from a real workbook — the two group-K checks
+  that ask nothing about any column but the one being checked. It walks every header on
+  the sheet, not only `preflight.py`'s known concepts: limiting it to those once meant
+  0 of 28 injected K5 defects were found, because a real file's benefit and deduction
+  columns are not all in that closed vocabulary. `test/k_checker_test.py` checks it
+  against `generate_wide.py`'s manifest, not only a hand-built fixture, for exactly
+  that reason.
 - **Suite 6 may only compare a month with another month.** Every sheet in
   `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing
