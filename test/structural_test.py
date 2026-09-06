@@ -161,7 +161,12 @@ def selftest_sick_base():
 
 
 def check(xlsx, manifest, quiet=False):
-    man = json.load(open(manifest, encoding="utf8"))
+    # `manifest` is a path everywhere in this file's own CLI, but eval_skill.py's
+    # prepare() holds the manifest already in memory - the isolated seed directory a
+    # live session sees must not gain a JSON file naming every injected defect, so
+    # there is nothing on disk to point a path at. Accepting the dict directly avoids
+    # a throwaway file outside that directory just to satisfy this signature.
+    man = json.load(open(manifest, encoding="utf8")) if isinstance(manifest, (str, os.PathLike)) else manifest
     # The configured reading of чл. 17, ал. 1 for an uncharacterised bonus column.
     # The auditor is told this one; only the file's own practices are inferred.
     bonus_in_base = bool((man.get("policy") or {}).get("bonus_in_base"))
@@ -795,7 +800,13 @@ def check(xlsx, manifest, quiet=False):
     return dict(injected=len(expected), found=len(expected & found),
                 missed=sorted(f"{a}:{b}" for a, b in missed),
                 extra=sorted(f"{a}:{b}" for a, b in extra),
-                findings=len(F.items))
+                findings=len(F.items),
+                # The ground truth eval_skill.py grades a live model's own stated/due
+                # figures against - this checker already computes both for nearly
+                # every scenario (F.add's stated/due arguments), so grading reuses
+                # that instead of teaching every one of generate_wide.py's mutations
+                # to also return the correct amount a second way.
+                items=F.items)
 
 
 if __name__ == "__main__":

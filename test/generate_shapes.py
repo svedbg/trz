@@ -236,6 +236,31 @@ def s_no_cached_values(wb):
     pass
 
 
+def s_subtotal_in_data(wb):
+    """A department subtotal in the middle of the data block - the row's name column
+    carries the same "общо" wording the real, final totals row does.
+
+    Row count is untouched on purpose: this is the middle employee row of three,
+    still holding valid numbers and its БРУТО formula, with only its name cell
+    rewritten - so scripts/preflight.py's gross-cache patch and every other row stay
+    exactly as the clean file's, and this shape tests only the one thing: whether
+    data_range() keeps looking past the first "общо"-shaped row for a later one.
+    """
+    wb.active.cell(HEADER_ROW + 2, 1, "Общо отдел Продажби")
+
+
+def s_blank_row_in_data(wb):
+    """A row inside the data block with nothing in it at all - every cell cleared,
+    formula included - the shape a spacer row or a never-filled-in inserted employee
+    both take. `.value = None` clears whatever was there; the other two rows and the
+    real totals row are untouched.
+    """
+    ws = wb.active
+    r = HEADER_ROW + 2
+    for c in range(1, ws.max_column + 1):
+        ws.cell(r, c).value = None
+
+
 SHAPES = {
     "S1_no_header":         (s_no_header,      "NO_HEADER",
                              "the header row is unrecognisable"),
@@ -267,6 +292,11 @@ SHAPES = {
                              "a recognised column hidden from the printed sheet"),
     "S15_numbers_as_text":  (s_numbers_as_text, "NUMBERS_AS_TEXT",
                              "a money column stored as text"),
+    "S16_subtotal_in_data": (s_subtotal_in_data, "MULTIPLE_TOTALS_CANDIDATES",
+                             "a department subtotal reads as the totals row, hiding "
+                             "the real one and the rows after it"),
+    "S17_blank_row_in_data": (s_blank_row_in_data, "BLANK_DATA_ROW",
+                             "a wholly empty row sits inside the data block"),
 }
 
 

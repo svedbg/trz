@@ -85,12 +85,23 @@ NUMBERS_AS_TEXT = "NUMBERS_AS_TEXT"
 EXTERNAL_LINKS = "EXTERNAL_LINKS"
 NO_KID = "NO_KID"
 NO_TZPB = "NO_TZPB"
+# A department subtotal earlier in the block matches TOTALS_LABEL too, and taking the
+# first match silently truncated every real employee row after it out of the audited
+# range - the same failure mode NO_TOTALS exists to name, just with a wrong row instead
+# of none. Blocking rather than a guess at which candidate is the real one: the wrong
+# guess is a false "everyone after this row was never audited", not a defect to report.
+MULTIPLE_TOTALS_CANDIDATES = "MULTIPLE_TOTALS_CANDIDATES"
+# A row inside the data block where every known column is blank - a spacer, or an
+# employee row someone inserted and never filled in. Neither formula-coverage nor
+# cached-value counters see a wholly empty row (nothing to count), so it was invisible
+# before this signal existed.
+BLANK_DATA_ROW = "BLANK_DATA_ROW"
 
 # The seven values Excel stores when a formula does not resolve.
 EXCEL_ERRORS = {"#N/A", "#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#NULL!", "#NUM!"}
 
 BLOCKING = {NO_HEADER, NO_PERIOD, MISSING_REQUIRED, DUPLICATE_CONCEPT,
-            MAPPING_UNKNOWN_CONCEPT, MAPPING_COLUMN_ABSENT}
+            MAPPING_UNKNOWN_CONCEPT, MAPPING_COLUMN_ABSENT, MULTIPLE_TOTALS_CANDIDATES}
 
 # --------------------------------------------------------------- column vocabulary
 # concept -> (required, accepted header spellings). The canonical spellings are the ones
@@ -365,8 +376,15 @@ def find_header_row(ws, mapping=None, limit=15):
     return (best, best_score) if best_score >= 3 else (None, best_score)
 
 
+def _blank(v):
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
 def data_range(ws, header_row):
-    """(first, last, totals): data rows run to the row before the totals row.
+    """(first, last, totals, candidates): data rows run to the row before the totals
+    row. `candidates` is every row in range that matched TOTALS_LABEL, in order -
+    `totals` is always its first element when non-empty, so a caller not interested in
+    the ambiguity keeps reading exactly as before.
 
     The totals row is excluded because it is not a person, and every per-row check that
     treats it as one produces a finding against nobody.
@@ -378,19 +396,26 @@ def data_range(ws, header_row):
     income, always "over the cap") is the visible symptom - caught by auditing real
     payrolls, not by any suite here, since every generated fixture's totals row starts
     with the label word.
+
+    Taking the FIRST match, unconditionally, has the same shape of risk in the other
+    direction: a department subtotal earlier in the block matches the same label, and
+    stopping there silently drops every real employee row below it from `last` with no
+    signal at all - the row range shrinks, nothing raises. analyse() reports
+    MULTIPLE_TOTALS_CANDIDATES and blocks rather than have this function guess which
+    candidate is the real total.
     """
     first = header_row + 1
-    last, totals = ws.max_row, None
+    last = ws.max_row
+    candidates = []
     for r in range(first, (ws.max_row or first) + 1):
         for c in range(1, min(4, (ws.max_column or 1) + 1)):
             if TOTALS_LABEL.search(str(ws.cell(r, c).value or "")):
-                totals = r
+                candidates.append(r)
                 break
-        if totals:
-            break
+    totals = candidates[0] if candidates else None
     if totals:
         last = totals - 1
-    return first, last, totals
+    return first, last, totals, candidates
 
 
 def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
@@ -467,11 +492,25 @@ def analyse(path, mapping=None, kid=None, group=None, tzpb=None):
                 (DUPLICATE_CONCEPT,
                  sorted(f"{k}: " + ", ".join(v) for k, v in duplicates.items())))
 
-        first, last, totals = data_range(wv, header_row)
+        first, last, totals, totals_candidates = data_range(wv, header_row)
         info["first_row"], info["totals_row"] = first, totals
         info["rows"] = max(0, last - first + 1)
         if totals is None:
             info["signals"].append((NO_TOTALS, None))
+        elif len(totals_candidates) > 1:
+            info["signals"].append((MULTIPLE_TOTALS_CANDIDATES, totals_candidates))
+
+        # A row inside the data block where every known column is blank - a spacer row,
+        # or an employee row inserted and never filled in. Neither the formula-coverage
+        # nor the cached-value counters below see this: there is nothing in the row for
+        # either to count, so it was invisible before this check existed.
+        if info["known"]:
+            blank_rows = [
+                r for r in range(first, last + 1)
+                if all(_blank(wv.cell(r, meta["col"]).value)
+                       for meta in info["known"].values())]
+            if blank_rows:
+                info["signals"].append((BLANK_DATA_ROW, blank_rows))
 
         if info["period"] is None:
             info["signals"].append((NO_PERIOD, None))
@@ -664,6 +703,14 @@ def report(data):
         L.append(f"- заглавен ред: {s['header_row']}; редове с данни: {s['rows']}"
                  + (f"; ред с общи суми: {s['totals_row']}" if s["totals_row"]
                     else "; **ред с общи суми не е намерен** (K5 няма какво да сверява)"))
+        if MULTIPLE_TOTALS_CANDIDATES in ssig:
+            c = ssig[MULTIPLE_TOTALS_CANDIDATES]
+            L.append(f"- **повече от един ред прилича на „общо“**: "
+                     f"{', '.join(str(r) for r in c)}. Взет е първият ({c[0]}) — ако е "
+                     f"междинна сума на отдел, а не крайният сбор, редовете след него "
+                     f"изобщо не са проверени. Одитът не може да тръгне, докато не се "
+                     f"потвърди кой ред е истинският сбор.")
+            continue
 
         if NO_PERIOD in ssig:
             L.append("- **периодът не е обявен на листа** — не се извежда от числата; "
@@ -734,6 +781,13 @@ def report(data):
             L.append(f"- скрити редове в данните ({len(h)}): "
                      + ", ".join(str(r) for r in h[:12]) + (" …" if len(h) > 12 else "")
                      + ". Дали влизат в сборовете не личи от отпечатания лист")
+        if BLANK_DATA_ROW in ssig:
+            b = ssig[BLANK_DATA_ROW]
+            L.append(f"- напълно празни редове в обхвата на данните ({len(b)}): "
+                     + ", ".join(str(r) for r in b[:12]) + (" …" if len(b) > 12 else "")
+                     + ". Разделителен ред, оставен по невнимание, или добавен служител, "
+                       "чиито данни никога не са попълнени — провери преди да заключиш, "
+                       "че никой ред не е пропуснат")
         if s["name_col"]:
             L.append(f"- колоната с имена е {s['name_col']} — съдържанието ѝ не се "
                      f"възпроизвежда нито в този доклад, нито в извлека")

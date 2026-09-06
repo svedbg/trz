@@ -86,6 +86,7 @@ sys.path.insert(0, HERE)
 
 import trz_model as M                                          # noqa: E402
 import generate_wide as G                                      # noqa: E402
+import structural_test as ST                                   # noqa: E402
 from eval_scenarios import (                                   # noqa: E402
     KEYWORDS, PAIR_KEYWORDS, PAIR_OBSERVED, PAIR_SAMPLE_TEXT, RATE_FREE,
     RATE_DEPENDENT, SAYS_MISSING, SAYS_PERIOD, FORBIDDEN, LEAKED,
@@ -164,6 +165,19 @@ def _generate(module, seed, **kw):
     xlsx, manifest_path, man = module.generate(seed, **kw)
     with open(xlsx, "rb") as f:
         data = f.read()
+    if module is G:
+        # structural_test.py's own checker already computes stated/due for nearly
+        # every scenario it detects (that is what Findings.add()'s two numeric
+        # arguments are) - grade() reuses that as the ground truth a live model's own
+        # nachisleno/dalzhimo are checked against, rather than teaching every one of
+        # generate_wide.py's mutations to also return the correct amount a second,
+        # driftable way. Scoped to the wide fixture only: pair and komplekt have no
+        # equivalent oracle yet - see CONTRIBUTING.md/scenarios.md.
+        ground_truth = ST.check(xlsx, man, quiet=True)
+        man["expected_amounts"] = {
+            (f["where"], f["id"]): (f["stated"], f["due"])
+            for f in ground_truth["items"] if f["due"] is not None
+        }
     for path in (xlsx, manifest_path):
         os.remove(path)
     return data, man
@@ -581,6 +595,29 @@ def asserts_a_defect(finding, ident=None):
     return m is None
 
 
+def _amount_mismatch(expected, finding):
+    """None when there is nothing to check or the two figures agree; otherwise the
+    (expected_stated, expected_due, got_stated, got_due) that disagree.
+
+    Loose on purpose - max(0.5, 1% of the larger figure) - because this is a report,
+    not a gate (see grade()'s docstring): a model that paraphrases „приблизително" or
+    rounds differently should not be flagged over a model that invented a number.
+    """
+    if expected is None:
+        return None
+    exp_stated, exp_due = expected
+    got_stated, got_due = finding.get("nachisleno"), finding.get("dalzhimo")
+    pairs = [(exp_stated, got_stated), (exp_due, got_due)]
+    if not any(isinstance(g, (int, float)) and not isinstance(g, bool) for _, g in pairs):
+        return None                # the model gave neither figure - nothing to check
+    for e, g in pairs:
+        if e is None or g is None or isinstance(g, bool):
+            continue
+        if abs(e - g) > max(0.5, 0.01 * max(abs(e), abs(g))):
+            return (exp_stated, exp_due, got_stated, got_due)
+    return None
+
+
 def grade(man, findings):
     """Map the findings onto what was injected.
 
@@ -591,6 +628,16 @@ def grade(man, findings):
     Only a finding that asserts a defect can identify one - see asserts_a_defect. A
     note or a denial on the right row leaves the expectation „located only": the
     skill looked there and did not commit.
+
+    Returns (result, unattributed, amount_mismatches). The third is reported, not
+    counted: a finding grades „identified" by keyword and location exactly as before
+    even when its own stated/due figures disagree with the ground truth
+    structural_test.py's checker computed for the wide fixture (man["expected_amounts"]
+    - absent for pair/komplekt, so this is always empty there). Folding a wrong number
+    into the pass/fail status would mean inventing a tolerance that decides the score;
+    reporting it instead lets a human read which "identified" findings actually did
+    the arithmetic right, the same restraint the unattributed list already applies to
+    findings beyond what was injected.
     """
     HDR, TOTAL = man["hdr"], man["total_row"]
     keywords = man.get("keywords") or KEYWORDS
@@ -602,8 +649,10 @@ def grade(man, findings):
     for i, f in enumerate(findings):
         places[location(f, TOTAL)].append(i)
 
+    expected_amounts = man.get("expected_amounts") or {}
     attributed = set()
     result = []
+    amount_mismatches = []
     for where, ident in expected:
         here = places.get(where, [])
         # No patterns must mean "cannot grade", never "matches everything": all() over
@@ -625,12 +674,16 @@ def grade(man, findings):
         if hit is not None:
             attributed.add(hit)
             result.append((where, ident, "identified", findings[hit]))
+            mismatch = _amount_mismatch(expected_amounts.get((where, ident)),
+                                        findings[hit])
+            if mismatch is not None:
+                amount_mismatches.append((where, ident) + mismatch)
         elif here:
             result.append((where, ident, "located only", findings[here[0]]))
         else:
             result.append((where, ident, "missed", None))
     unattributed = [f for i, f in enumerate(findings) if i not in attributed]
-    return result, unattributed
+    return result, unattributed, amount_mismatches
 
 
 def grade_refusal(man, findings):
@@ -839,6 +892,51 @@ def check_grading():
     return problems
 
 
+def check_amount_grading():
+    """Prove grade() reports a wrong nachisleno/dalzhimo without changing the score.
+
+    Seed 1's man["expected_amounts"] (built from structural_test.py's own checker -
+    see _generate()) supplies a real (where, ident) with a known stated/due. A finding
+    that names the right row and the scenario's own sample sentence, but a due figure
+    100 away from the ground truth, must still grade "identified" (the status this
+    finding earned by row and keyword is unchanged) while showing up in
+    amount_mismatches; the same finding with the true figure must not.
+    """
+    problems = []
+    _, man = _generate(G, 1, bonus_in_base=False)
+    hdr = man["hdr"]
+    amounts = man.get("expected_amounts") or {}
+    checkable = [(where, idx, ident) for where, idx, ident in man["expected"]
+                 if ("file" if where == "file" else hdr + 1 + idx, ident) in amounts]
+    if not checkable:
+        problems.append("seed 1: no expected scenario has a ground-truth amount to "
+                        "check against - check_amount_grading proves nothing")
+        return problems
+    where, idx, ident = checkable[0]
+    row = hdr + 1 + idx if where == "row" else "file"
+    exp_stated, exp_due = amounts[(row, ident)]
+
+    def finding(due):
+        return dict(kade=(f"ред {row}" if where == "row" else "файл"),
+                    red=row if where == "row" else None, tezhest="дефект",
+                    kratko=SAMPLE_TEXT[ident], nachisleno=exp_stated, dalzhimo=due)
+
+    _, _, right = grade(man, [finding(exp_due)])
+    if right:
+        problems.append(f"{ident}: the true due figure {exp_due} was still flagged as "
+                        f"a mismatch: {right}")
+    wrong_due = (exp_due or 0) + 100
+    result, _, mismatches = grade(man, [finding(wrong_due)])
+    status = next(s for w, i, s, _ in result if i == ident)
+    if status != "identified":
+        problems.append(f"{ident}: a wrong due figure changed the score to {status!r} - "
+                        f"it must stay 'identified' and be reported separately instead")
+    if not mismatches:
+        problems.append(f"{ident}: due {wrong_due} against ground truth {exp_due} was "
+                        f"not reported as an amount mismatch")
+    return problems
+
+
 def check_isolation():
     """Prove the transcript screen sees a leak in a tool RESULT, not only in a path.
 
@@ -920,6 +1018,14 @@ def selftest():
         print(f"  FAIL  {p}")
     if not grading:
         print("  ok    notes, declines and denials on the right row score located only")
+    amounts = check_amount_grading()
+    problems += amounts
+    print("amount grading: a wrong nachisleno/dalzhimo is reported, not scored")
+    for p in amounts:
+        print(f"  FAIL  {p}")
+    if not amounts:
+        print("  ok    a wrong due figure stays 'identified' and shows up in "
+              "amount_mismatches; the true figure does not")
     isolation = check_isolation()
     problems += isolation
     print("isolation: the transcript screen reads tool results, not only tool inputs")
@@ -1088,10 +1194,12 @@ def _as_run(rec):
     """The in-memory shape the summaries read, from a saved or a fresh record."""
     return dict(seed=rec["seed"], cost=rec.get("cost") or 0, gradable=rec["gradable"],
                 session_error=rec.get("session_error"), result=rec["result"],
-                unattributed=rec["unattributed"], refusal=rec.get("refusal"))
+                unattributed=rec["unattributed"],
+                amount_mismatches=rec.get("amount_mismatches") or [],
+                refusal=rec.get("refusal"))
 
 
-def print_graded(graded, unattributed):
+def print_graded(graded, unattributed, amount_mismatches=()):
     for where, ident, status, f in graded:
         loc = "file" if where == "file" else f"row {where}"
         mark = {"identified": "  +", "located only": "  ~", "missed": "  -"}[status]
@@ -1104,6 +1212,15 @@ def print_graded(graded, unattributed):
         for f in unattributed:
             print(f"      [{f.get('kade') or f.get('red')}] "
                   f"{str(f.get('kratko'))[:95]}")
+    if amount_mismatches:
+        print(f"  amount mismatches ({len(amount_mismatches)}) - identified by row and "
+              f"keyword, but the model's own nachisleno/dalzhimo disagree with "
+              f"structural_test.py's ground truth; reported, not counted against the "
+              f"score:")
+        for where, ident, exp_stated, exp_due, got_stated, got_due in amount_mismatches:
+            loc = "file" if where == "file" else f"row {where}"
+            print(f"      [{loc}] {ident}: expected {exp_stated}→{exp_due}, "
+                  f"model said {got_stated}→{got_due}")
 
 
 def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=False,
@@ -1153,7 +1270,8 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
                findings=None, gradable=False, session_error=bool(trace.get("error")),
                touched=trace["touched"], turns=trace.get("turns"),
                tool_calls=trace["tool_calls"], cost=trace.get("cost") or 0,
-               seconds=trace["seconds"], result=[], unattributed=[], refusal=None)
+               seconds=trace["seconds"], result=[], unattributed=[],
+               amount_mismatches=[], refusal=None)
 
     if trace["touched"]:
         print("  RUN TAINTED: it reached the answers or the checking code -")
@@ -1184,8 +1302,8 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
     if refusal:
         rec["refusal"] = report_refusal(man, findings)
     else:
-        rec["result"], rec["unattributed"] = grade(man, findings)
-        print_graded(rec["result"], rec["unattributed"])
+        rec["result"], rec["unattributed"], rec["amount_mismatches"] = grade(man, findings)
+        print_graded(rec["result"], rec["unattributed"], rec["amount_mismatches"])
     persist(rec)
     return _as_run(rec)
 
@@ -1270,6 +1388,11 @@ def summarize(runs, scenarios, threshold=None):
               f"missed: {missed / total:.0%}")
         extra = sum(len(r["unattributed"]) for r in runs)
         print(f"unattributed findings: {extra} - review them; some may be correct")
+        wrong_amount = sum(len(r["amount_mismatches"]) for r in runs)
+        if wrong_amount:
+            print(f"amount mismatches: {wrong_amount} - identified findings whose own "
+                  f"stated/due figures disagree with structural_test.py's ground truth; "
+                  f"not counted against the score above, see the per-seed detail")
     if threshold is not None:
         if not total:
             # Money was spent and nothing was measured. Passing here would record the
@@ -1306,7 +1429,7 @@ def regrade(threshold=None):
         mode = rec.get("mode", "wide")
         run = dict(seed=rec["seed"], cost=rec.get("cost") or 0, gradable=False,
                    session_error=rec.get("session_error"), result=[], unattributed=[],
-                   refusal=None)
+                   amount_mismatches=[], refusal=None)
         if rec.get("gradable") and rec.get("findings") is not None:
             man = dict(rec["manifest"])
             universe = (KOMPLEKT_KEYWORDS if mode == "komplekt" else
@@ -1325,7 +1448,8 @@ def regrade(threshold=None):
                 changed = [f"{k} {before.get(k)} -> {v}" for k, v in run["refusal"].items()
                            if before.get(k) != v]
             else:
-                run["result"], run["unattributed"] = grade(man, rec["findings"])
+                run["result"], run["unattributed"], run["amount_mismatches"] = \
+                    grade(man, rec["findings"])
                 before = {(str(w), i): s for w, i, s, _ in rec.get("result") or []}
                 changed = [f"{i} {before.get((str(w), i))} -> {s}"
                            for w, i, s, _ in run["result"] if before.get((str(w), i)) != s]
