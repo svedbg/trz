@@ -679,6 +679,19 @@ else:
         fail(f".github/social-preview.html claims {facts['проверки']} checks; "
              f"references/proverki.md lists {check_count} `- **X1.` bullets")
 
+    README_CHECK_COUNTS = (
+        ("README.md", r"Eleven groups, (\d+) checks"),
+        ("README.bg.md", r"Единадесет групи, (\d+) проверки"),
+    )
+    for label, pattern in README_CHECK_COUNTS:
+        m = re.search(pattern, read(os.path.join(ROOT, label)))
+        if not m:
+            fail(f"{label} no longer states the check count in the shape this test "
+                 f"reads - it cannot be checked against references/proverki.md")
+        elif int(m.group(1)) != check_count:
+            fail(f"{label} claims {m.group(1)} checks; references/proverki.md lists "
+                 f"{check_count} `- **X1.` bullets")
+
     scenario_count = len(trz_model.SCENARIOS)
     if "сценария" in facts and digits(facts["сценария"]) != scenario_count:
         fail(f".github/social-preview.html claims {facts['сценария']} scenarios; "
