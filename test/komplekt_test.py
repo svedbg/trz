@@ -308,7 +308,7 @@ def main():
                              red=None if where == "file" else man["hdr"] + 1 + idx,
                              tezhest="нарушение", kratko=CORRECT_REPORT[ident])
                         for where, idx, ident in man["expected"]]
-            graded, unattributed = E.grade(man, findings)
+            graded, unattributed, _ = E.grade(man, findings)
             verdict = dict((ident, v) for _, ident, v, _ in graded)
             check(verdict.get(break_id) == "identified" and not unattributed,
                   f"{break_id:30} a correct sentence grades as identified"

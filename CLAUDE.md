@@ -145,7 +145,19 @@ A false positive fails exactly like a miss.
   missing columns, and the two values no file carries (КИД and ТЗПБ). It never writes to
   the workbook — the file is evidence — and never guesses a period, because guessing the
   period picks the thresholds. Its column vocabulary is pinned against `trz_model.COLUMNS`
-  by `preflight_test.py`. `scripts/k_checker.py` sits beside it, same reasoning, and
+  by `preflight_test.py`. Two shapes added 2026-09 close a real gap between the 15
+  `generate_shapes.py` scenarios already covered and a document-ingestion review that
+  found it: `data_range()` used to stop at the FIRST row matching a totals label, so a
+  department subtotal earlier in the block silently truncated every real employee row
+  after it out of the audited range with no signal at all - now blocking
+  (`MULTIPLE_TOTALS_CANDIDATES`, S16), on the same "ambiguous → refuse, never guess"
+  principle as everywhere else here. A wholly blank row inside the data block (a spacer,
+  or an inserted employee never filled in) was invisible to every formula/cached-value
+  counter, since there is nothing in an empty row for either to count - now reported
+  (`BLANK_DATA_ROW`, S17). Two other reviewed gaps turned out not to be gaps: multiple
+  header rows already score by concept match rather than assume row 1, and Excel-serial
+  vs. text dates are moot since `sheet_period()` only reads string cells.
+  `scripts/k_checker.py` sits beside it, same reasoning, and
   computes only K5 (a hand-typed total) and K6 (rounding) from a real workbook — the two
   group-K checks that ask nothing about any column but the one being checked. It walks
   every header on the sheet, not only `preflight.py`'s known concepts: limiting it to
@@ -197,9 +209,26 @@ A false positive fails exactly like a miss.
   report afterward. `test/findings.py` imports this table for the ids `audit.py`/
   `k_checker.py` raise instead of keeping a second, driftable copy - the same
   single-owner principle CLAUDE.md states for rates, applied to citations. `severity`
-  and `confidence` fields exist on every finding already but are left `None` by both
-  callers today; otchet.md's status-caps-severity rule stays the model's to apply when
-  it folds these findings into the full report.
+  defaults to `дефект` when the basis is arithmetic (otchet.md's own hard rule for
+  group K and internal-contradiction findings) and stays `None` for a citation basis -
+  `scripts/rates.py` deliberately does not read a stavki.md row's status, so which
+  severity a statutory finding earns under otchet.md's status-caps-severity rule stays
+  the model's to apply, unchanged from before this module existed. `confidence`
+  defaults to `изчислено` on every finding either script raises - provenance, not a
+  second severity; otchet.md's `Увереност` field asks the model to keep it when a
+  script's finding is repeated in prose.
+- **`test/eval_skill.py`'s `grade()` checks a live model's own `nachisleno`/`dalzhimo`
+  against ground truth, for the wide fixture only.** `structural_test.py`'s checker
+  already computes both figures for nearly every scenario it detects (`Findings.add()`'s
+  two numeric arguments) - `_generate()` now also runs that checker against the fixture
+  it just built and stores the result as `man["expected_amounts"]`, so grading a live
+  session's own stated/due numbers needs no second, driftable copy of "the right
+  answer" taught to every one of `generate_wide.py`'s 28 mutations. A mismatch is
+  reported in `amount_mismatches`, never folded into the identified/located/missed
+  score: inventing a tolerance that decides pass/fail would be exactly the kind of
+  silent resolution CLAUDE.md's "fail closed" rule forbids. Pair and komplekt have no
+  equivalent oracle yet - `expected_amounts` is absent there, and `_amount_mismatch()`
+  is a no-op with nothing to compare against.
 - **Suite 6 may only compare a month with another month.** Every sheet in
   `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing
