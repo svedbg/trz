@@ -219,7 +219,13 @@ HEADERS = ["Име", "Отраб. дни", "Основна за отработе
            # whether or not a given row uses them.
            "Клас сума", "Бонус", "Платен отпуск", "Обезщетение чл. 224",
            "Карта (за сметка на работодателя)",
-           "Доброволно здравно осигуряване (премия)"]
+           "Доброволно здравно осигуряване (премия)",
+           # The two DAY_CONCEPTS a K2 shape had never touched - without these, K2's
+           # own hand-built coverage only ever exercised "дни болничен", and a typo
+           # in either concept name would have gone unnoticed by every suite here
+           # (check_day_concepts() below catches the typo itself; these columns let
+           # a shape exercise what the typo would have broken).
+           "Дни платен отпуск", "Дни майчинство"]
 # Everyone this month took at least a little leave or sick time - nobody has the true
 # 22-day calendar norm, so the highest count on the sheet (20) is itself partial. Row
 # 3 sits at 20 with основна scaled down for it, correctly, and must not be flagged.
@@ -228,15 +234,17 @@ HEADERS = ["Име", "Отраб. дни", "Основна за отработе
 # composition pass is proven to add a genuine element correctly, not only to match
 # trivially on an all-zero row. Осигурителен доход for that row is 1000.00 =
 # основна (950.00) + клас (50.00) - I1 never reads Осигурителен доход, so this does
-# not need a matching change to БРУТО/данъчна основа/данък/нето. No shape below
-# touches Лице 2, so this stays untouched and correct in every shape, including clean.
+# not need a matching change to БРУТО/данъчна основа/данък/нето. Лице 2 IS touched by
+# shapes below (s_k2_boundary_fraction, both s_i8_* shapes) - each overwrites
+# either the whole row (I8) or a single column (K2), consistent with what that
+# shape's own docstring claims.
 ROWS = [
     ["Лице 1", 18, 900.00, 900.00, 900.00, 810.00, 81.00, 90.00, 729.00, 729.00, 0, 0.00,
-     0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
+     0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0, 0],
     ["Лице 2", 19, 950.00, 950.00, 1000.00, 855.00, 85.50, 95.00, 769.50, 769.50, 0, 0.00,
-     50.00, 0.00, 0.00, 0.00, 0.00, 0.00],
+     50.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0, 0],
     ["Лице 3", 20, 1127.45, 1127.45, 1127.45, 1014.70, 101.47, 112.75, 913.23, 913.23, 0, 0.00,
-     0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
+     0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0, 0],
 ]
 HEADER_ROW = 1
 
@@ -313,6 +321,30 @@ def s_k2_amount_in_day_column(ws):
     ws.cell(row, HEADERS.index("Дни болничен") + 1, 45.32)
 
 
+def s_k2_boundary_fraction(ws):
+    """Pins the 0.005 threshold itself, not just that SOME fractional value is
+    caught: 8.01 sits only 0.01 from the nearest whole number - exactly the shape
+    (a money amount's own last cent) that the old 0.01 threshold missed, because
+    abs(8.01 - 8) computes to 0.009999999999999787, not > 0.01. Found by adversarial
+    review: the 45.32 shape above is nowhere near either threshold, so reverting the
+    fix to 0.01 left every suite here green.
+    """
+    row = HEADER_ROW + 2        # Лице 2
+    ws.cell(row, HEADERS.index("Дни болничен") + 1, 8.01)
+
+
+def s_k2_other_day_concepts(ws):
+    """The other two DAY_CONCEPTS ("дни отпуск", "дни майчинство") fire too, not
+    only "дни болничен" - the one concept generate_wide.py's own scenario ever
+    injects into. "отработени дни" is left alone here: mutating it would also move
+    full_time_hours/full_month_days (B1/B5's own inputs, computed from this same
+    column), which is a different, unrelated interaction to test.
+    """
+    row = HEADER_ROW + 3        # Лице 3
+    ws.cell(row, HEADERS.index("Дни платен отпуск") + 1, 3.50)
+    ws.cell(row, HEADERS.index("Дни майчинство") + 1, 7.25)
+
+
 def s_i8_duplicated_person(ws):
     """Лице 2's row becomes an exact copy of Лице 1's - every column, not only
     name/бруто/осиг.доход/нето, so the row stays internally consistent (I1 would
@@ -325,12 +357,27 @@ def s_i8_duplicated_person(ws):
 
 
 def s_i8_same_name_different_pay(ws):
-    """Лице 2 gets Лице 1's name but keeps its OWN pay - two different employees who
-    happen to share a name, not a copied row. Must NOT fire I8: audit.py requires
-    бруто/осиг.доход/нето to also match, not the name alone.
+    """Лице 2 gets Лице 1's name AND its Осигурителен доход, but keeps its OWN
+    БРУТО/НЕТО - one of three figures matches, not all three. Must NOT fire I8.
+
+    Осигурителен доход alone, deliberately: unlike БРУТО or НЕТО, changing it can
+    still break the F1/F9/F10 composition pass, which independently requires
+    Осигурителен доход to equal Лице 2's own work_base (основна + клас + бонус +
+    платен отпуск) - discovered the hard way when an earlier version of this
+    shape copied Осигурителен доход alone and left Клас сума at Лице 2's own
+    50.00, firing a spurious F1_insurable_unexplained. Основна за отработеното is
+    lowered here to keep work_base equal to the copied Осигурителен доход
+    (850.00 + клас 50.00 = 900.00), so the composition pass stays silent for an
+    unrelated reason. БРУТО и НЕТО за изплащане are untouched (Лице 2's own
+    950.00/769.50), so I1's chain - which reads none of
+    основна/осиг.доход/клас - is undisturbed too.
     """
     src, dst = HEADER_ROW + 1, HEADER_ROW + 2
-    ws.cell(dst, HEADERS.index("Име") + 1, ws.cell(src, HEADERS.index("Име") + 1).value)
+    for concept in ("Име", "Осигурителен доход"):
+        ws.cell(dst, HEADERS.index(concept) + 1, ws.cell(src, HEADERS.index(concept) + 1).value)
+    ws.cell(dst, HEADERS.index("Основна за отработеното") + 1, 850.00)
+    # БРУТО и НЕТО за изплащане stay Лице 2's own values - the figures that must
+    # NOT match for I8 to correctly stay silent
 
 
 SHAPES = {
@@ -341,6 +388,8 @@ SHAPES = {
                                       A.F1_INSURABLE_UNEXPLAINED: 1},
     "s_f9_sick_pay_out_of_insurable": {A.F9_SICK_PAY_OUT_OF_INSURABLE: 1},
     "s_k2_amount_in_day_column": {A.K2_AMOUNT_IN_DAY_COLUMN: 1},
+    "s_k2_boundary_fraction": {A.K2_AMOUNT_IN_DAY_COLUMN: 1},
+    "s_k2_other_day_concepts": {A.K2_AMOUNT_IN_DAY_COLUMN: 2},
     "s_i8_duplicated_person": {A.I8_DUPLICATED_PEOPLE: 1},
     "s_i8_same_name_different_pay": {},
 }
@@ -363,6 +412,10 @@ EXPECTED_TEXT = {
         A.F9_SICK_PAY_OUT_OF_INSURABLE: [45.00]},
     "s_k2_amount_in_day_column": {
         A.K2_AMOUNT_IN_DAY_COLUMN: [45.32]},
+    "s_k2_boundary_fraction": {
+        A.K2_AMOUNT_IN_DAY_COLUMN: [8.01]},
+    "s_k2_other_day_concepts": {
+        A.K2_AMOUNT_IN_DAY_COLUMN: [3.50, 7.25]},
 }
 
 
@@ -385,7 +438,33 @@ def run_hand_built(tmpdir):
                 if not any(needle in t for t in texts):
                     fail(f"{label}: {ident}'s finding text does not carry {needle} - "
                         f"got {texts}")
+        # I8's finding carries no money figure, only the row it matched against -
+        # that reference is the whole point of the finding, so pin it the same way
+        # EXPECTED_TEXT pins a figure for the other shapes.
+        if name == "s_i8_duplicated_person":
+            other_row = HEADER_ROW + 1
+            texts = [f["text"] for f in findings if f["id"] == A.I8_DUPLICATED_PEOPLE]
+            needle = f"ред {other_row}"
+            if not any(needle in t for t in texts):
+                fail(f"{label}: I8's finding text does not reference {needle!r} - "
+                    f"got {texts}")
         print(f"ok   {label:32s} -> {got or 'nothing'}")
+
+
+def check_day_concepts():
+    """audit.py's DAY_CONCEPTS must be real preflight.CONCEPTS keys - a typo here
+    would silently drop that concept from K2 forever, with every suite staying
+    green, since a K2 shape only ever exercises "дни болничен" (the one concept
+    generate_wide.py's scenario injects into). Found by adversarial review: three
+    of the four names could be misspelled with nothing here to notice.
+    """
+    unknown = sorted(c for c in A.DAY_CONCEPTS if c not in PF.CONCEPTS)
+    if unknown:
+        fail(f"audit.py's DAY_CONCEPTS names {unknown}, which preflight.CONCEPTS "
+             f"does not recognise - a typo would silently drop that concept from K2")
+    else:
+        print("ok   every name in audit.py's DAY_CONCEPTS is a real "
+              "preflight.CONCEPTS key")
 
 
 if __name__ == "__main__":
@@ -393,6 +472,7 @@ if __name__ == "__main__":
     ap.add_argument("--seeds", type=int, default=60)
     a = ap.parse_args()
 
+    check_day_concepts()
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         run_hand_built(tmp)
@@ -407,5 +487,5 @@ if __name__ == "__main__":
         sys.exit(1)
     print("OK: I1/B4/F5 match generate_wide.py's manifest exactly, the suite-1 "
           "fixture matches expected_findings.md including the part-time row that "
-          "must stay silent, and the hand-built shapes for I5/B5/F9/I8 each fire "
-          "once with the right figures")
+          "must stay silent, and the hand-built shapes for I5/B5/F9/K2/I8 each "
+          "fire once with the right figures")
