@@ -60,7 +60,11 @@ def main():
         wanted = {"Име", "Отраб. дни", "Основна за отработеното", "Клас сума", "БРУТО",
                   "Осигурителен доход", "Данъчна основа", "ДДФЛ", "Лични вноски общо",
                   "НЕТО за изплащане", "Изплатено", "Дни болничен",
-                  "Болнични (работодател)", "Вноски работодател общо"}
+                  "Болнични (работодател)", "Вноски работодател общо",
+                  "Дни майчинство", "Платен отпуск", "Бонус", "Обезщетение чл. 224",
+                  "Удръжка доброволно осиг. (лична)", "Удръжка застраховка Живот (лична)",
+                  "Удръжка карта (лична част)", "Карта (за сметка на работодателя)",
+                  "Доброволно здравно осигуряване (премия)"}
         missing = sorted(w for w in wanted if w not in M.COLUMNS)
         check(not missing, f"the canonical names this test pins still exist in "
                            f"trz_model.COLUMNS{' - missing ' + str(missing) if missing else ''}")
@@ -76,6 +80,16 @@ def main():
         # real layout was reported as naming the same quantity twice.
         check(P.classify("Клас %") != P.classify("Клас сума"),
               "the class rate and the class amount are different concepts")
+        # Added alongside the F1/F6/F9/F10 vocabulary (2.17.0): a paid-leave amount is
+        # not the day count, an employee's personal deduction is not the employer's
+        # premium for the same kind of benefit - collapsing either pair would make the
+        # composition-solving method in audit.py double-count or miscount an element.
+        check(P.classify("Платен отпуск") != P.classify("Дни платен отпуск"),
+              "leave pay (money) and leave days are different concepts")
+        check(P.classify("Удръжка застраховка Живот (лична)")
+              != P.classify("Доброволно здравно осигуряване (премия)"),
+              "the employee's own life-insurance deduction is not the employer's "
+              "voluntary-health premium")
         check(P.classify("Извънр. часове (раб. дни)") != "отработени дни",
               "an overtime-hours column is not mistaken for days worked")
         check(P.classify("Отработени часове") != "отработени дни",

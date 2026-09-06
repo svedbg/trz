@@ -130,9 +130,26 @@ CONCEPTS = {
     "дни отпуск":     (False, ["дни платен отпуск", "дни отпуск", "отпуск дни"]),
     "дни болничен":   (False, ["дни болничен", "болнични дни", "дни временна "
                                "неработоспособност"]),
+    "дни майчинство": (False, ["дни майчинство", "майчинство дни"]),
     "болнични":       (False, ["болнични (работодател)", "болнични работодател",
                                "обезщетение чл. 40, ал. 5"]),
     "изплатено":      (False, ["изплатено", "платено", "изплатена сума"]),
+    # Added for scripts/audit.py's F1/F6/F9/F10 (2.17.0): the composition-solving method
+    # needs every accrual and benefit column named, not only the ones the older checks
+    # used - an unrecognised one here is exactly the false-positive risk K1 already
+    # taught this file to fear, so audit.py refuses those checks outright rather than
+    # guess when UNKNOWN_COLUMNS is non-empty (see analyse()).
+    "платен отпуск":  (False, ["платен отпуск", "възнаграждение за отпуск",
+                               "сума платен отпуск"]),
+    "бонус":          (False, ["бонус", "бонуси"]),
+    "обезщетение чл. 224": (False, ["обезщетение чл. 224", "обезщетение по чл. 224"]),
+    "удръжка доброволно осиг.": (False, ["удръжка доброволно осиг. (лична)",
+                               "удръжка доброволно осигуряване"]),
+    "удръжка живот":  (False, ["удръжка застраховка живот (лична)",
+                               "удръжка застраховка живот"]),
+    "удръжка карта":  (False, ["удръжка карта (лична част)"]),
+    "карта работодател": (False, ["карта (за сметка на работодателя)"]),
+    "доброволно здравно осиг. премия": (False, ["доброволно здравно осигуряване (премия)"]),
 }
 
 # Concepts never written into the normalised extract. „име" is the payroll's personal
