@@ -18,6 +18,24 @@ on: a real office where nobody that month has a full, undiminished attendance wo
 make the "highest declared day-count on the sheet" proxy for "the month's working-day
 norm" wrong too - so one row deliberately sits below the true norm here without being
 underpaid, pinning that the gate does not fire on it regardless.
+
+Part 1 also covers the insurable-income composition (F1/F9/F10's insurable-side, see
+scripts/audit.py's docstring): F1_insurable_unexplained, F1_compensation_in_insurable
+and F9_sick_pay_out_of_insurable never arise from the taxable side, so they are
+compared against the manifest exactly, the same as I1/B4/F5. F10_in_kind_asymmetry and
+F10_excess_asymmetry CAN also arise from the taxable side, which this script does not
+compute (a future increment, see the docstring) - so those two are checked only for
+false positives (every one raised must be in the manifest), not for an exact count.
+That split was verified once, directly against test/structural_test.py's own
+reference implementation rather than the manifest, across 300 seeds: zero mismatches
+on the insurable side once the taxable-side occurrences were excluded from the
+reference's own output.
+
+The composition pass needs a mapping that declares every administrative/breakdown
+column `generate_wide.py`'s canonical layout carries but `preflight.py`'s CONCEPTS does
+not name (row numbers, department, the per-fund contribution breakdowns already summed
+into a column CONCEPTS does recognise) - without it the pass's own safety gate (no
+unrecognised columns at all) refuses to run, by design.
 """
 import argparse
 import os
@@ -32,8 +50,24 @@ sys.path.insert(0, os.path.join(ROOT, "skills", "trz-expert", "scripts"))
 
 import audit as A                                              # noqa: E402
 import generate_wide as GW                                      # noqa: E402
+import preflight as PF                                         # noqa: E402
 
 STATIC_FIXTURE = os.path.join(HERE, "vedomost_05_2026.xlsx")
+
+# The administrative/breakdown columns generate_wide.py's canonical layout carries that
+# preflight.py's CONCEPTS deliberately does not name (the per-fund breakdowns are
+# already summed into columns CONCEPTS does recognise; the rest is never money at all).
+# A real company's mapping.yaml plays the same role for its own layout.
+WIDE_IGNORE = ["№", "Отдел", "Разлика", "ДОО пенсии", "ДОО ОЗМ", "ДОО безработица",
+               "ЗО лична", "ДЗПО-УПФ лична", "ДЗПО-УПФ работодател", "ЗО работодател",
+               "ЗО при болничен/майчинство", "Общ разход за труд",
+               "Вноски работодател ДОО+ТЗПБ"]
+WIDE_HDR = 5           # generate_wide.py's own header row constant
+
+
+def _wide_mapping():
+    return PF.Mapping({"kid": "62", "group": 3, "tzpb": 0.4, "ignore": WIDE_IGNORE})
+
 
 failures = []
 
@@ -45,21 +79,33 @@ def fail(msg):
 
 # ------------------------------------------------------------- part 1: generate_wide
 FILE_LEVEL_IDS = ("B4_cap_from_wrong_period", "F5_tzpb_below_due")
-ROW_LEVEL_IDS = ("I1_vertical",)
+ROW_LEVEL_IDS = ("I1_vertical", "F1_insurable_unexplained",
+                 "F1_compensation_in_insurable", "F9_sick_pay_out_of_insurable")
+NO_FALSE_POSITIVE_IDS = ("F10_in_kind_asymmetry", "F10_excess_asymmetry")
 
 
 def run_wide(seeds):
+    mapping = _wide_mapping()
     counts = {i: dict(tp=0, fn=0, fp=0) for i in FILE_LEVEL_IDS}
     row_counts = {i: dict(injected=0, found=0) for i in ROW_LEVEL_IDS}
+    fp_counts = {i: 0 for i in NO_FALSE_POSITIVE_IDS}
     mismatches = []
     for seed in range(1, seeds + 1):
         try:
             path, _, man = GW.generate(seed, None, 2026)
-            findings = A.check(path, kid="62", group="3", tzpb=man["tzpb_due"])
+            findings = A.check(path, mapping=mapping, tzpb=man["tzpb_due"])
         except Exception as exc:                              # noqa: BLE001
             mismatches.append(f"seed {seed}: exception {exc!r}")
             continue
         got_ids = {f["id"] for f in findings}
+        expected_ids_at_row = {(WIDE_HDR + 1 + idx if where == "row" else "file", x)
+                               for where, idx, x in man["expected"]}
+        for i in NO_FALSE_POSITIVE_IDS:
+            for f in findings:
+                if f["id"] == i and (f["row"], i) not in expected_ids_at_row:
+                    fp_counts[i] += 1
+                    mismatches.append(f"seed {seed} {i} row {f['row']}: false "
+                                      f"positive (not in the manifest at that row)")
         for i in FILE_LEVEL_IDS:
             injected = any(x == i for _, _, x in man["expected"])
             found = i in got_ids
@@ -93,6 +139,9 @@ def run_wide(seeds):
     for i in ROW_LEVEL_IDS:
         c = row_counts[i]
         print(f"  {i:28s} injected={c['injected']:4d} found={c['found']:4d}")
+    for i in NO_FALSE_POSITIVE_IDS:
+        print(f"  {i:28s} false positives={fp_counts[i]:4d} (recall is partial by "
+              f"design - see the module docstring)")
 
     if mismatches:
         for m in mismatches[:20]:
@@ -100,8 +149,9 @@ def run_wide(seeds):
         if len(mismatches) > 20:
             fail(f"... and {len(mismatches) - 20} more mismatches")
     else:
-        print(f"  -> OK: I1/B4/F5 match the manifest exactly, B1/B5 silent, across "
-              f"{seeds} seeds")
+        print(f"  -> OK: I1/B4/F5/F1/F9(insurable) match the manifest exactly, "
+              f"F10(insurable side) has zero false positives, B1/B5 silent, "
+              f"across {seeds} seeds")
 
 
 # --------------------------------------------------------- part 2: the static fixture

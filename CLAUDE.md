@@ -129,13 +129,19 @@ A false positive fails exactly like a miss.
   `preflight.py`'s own `SKILL_DIR`-relative path to `stavki.md`, and the pre-commit
   hook's trigger regex - a change under `scripts/` that stops matching that regex would
   go untested locally again, the exact failure mode the move was meant to close.
-- **`scripts/audit.py` (2.18.0) covers I1, I5 (narrow), B1, B4, B5 and F5 - not the
-  rest of B/F/I/K.** Each is mechanical (a row's own numbers, or a rate read fresh
-  from `references/stavki/` via `scripts/rates.py`, never typed into either file) and
-  safe for a generic tool - B2/B3/B6 need a company-specific number `mapping.yaml`
-  doesn't carry, F1/F2/F3/F4/F6/F7/F9's composition method needs a judgment call this
-  script isn't positioned to make safely yet, F8/F10 need information one workbook
-  doesn't hold, and K1/K3/K4/K7/K8 are `k_checker.py`'s same closed-vocabulary risk.
+- **`scripts/audit.py` (2.18.0, extended 2.19.0) covers I1, I5 (narrow), B1, B4, B5,
+  F5, and F1/F9/F10's insurable-income-side composition - not the rest of B/F/I/K.**
+  Each is mechanical (a row's own numbers, or a rate read fresh from
+  `references/stavki/` via `scripts/rates.py`, never typed into either file) and safe
+  for a generic tool - B2/B3/B6 need a company-specific number `mapping.yaml` doesn't
+  carry, F2/F3/F4 need a birth date or labour-category classification no payroll
+  column carries, F6/F7/F9's remaining (taxable-base) piece needs the same
+  composition method PLUS every placement of the чл. 19, ал. 2 relief enumerated
+  against it - a future increment, not attempted yet because
+  `test/structural_test.py` needed several seed-specific bug fixes to get that
+  combination right even against the synthetic model - F8 needs the annual
+  reconciliation one workbook can't hold, and K1/K3/K4/K7/K8 are `k_checker.py`'s
+  same closed-vocabulary risk.
   Building it against `generate_wide.py` at scale (not just a hand-built fixture)
   found a real, pre-existing `preflight.py` vocabulary bug before it ever shipped:
   "НЕТО преди удръжки"/"НЕТО за изплащане" and "Вноски работодател ДОО+ТЗПБ"/"Вноски
@@ -146,7 +152,14 @@ A false positive fails exactly like a miss.
   partial month from leave/sick days) before landing on "the highest count declared
   on the sheet" as the least-wrong stand-in for the full-time/full-month norm this
   script has no public-holiday calendar to compute directly - the suite-1 fixture's
-  own part-time row (Стефка Ангелова) caught the first one.
+  own part-time row (Стефка Ангелова) caught the first one. The insurable-composition
+  pass (ported from `test/structural_test.py`'s "solve the composition" method) is
+  gated on the sheet having zero unrecognised columns - a real company's mapping.yaml
+  has to declare every administrative/breakdown column as `ignore` for it to run at
+  all, same reasoning, and `F10_in_kind_asymmetry`/`F10_excess_asymmetry` are only
+  half-covered (the taxable-base side of the same two ids is the deferred piece) -
+  verified directly against `test/structural_test.py`'s own reference implementation,
+  not only the manifest, because the two share ids with a check this file doesn't do.
 - **Suite 6 may only compare a month with another month.** Every sheet in
   `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing

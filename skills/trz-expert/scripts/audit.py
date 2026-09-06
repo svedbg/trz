@@ -30,18 +30,54 @@ What is covered, and why the rest of each group is not:
   the company's КИД. Skipped for a row with sick or maternity days, because the
   employer's total there also carries the healthcare contribution on МОД (F9), which
   the same formula would misread as ТЗПБ.
+* **F1 / F10 (insurable-income composition) and the two statutory placements it also
+  settles** - ported from test/structural_test.py's "solve the composition" method:
+  which subset of the contested elements (доход в натура, превишение над необлагаемия
+  праг) explains the insurable income, alongside the two elements the law has already
+  settled (болнични always in, чл. 224 always out - чл. 3, ал. 1 НЕВДПОВ and
+  чл. 1, ал. 8, т. 7 НЕВДПОВ respectively). Never settles which contested reading is
+  correct: the file's own practice is inferred from at least three usable rows with a
+  clear (2/3) majority, and only rows that disagree with THAT are findings
+  (F10_in_kind_asymmetry, F10_excess_asymmetry). Where the practice cannot be
+  established at all, only the two statutory placements are still checked
+  (F1_compensation_in_insurable, F9_sick_pay_out_of_insurable), by enumerating every
+  placement of the contested elements rather than assuming one
+  (F10_practice_not_establishable names the gap instead of guessing through it).
+  Skipped entirely for a row with no accruals for work (чл. 6, ал. 2 КСО - a benefit
+  alone creates no insurable income) or sitting at the insurable-income cap (many
+  different compositions reach the same capped figure). Gated on the sheet having NO
+  unrecognised columns at all: an unrecognised accrual or benefit column would make a
+  real composition silently unreachable, exactly the false-positive risk that limited
+  K1/K3/K4/K7 in k_checker.py - in practice this means a mapping.yaml that declares
+  every administrative/breakdown column (row numbers, department, per-fund
+  contribution breakdowns already summed into a total the mapping does recognise) as
+  `ignore`; without one, a real file's incidental columns will commonly block this
+  pass entirely, safely, rather than wrongly.
 
-Left to the model, for the same reason K1/K3/K4/K7 are left to it in k_checker.py:
-B2/B3/B6 need a company-specific number (the МОД threshold, or another employer's
-declaration) mapping.yaml does not carry; F1/F2/F3/F4/F6/F7/F9's composition/relief
-logic needs the full accrual-and-benefit vocabulary AND a judgment call this script
-is not positioned to make safely yet (a future increment); F8/F10 need information -
-the annual reconciliation, the company's chosen reading of a contested asymmetry -
-this script cannot see in one workbook.
+  F10_in_kind_asymmetry and F10_excess_asymmetry are **partial**: the same two ids
+  can also be raised from the TAXABLE base's side (a different composition, over the
+  чл. 19, ал. 2 relief - see below), which this script does not compute. Verified
+  against test/structural_test.py's own reference implementation directly (not only
+  test/generate_wide.py's manifest) across 300 seeds: zero false positives, and every
+  miss traced to the taxable-side occurrence of the same id, none to the insurable
+  side this script claims.
+
+Left to the model for now, a future increment: F6/F7/F9's remaining piece needs the
+same composition method PLUS every placement of the чл. 19, ал. 2 relief enumerated
+against it - test/structural_test.py needed several seed-specific bug fixes to get
+that combination right even against the synthetic model with fixed column names, and
+a wrong compliance finding from a rushed port is worse than the model computing it in
+prose. Left to the model permanently, for the same reason K1/K3/K4/K7 are left to
+k_checker.py: B2/B3/B6 need a company-specific number (the МОД threshold, or another
+employer's declaration) mapping.yaml does not carry; F2/F3/F4 need a birth date or a
+labour-category classification no payroll column carries; F8 needs the annual
+reconciliation, which one month cannot show; K1/K3/K4/K7/K8 are k_checker.py's own
+closed-vocabulary risk.
 """
 import argparse
 import os
 import sys
+from collections import Counter
 
 try:
     import openpyxl
@@ -66,8 +102,27 @@ B1_BELOW_MIN_WAGE = "B1_below_minimum_wage"
 B4_ABOVE_MAX_INSURABLE = "B4_cap_from_wrong_period"
 B5_INSURABLE_BELOW_MIN_WAGE = "B5_insurable_below_minimum_wage"
 F5_TZPB_BELOW_DUE = "F5_tzpb_below_due"
+F1_INSURABLE_UNEXPLAINED = "F1_insurable_unexplained"
+F1_COMPENSATION_IN_INSURABLE = "F1_compensation_in_insurable"
+F9_SICK_PAY_OUT_OF_INSURABLE = "F9_sick_pay_out_of_insurable"
+F10_IN_KIND_ASYMMETRY = "F10_in_kind_asymmetry"
+F10_EXCESS_ASYMMETRY = "F10_excess_asymmetry"
+F10_PRACTICE_NOT_ESTABLISHABLE = "F10_practice_not_establishable"
 
 DEDUCTION_CONCEPTS = ("удръжка доброволно осиг.", "удръжка живот", "удръжка карта")
+
+# The concepts the insurable-income composition needs every one of, to run at all on a
+# sheet - see the module docstring for why an unrecognised accrual/benefit column makes
+# a real composition silently unreachable.
+COMPOSITION_CONCEPTS = ("основна", "клас", "бонус", "платен отпуск", "болнични",
+                       "обезщетение чл. 224", "карта работодател",
+                       "доброволно здравно осиг. премия", "осиг. доход")
+CONTESTED = ("in_kind", "excess")
+_NAMES = {"in_kind": "доходът в натура", "excess": "превишението над необлагаемия праг",
+          "sick_pay": "болничните от работодателя (чл. 40, ал. 5 КСО)",
+          "comp_224": "обезщетението по чл. 224 КТ"}
+_ID_FOR = {"comp_224": F1_COMPENSATION_IN_INSURABLE, "sick_pay": F9_SICK_PAY_OUT_OF_INSURABLE,
+           "in_kind": F10_IN_KIND_ASYMMETRY, "excess": F10_EXCESS_ASYMMETRY}
 
 
 def _num(ws, meta, r):
@@ -75,6 +130,42 @@ def _num(ws, meta, r):
         return None
     v = ws.cell(r, meta["col"]).value
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _subsets(elements):
+    """All subsets of [(name, value)] as [(frozenset(names), sum)]. Ported verbatim
+    from test/structural_test.py - the same method, the same rounding.
+    """
+    out = [(frozenset(), 0.0)]
+    for name, v in elements:
+        if not v:
+            continue
+        out += [(frozenset(m | {name}), round(s + v, 2)) for m, s in out]
+    return out
+
+
+def _statutory_misplacements(work_base, insurable, el, tol):
+    """Which of the two STATUTE-SETTLED elements (болнични always in, чл. 224 always
+    out) sits on the unlawful side of the insurable income, without assuming a
+    placement for the CONTESTED elements (in_kind, excess) at all - every combination
+    of theirs is tried, and an element is reported only when every combination
+    reaching the declared figure puts it on the unlawful side. Ported from
+    test/structural_test.py's statutory_misplacements().
+    """
+    sums = [s for _, s in _subsets([("in_kind", el["in_kind"]), ("excess", el["excess"])])]
+    matches = []
+    for sick_in in ((True, False) if el["sick_pay"] else (True,)):
+        for comp_in in ((False, True) if el["comp_224"] else (False,)):
+            base = round(work_base + (el["sick_pay"] if sick_in else 0.0)
+                         + (el["comp_224"] if comp_in else 0.0), 2)
+            if any(abs(round(base + s, 2) - insurable) <= tol for s in sums):
+                matches.append((sick_in, comp_in))
+    out = set()
+    if matches and el["sick_pay"] and all(not si for si, _ in matches):
+        out.add("sick_pay")
+    if matches and el["comp_224"] and all(ci for _, ci in matches):
+        out.add("comp_224")
+    return out
 
 
 def check(path, mapping=None, kid=None, group=None, tzpb=None):
@@ -237,6 +328,142 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                         "text": f"{ref}: изведен ТЗПБ {implied_tzpb:.2f}% под "
                                 f"декларирания {declared_tzpb:.2f}%",
                     })
+
+        # --- F1/F10/F9(insurable)/F1(compensation): insurable-income composition --
+        # A second pass, over every row again: the file's practice for the contested
+        # elements can only be inferred after every row's own composition is solved
+        # once. See the module docstring for the method and its two hard limits
+        # (nothing decided at the cap, nothing decided without accruals for work).
+        if all(c in known for c in COMPOSITION_CONCEPTS) and not s["unknown"]:
+            social_threshold = flat.get("social_expense_threshold_eur")
+            rows_data = []
+            for r in range(s["first_row"], last + 1):
+                osnovna_c = _num(ws, known.get("основна"), r) or 0.0
+                klas_c = _num(ws, known.get("клас"), r) or 0.0
+                bonus_c = _num(ws, known.get("бонус"), r) or 0.0
+                leave_c = _num(ws, known.get("платен отпуск"), r) or 0.0
+                work_base = round(osnovna_c + klas_c + bonus_c + leave_c, 2)
+                el = {
+                    "in_kind": _num(ws, known.get("карта работодател"), r) or 0.0,
+                    "excess": 0.0,
+                    "sick_pay": _num(ws, known.get("болнични"), r) or 0.0,
+                    "comp_224": _num(ws, known.get("обезщетение чл. 224"), r) or 0.0,
+                }
+                premium = _num(ws, known.get("доброволно здравно осиг. премия"), r) or 0.0
+                if premium and social_threshold is not None:
+                    el["excess"] = round(max(0.0, premium - social_threshold), 2)
+                osig_c = _num(ws, known.get("осиг. доход"), r)
+                if osig_c is None:
+                    continue
+                at_cap = (max_insurable is not None
+                         and any(abs(osig_c - c) < 0.005
+                                 for c in [max_insurable] + other_caps))
+                no_work = work_base <= 0
+                inside_unique = None
+                if not at_cap and not no_work:
+                    matches = [mask for mask, sm in
+                              _subsets([(k, el[k]) for k in CONTESTED])
+                              if abs(round(work_base + el["sick_pay"] + sm, 2)
+                                    - osig_c) <= TOL]
+                    if len(matches) == 1:
+                        inside_unique = matches[0]
+                rows_data.append(dict(row=r, work_base=work_base, el=el,
+                                      insurable=osig_c, at_cap=at_cap,
+                                      no_work=no_work, inside_unique=inside_unique))
+
+            def practice_for(el_name):
+                sample = [el_name in d["inside_unique"] for d in rows_data
+                         if d["inside_unique"] is not None and d["el"][el_name]]
+                if len(sample) < 3:
+                    return None, len(sample)
+                value, count = Counter(sample).most_common(1)[0]
+                if count / len(sample) < 2 / 3:
+                    return None, len(sample)
+                return value, len(sample)
+
+            practice = {}
+            for el_name in CONTESTED:
+                value, size = practice_for(el_name)
+                practice[el_name] = value
+                if value is None and any(d["el"][el_name] for d in rows_data):
+                    findings.append({
+                        "id": F10_PRACTICE_NOT_ESTABLISHABLE, "sheet": s["name"],
+                        "row": None,
+                        "text": f"{s['name']}: практиката на файла за "
+                                f"{_NAMES[el_name]} в осигурителния доход не може да "
+                                f"се изведе от самия файл ({size} използваеми реда)",
+                    })
+
+            for d in rows_data:
+                if d["no_work"] or d["at_cap"]:
+                    continue                # B4 already covers the cap; no
+                                             # composition without accruals for work
+                el = d["el"]
+                practice_clear = not any(el[k] and practice[k] is None
+                                        for k in CONTESTED)
+                allowed = {k for k in CONTESTED if practice[k] and el[k]}
+                allowed_sum = round(sum(el[k] for k in allowed), 2)
+                inside_expected = allowed | ({"sick_pay"} if el["sick_pay"] else set())
+                expected_insurable = round(d["work_base"] + el["sick_pay"]
+                                          + allowed_sum, 2)
+                ref = f"{s['name']}!{d['row']}"
+
+                if practice_clear and abs(d["insurable"] - expected_insurable) > TOL:
+                    added = [k for k, v in el.items()
+                            if v and k not in inside_expected
+                            and abs(round(expected_insurable + v, 2)
+                                    - d["insurable"]) <= TOL]
+                    removed = [k for k in inside_expected
+                              if abs(round(expected_insurable - el[k], 2)
+                                    - d["insurable"]) <= TOL]
+                    if len(added) == 1:
+                        k = added[0]
+                        findings.append({
+                            "id": _ID_FOR[k], "sheet": s["name"], "row": d["row"],
+                            "text": f"{ref}: {_NAMES[k]} ({el[k]:.2f}) е вътре в "
+                                    f"осигурителния доход, докато другите редове го "
+                                    f"оставят вън",
+                        })
+                    elif len(removed) == 1:
+                        k = removed[0]
+                        findings.append({
+                            "id": _ID_FOR[k], "sheet": s["name"], "row": d["row"],
+                            "text": f"{ref}: {_NAMES[k]} ({el[k]:.2f}) е вън от "
+                                    f"осигурителния доход, докато другите редове го "
+                                    f"включват",
+                        })
+                    else:
+                        findings.append({
+                            "id": F1_INSURABLE_UNEXPLAINED, "sheet": s["name"],
+                            "row": d["row"],
+                            "text": f"{ref}: осигурителният доход {d['insurable']:.2f} "
+                                    f"не съвпада с работната база {d['work_base']:.2f} "
+                                    f"плюс допустимото по практиката на файла "
+                                    f"({expected_insurable:.2f})",
+                        })
+                elif el["sick_pay"] or el["comp_224"]:
+                    wrong_side = _statutory_misplacements(d["work_base"],
+                                                          d["insurable"], el, TOL)
+                    if "sick_pay" in wrong_side:
+                        findings.append({
+                            "id": F9_SICK_PAY_OUT_OF_INSURABLE, "sheet": s["name"],
+                            "row": d["row"],
+                            "text": f"{ref}: {_NAMES['sick_pay']} "
+                                    f"({el['sick_pay']:.2f}) е вън от осигурителния "
+                                    f"доход {d['insurable']:.2f} — нито една "
+                                    f"комбинация от спорните елементи го достига с "
+                                    f"тях вътре",
+                        })
+                    if "comp_224" in wrong_side:
+                        findings.append({
+                            "id": F1_COMPENSATION_IN_INSURABLE, "sheet": s["name"],
+                            "row": d["row"],
+                            "text": f"{ref}: {_NAMES['comp_224']} "
+                                    f"({el['comp_224']:.2f}) е вътре в осигурителния "
+                                    f"доход {d['insurable']:.2f} — нито една "
+                                    f"комбинация от спорните елементи го достига без "
+                                    f"него",
+                        })
     return findings
 
 
