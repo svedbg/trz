@@ -160,6 +160,44 @@ def main():
         ids = sorted({i["id"] for i in reconcile(lc).items})
         check(ids == sorted(combo2), f"and the other member of each group, got {ids}")
 
+        # Never before sent to a live model - grade_lifecycle() reuses reconcile() as
+        # its own ground truth (see eval_skill.prepare_lifecycle()'s docstring), so this
+        # proves the keywords and the location parsing round-trip a correct sentence,
+        # the same "free, no session" check komplekt_test.py already does for its own
+        # fixture.
+        print("-" * 78)
+        import eval_skill as E
+        CORRECT_REPORT = {
+            "I11_salary_change_without_annex": "заплатата се променя между два месеца "
+                "без допълнително споразумение за тази дата",
+            "I11_pay_after_termination": "начисления за месец след датата на "
+                "прекратяване",
+            "I11_severance_without_termination": "обезщетение по чл. 224 без заповед "
+                "за прекратяване",
+            "I11_sick_days_restart": "болничен, продължаващ от предходния месец, "
+                "започва отново от първия ден за сметка на работодателя",
+            "I11_class_raised_early": "класът е вдигнат преди навършването на "
+                "годината стаж",
+            "I11_class_not_raised": "навършена е година стаж, а класът не е вдигнат",
+        }
+        for break_id in G.BREAKS:
+            seed = next((s_ for s_ in range(1, 400)
+                         if break_id in G.breaks_for_seed(s_)), None)
+            if seed is None:
+                check(False, f"{break_id}: no seed in 400 injects it")
+                continue
+            _, eval_man, _ = E.prepare_lifecycle(seed, dry=True, overwrite=True)
+            findings = [dict(kade=where, red=None, tezhest="нарушение",
+                             kratko=CORRECT_REPORT[ident])
+                        for where, ident in eval_man["expected"]]
+            graded, unattributed, _ = E.grade_lifecycle(eval_man, findings)
+            verdict = dict((ident, v) for _, ident, v, _ in graded)
+            check(verdict.get(break_id) == "identified" and not unattributed,
+                  f"{break_id:36} a correct sentence grades as identified"
+                  f" (seed {seed}, got {verdict.get(break_id)}"
+                  f"{', ' + str(len(unattributed)) + ' unattributed' if unattributed else ''})")
+        print("-" * 78)
+
         blob = ""
         for name in ("sabitiya.csv", "dogovori.csv"):
             blob += open(os.path.join(man["dir"], name), encoding="utf8").read()

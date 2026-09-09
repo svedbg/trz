@@ -382,6 +382,34 @@ KOMPLEKT_KEYWORDS = {
                                    r"две лица|двама|повече от едно|едно и също|"
                                    r"един и същ|съвпада|споделен"],
 }
+# Suite 6 (test/generate_lifecycle.py + lifecycle_test.py): I11, the timeline across
+# five months for the same five people. Never calibrated against a paid transcript, the
+# same limitation KOMPLEKT_KEYWORDS above states for itself - lifecycle_test.py's own
+# embedded eval-grading check proves each entry matches the sentence
+# lifecycle_test.py's reconcile() itself would write, nothing more.
+LIFECYCLE_KEYWORDS = {
+    "I11_salary_change_without_annex": [r"заплата|възнаграждение",
+                                        r"промен|повиш|увеличава се|различ",
+                                        r"без.*(споразумение|анекс)|няма.*(споразумение|анекс)"],
+    "I11_pay_after_termination":       [r"прекратяван|уволнен|напуснал|заповед за "
+                                        r"прекратяване",
+                                        r"начислен|заплата|плащане|брутото|сума",
+                                        r"след.*(прекратяване|дата|напускане)"],
+    "I11_severance_without_termination": [r"обезщетение.*(224|прекратяване)|чл\.? ?224",
+                                          r"без.*(заповед|прекратяване)|няма.*(заповед|"
+                                          r"прекратяване)"],
+    "I11_sick_days_restart":           [r"болничен|болнични|неработоспособ",
+                                        r"продължав|поредн|втори месец|същия спел",
+                                        r"отново|повторно|втори път за сметка на "
+                                        r"работодателя"],
+    "I11_class_raised_early":          [r"клас",
+                                        r"преди|рано|не е навършил|няма право",
+                                        r"годин\w* стаж|навършва\w*|годишнина"],
+    "I11_class_not_raised":            [r"клас",
+                                        r"не е (?:вдигнат|повишен|променен|начислен)|"
+                                        r"остава|не се променя",
+                                        r"годин\w* стаж|навършва\w*|годишнина"],
+}
 # Severities that assert a defect. A finding is a claim that something is wrong; a
 # `бележка` is an observation and, in a payroll whose year the reference file covers,
 # `за проверка` is a finding the skill declined to commit to. Neither identifies an

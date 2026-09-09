@@ -90,8 +90,8 @@ import structural_test as ST                                   # noqa: E402
 from eval_scenarios import (                                   # noqa: E402
     KEYWORDS, PAIR_KEYWORDS, PAIR_OBSERVED, PAIR_SAMPLE_TEXT, RATE_FREE,
     RATE_DEPENDENT, SAYS_MISSING, SAYS_PERIOD, FORBIDDEN, LEAKED,
-    KOMPLEKT_KEYWORDS, ASSERTING, DENIES, _COMPARISON, UNRESOLVED_IS_RIGHT,
-    NOTE_IS_RIGHT_FOR_GROUP, SAMPLE_TEXT, OBSERVED, MISREAD,
+    KOMPLEKT_KEYWORDS, LIFECYCLE_KEYWORDS, ASSERTING, DENIES, _COMPARISON,
+    UNRESOLVED_IS_RIGHT, NOTE_IS_RIGHT_FOR_GROUP, SAMPLE_TEXT, OBSERVED, MISREAD,
 )
 
 VENV = "/tmp/trz-eval-venv"          # venv with openpyxl, outside the repository
@@ -199,6 +199,10 @@ def seed_dir(seed, pair=False, dry=False, refusal=False):
 
 def komplekt_dir(seed, dry=False):
     return os.path.join(WORKDIR, f"{'dry-' if dry else ''}komplekt-{seed}")
+
+
+def lifecycle_dir(seed, dry=False):
+    return os.path.join(WORKDIR, f"{'dry-' if dry else ''}lifecycle-{seed}")
 
 
 # A session that could not start or was cut short for a reason outside the skill: the
@@ -393,6 +397,79 @@ def prepare_komplekt(seed, dry=False, overwrite=False):
                   people=[{"name": p["name"]} for p in k["people"]],
                   expected=expected, keywords=KOMPLEKT_KEYWORDS,
                   month=man["month"], breaks=chosen)
+    return d, graded, prompt
+
+
+def prepare_lifecycle(seed, dry=False, overwrite=False):
+    """Build a five-month timeline for the same five people and place it in an
+    isolated directory - suite 6's fixture (I11), never before sent to a live model.
+
+    Every finding here is about a PERSON ACROSS MONTHS, not a spreadsheet row: the same
+    row number means a different person in each of the five monthly sheets. grade()'s
+    row-number location scheme does not apply, so this mode has its own
+    (location_lifecycle, grade_lifecycle) pair instead of forcing the row-based one to
+    fit. The ground truth is lifecycle_test.py's own reconcile() - the same "reuse the
+    existing checker as the oracle" pattern eval_skill.py's amount grading already uses
+    for the wide fixture, not a second, driftable copy of where a break lands.
+    """
+    import generate_lifecycle as GL
+    import lifecycle_test as LT
+    d = lifecycle_dir(seed, dry=dry)
+    _claim(d, overwrite)
+    chosen = GL.breaks_for_seed(seed)
+    lc, write_result = GL.build(chosen, d, seed=seed)
+    truth = LT.reconcile(lc)
+    # reconcile()'s own `where` for I11_salary_change_without_annex is a TRANSITION -
+    # "ИДЕНТ ПП->ММ", the two months either side of the jump - because that check
+    # compares a month against the one before it. A live model has no reason to write
+    # a range; it would name the month the new figure appears in, so grading keys this
+    # one id by that later month alone, the same single-month shape every other I11 id
+    # already uses.
+    def _where(f):
+        w = f["where"]
+        return re.sub(r"^(\S+) \d\d->(\d\d)$", r"\1 \2", w) if "->" in w else w
+    expected = [(_where(f), f["id"]) for f in truth.items]
+    expected_amounts = {(_where(f), f["id"]): (f["stated"], f["due"])
+                        for f in truth.items if f["due"] is not None}
+
+    months_str = ", ".join(f"{m:02d}.{GL.YEAR}" for m in write_result["months"])
+    prompt = f"""Направи ТРЗ проверка на ведомостите в тази директория. Ползвай скила trz-expert.
+
+Файлът ./vedomosti.xlsx носи {len(write_result['months'])} листа - месеците
+{months_str} - едни и същи петима служители. Провери всеки месец поотделно И
+последователността между месеците - дали всяка промяна има документ зад себе си.
+
+Какво имаш от дружеството:
+- ./dogovori.csv - идентификатор, договорена основна заплата, начало на признатия
+  трудов стаж за клас
+- ./sabitiya.csv - събитията по служител: постъпване, начало на стаж, допълнителни
+  споразумения, заповеди за отпуск, болнични листове, заповед за прекратяване
+- приложимият процент ТЗПБ по КИД на дружеството е {write_result['tzpb']}%
+- валутата е EUR
+
+Работи само в тази директория. За Python ползвай {VENV}/bin/python - има openpyxl.
+
+Освен обичайния отчет, запиши накрая и findings.json в тази директория: масив, по един
+обект за всяка находка, само това и нищо друго във файла. За находка по конкретно лице
+в конкретен месец посочи идентификатора му от колоната „Отдел" и месеца, например
+"СЛ-003, месец 04"; за находка, засягаща повече от едно лице или целия файл, пиши "файл".
+
+[{{"kade": "СЛ-003, месец 04" или "файл", "red": null,
+  "tezhest": "нарушение|риск|за проверка|дефект|бележка",
+  "kratko": "едно изречение какво е сбъркано",
+  "nachisleno": число или null, "dalzhimo": число или null}}]
+"""
+    with open(os.path.join(d, "prompt.txt"), "w", encoding="utf8") as f:
+        f.write(prompt)
+
+    graded = dict(seed=seed, sheet=", ".join(f"{m:02d}-{GL.YEAR}"
+                                             for m in write_result["months"]),
+                  year=GL.YEAR, regime=None, rates_known=True,
+                  tzpb_due=write_result["tzpb"],
+                  people=[{"name": p["name"]} for p in lc["people"]],
+                  expected=expected, expected_amounts=expected_amounts,
+                  keywords=LIFECYCLE_KEYWORDS, months=write_result["months"],
+                  breaks=chosen)
     return d, graded, prompt
 
 
@@ -660,6 +737,96 @@ def grade(man, findings):
         # KEYWORDS was scored identified by ANY finding at the right location. main()
         # refuses to start a paid run in that state; this raise is the belt to that
         # suspenders, for callers that reach grade() some other way.
+        if ident not in keywords:
+            raise KeyError(f"no KEYWORDS entry for {ident} - the run cannot be graded")
+        patterns = keywords[ident]
+        hit = None
+        for i in here:
+            if not asserts_a_defect(findings[i], ident):
+                continue
+            text = str(findings[i].get("kratko", ""))
+            if all(re.search(p, text, re.I) for p in patterns):
+                hit = i
+                break
+        if hit is not None:
+            attributed.add(hit)
+            result.append((where, ident, "identified", findings[hit]))
+            mismatch = _amount_mismatch(expected_amounts.get((where, ident)),
+                                        findings[hit])
+            if mismatch is not None:
+                amount_mismatches.append((where, ident) + mismatch)
+        elif here:
+            result.append((where, ident, "located only", findings[here[0]]))
+        else:
+            result.append((where, ident, "missed", None))
+    unattributed = [f for i, f in enumerate(findings) if i not in attributed]
+    return result, unattributed, amount_mismatches
+
+
+_LIFECYCLE_IDENT = re.compile(r"СЛ-\d{3}")
+# Anchored the same way location()'s row parsing is: a bare 1-2 digit fallback with no
+# "месец" or date anchor used to match any nearby number - a row reference ("ред 8"), a
+# statute article - as if it were the month, silently mislocating the finding instead of
+# failing closed. Only "месец NN" (what the prompt asks for) or an explicit MM.YYYY/
+# MM/YYYY date count as naming a month.
+_LIFECYCLE_MONTH = re.compile(r"месец\s*0?(\d{1,2})|\b0?([1-9]|1[0-2])[./]202\d\b")
+# A bare number with no "месец"/date anchor is only trusted immediately after the
+# identifier (as reconcile()'s own "ИДЕНТ ММ" ground-truth string, and prepare_lifecycle
+# built expected_amounts on, has it) - never found by scanning the rest of the sentence,
+# where it could just as easily be a row ("ред 8") or a statute article.
+_LIFECYCLE_MONTH_NEAR = re.compile(r"^[,:\-\s]*0?([1-9]|1[0-2])\b")
+
+
+def location_lifecycle(finding):
+    """(ident, month) as the exact `f"{ident} {m:02d}"` string reconcile() itself uses,
+    or None when either is missing from the finding's own "kade" text. Unlike
+    location()'s row-number parsing, a lifecycle finding names a PERSON and a MONTH,
+    never a row - the same row number is a different person in each of the five
+    monthly sheets - so grading looks for the identifier the prompt asks for
+    ("СЛ-003, месец 04") directly, rather than reusing row math that does not apply
+    here at all.
+    """
+    where = str(finding.get("kade", ""))
+    m_ident = _LIFECYCLE_IDENT.search(where)
+    if not m_ident:
+        return None
+    tail = where[m_ident.end():]
+    m_month = _LIFECYCLE_MONTH.search(tail) or _LIFECYCLE_MONTH.search(where)
+    if m_month:
+        month = next(g for g in m_month.groups() if g is not None)
+    else:
+        m_near = _LIFECYCLE_MONTH_NEAR.match(tail)
+        if not m_near:
+            return None
+        month = m_near.group(1)
+    return f"{m_ident.group()} {int(month):02d}"
+
+
+def grade_lifecycle(man, findings):
+    """grade()'s counterpart for the lifecycle fixture (I11): the same three-way
+    identified/located-only/missed logic, keyword matching and amount-mismatch
+    reporting, but keyed by location_lifecycle() instead of location() - see that
+    function's docstring for why grade() itself does not apply. man["expected"] is
+    already `[(where, ident), ...]` with `where` the final `"{ident} {month:02d}"`
+    string prepare_lifecycle() got from reconcile(); there is no row/idx to resolve,
+    unlike the wide/pair/komplekt manifests.
+    """
+    keywords = man.get("keywords") or LIFECYCLE_KEYWORDS
+    expected = list(man["expected"])
+    expected.sort(key=lambda x: -len(keywords.get(x[1], [])))
+
+    places = defaultdict(list)
+    for i, f in enumerate(findings):
+        loc = location_lifecycle(f)
+        if loc is not None:
+            places[loc].append(i)
+
+    expected_amounts = man.get("expected_amounts") or {}
+    attributed = set()
+    result = []
+    amount_mismatches = []
+    for where, ident in expected:
+        here = places.get(where, [])
         if ident not in keywords:
             raise KeyError(f"no KEYWORDS entry for {ident} - the run cannot be graded")
         patterns = keywords[ident]
@@ -1148,9 +1315,10 @@ def keywords_sha(universe):
     return hashlib.sha256(repr(universe).encode("utf8")).hexdigest()
 
 
-def generator_sha(pair, komplekt=False):
+def generator_sha(pair, komplekt=False, lifecycle=False):
     """Identity of the fixture generator the manifest came from."""
-    name = ("generate_komplekt.py" if komplekt else
+    name = ("generate_lifecycle.py" if lifecycle else
+            "generate_komplekt.py" if komplekt else
             "generate_pair.py" if pair else "generate_wide.py")
     with open(os.path.join(HERE, name), "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
@@ -1201,7 +1369,10 @@ def _as_run(rec):
 
 def print_graded(graded, unattributed, amount_mismatches=()):
     for where, ident, status, f in graded:
-        loc = "file" if where == "file" else f"row {where}"
+        # A row number (wide/pair/komplekt) prints as "row N"; a lifecycle location is
+        # already the descriptive "ИДЕНТ ММ" string reconcile() produced and prints as
+        # itself, the same way "file" does for either fixture kind.
+        loc = f"row {where}" if isinstance(where, int) else str(where)
         mark = {"identified": "  +", "located only": "  ~", "missed": "  -"}[status]
         print(f"{mark} {loc:9} {ident:30} {status}")
         if f:
@@ -1218,15 +1389,18 @@ def print_graded(graded, unattributed, amount_mismatches=()):
               f"structural_test.py's ground truth; reported, not counted against the "
               f"score:")
         for where, ident, exp_stated, exp_due, got_stated, got_due in amount_mismatches:
-            loc = "file" if where == "file" else f"row {where}"
+            loc = f"row {where}" if isinstance(where, int) else str(where)
             print(f"      [{loc}] {ident}: expected {exp_stated}→{exp_due}, "
                   f"model said {got_stated}→{got_due}")
 
 
 def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=False,
-             komplekt=False):
-    mode = "komplekt" if komplekt else "pair" if pair else "refusal" if refusal else "wide"
-    if komplekt:
+             komplekt=False, lifecycle=False):
+    mode = ("lifecycle" if lifecycle else "komplekt" if komplekt else "pair" if pair
+            else "refusal" if refusal else "wide")
+    if lifecycle:
+        d, man, prompt = prepare_lifecycle(seed, dry=dry, overwrite=overwrite)
+    elif komplekt:
         d, man, prompt = prepare_komplekt(seed, dry=dry, overwrite=overwrite)
     elif pair:
         d, man, prompt = prepare_pair(seed, dry=dry, overwrite=overwrite)
@@ -1235,7 +1409,7 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
                                  overwrite=overwrite)
     print(f"\n{'=' * 78}\nseed {seed} · sheet {man['sheet']} · {len(man['people'])} people"
           f" · accident rate {man['tzpb_due']}% · {len(man['expected'])} "
-          f"{'links broken' if komplekt else 'defects injected'}")
+          f"{'links broken' if komplekt else 'timeline breaks' if lifecycle else 'defects injected'}")
     print(f"directory: {d}")
     if not man["rates_known"]:
         print(f"REFUSAL MODE: references/stavki.md has no rates for {man['year']}. The "
@@ -1246,9 +1420,13 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
         print(prompt.rstrip())
         print("-" * 78)
         print("injected (NOT given to the model):")
-        for where, idx, ident in man["expected"]:
-            loc = "file" if where == "file" else f"row {man['hdr'] + 1 + idx}"
-            print(f"  {loc:9} {ident}")
+        if lifecycle:
+            for where, ident in man["expected"]:
+                print(f"  {where:16} {ident}")
+        else:
+            for where, idx, ident in man["expected"]:
+                loc = "file" if where == "file" else f"row {man['hdr'] + 1 + idx}"
+                print(f"  {loc:9} {ident}")
         return None
 
     trace = invoke(d, model=model, timeout=timeout)
@@ -1265,7 +1443,7 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
     rec = dict(seed=seed, mode=mode, model=model, model_used=model_used,
                skill_sig=tree_skill_signature(),
                keywords_sha=keywords_sha(man.get("keywords") or KEYWORDS),
-               generator_sha=generator_sha(pair, komplekt),
+               generator_sha=generator_sha(pair, komplekt, lifecycle),
                manifest={k: v for k, v in man.items() if k != "keywords"},
                findings=None, gradable=False, session_error=bool(trace.get("error")),
                touched=trace["touched"], turns=trace.get("turns"),
@@ -1302,7 +1480,8 @@ def run_seed(seed, model, dry, timeout, refusal=False, pair=False, overwrite=Fal
     if refusal:
         rec["refusal"] = report_refusal(man, findings)
     else:
-        rec["result"], rec["unattributed"], rec["amount_mismatches"] = grade(man, findings)
+        grader = grade_lifecycle if lifecycle else grade
+        rec["result"], rec["unattributed"], rec["amount_mismatches"] = grader(man, findings)
         print_graded(rec["result"], rec["unattributed"], rec["amount_mismatches"])
     persist(rec)
     return _as_run(rec)
@@ -1330,7 +1509,7 @@ def summarize_refusal(runs):
     return 1 if failed else 0
 
 
-def scenario_universe(pair=False, komplekt=False):
+def scenario_universe(pair=False, komplekt=False, lifecycle=False):
     """The ids a batch of this mode can grade, in the order the summary prints them.
 
     Read from the fixture's own catalogue rather than assumed: a komplekt batch used to
@@ -1338,6 +1517,9 @@ def scenario_universe(pair=False, komplekt=False):
     `M.SCENARIOS` nor `M.PAIR_SCENARIOS` and the loop simply skipped them. The seeds
     were paid for and graded correctly; only the table at the end was empty.
     """
+    if lifecycle:
+        import generate_lifecycle as GL
+        return list(GL.BREAKS)
     if komplekt:
         import generate_komplekt as GK
         return list(GK.ORDER)
@@ -1432,9 +1614,10 @@ def regrade(threshold=None):
                    amount_mismatches=[], refusal=None)
         if rec.get("gradable") and rec.get("findings") is not None:
             man = dict(rec["manifest"])
-            universe = (KOMPLEKT_KEYWORDS if mode == "komplekt" else
+            universe = (LIFECYCLE_KEYWORDS if mode == "lifecycle" else
+                        KOMPLEKT_KEYWORDS if mode == "komplekt" else
                         PAIR_KEYWORDS if mode == "pair" else KEYWORDS)
-            if mode in ("pair", "komplekt"):
+            if mode in ("pair", "komplekt", "lifecycle"):
                 # The manifest is re-read from disk, and only the wide fixture's
                 # universe is the default inside grade(); every other mode has to
                 # attach its own or the re-grade dies on the first id it does not know.
@@ -1448,8 +1631,9 @@ def regrade(threshold=None):
                 changed = [f"{k} {before.get(k)} -> {v}" for k, v in run["refusal"].items()
                            if before.get(k) != v]
             else:
+                grader = grade_lifecycle if mode == "lifecycle" else grade
                 run["result"], run["unattributed"], run["amount_mismatches"] = \
-                    grade(man, rec["findings"])
+                    grader(man, rec["findings"])
                 before = {(str(w), i): s for w, i, s, _ in rec.get("result") or []}
                 changed = [f"{i} {before.get((str(w), i))} -> {s}"
                            for w, i, s, _ in run["result"] if before.get((str(w), i)) != s]
@@ -1466,7 +1650,8 @@ def regrade(threshold=None):
             code = summarize_refusal(runs) or code
         else:
             scenarios = scenario_universe(pair=mode == "pair",
-                                          komplekt=mode == "komplekt")
+                                          komplekt=mode == "komplekt",
+                                          lifecycle=mode == "lifecycle")
             code = summarize(runs, scenarios, threshold) or code
     return code
 
@@ -1592,6 +1777,13 @@ def main():
     ap.add_argument("--pair", action="store_true",
                     help="run the two-month fixture: the cross-month scenarios the "
                          "wide fixture cannot hold (E3_leave_base, K8, I7)")
+    ap.add_argument("--lifecycle", action="store_true",
+                    help="run the five-month timeline fixture (I11): the same five "
+                         "people across five months, with a timeline break in some of "
+                         "them - a raise with no annex, pay after termination, "
+                         "severance with no termination order, a sick spell's employer "
+                         "days restarting, a class moved on the wrong side of an "
+                         "anniversary")
     ap.add_argument("--covering", default=None, metavar="ID,ID",
                     help="FREE: scan seeds from --from and print a minimal set whose "
                          "fixtures inject the named scenarios, then exit - spend "
@@ -1635,6 +1827,9 @@ def main():
     if a.komplekt and (a.pair or a.refusal):
         ap.error("--komplekt is its own fixture and combines with neither --pair nor "
                  "--refusal")
+    if a.lifecycle and (a.pair or a.komplekt or a.refusal):
+        ap.error("--lifecycle is its own fixture and combines with none of --pair, "
+                 "--komplekt or --refusal")
     if a.regrade and (selectors or a.covering):
         ap.error("--regrade scores what is saved and takes no seeds")
 
@@ -1653,7 +1848,10 @@ def main():
     os.makedirs(WORKDIR, exist_ok=True)
     if a.covering:
         wanted = {x.strip() for x in a.covering.split(",") if x.strip()}
-        if a.komplekt:
+        if a.lifecycle:
+            import generate_lifecycle as GL
+            universe = set(GL.BREAKS)
+        elif a.komplekt:
             import generate_komplekt as GK
             universe = set(GK.BREAKS)
         else:
@@ -1666,7 +1864,13 @@ def main():
         for seed in range(a.start, a.start + 2000):
             if not still:
                 break
-            if a.komplekt:
+            if a.lifecycle:
+                # No workbook needs building to know which breaks a seed plants: the
+                # choice is a function of the seed alone, the same shortcut komplekt
+                # already takes.
+                import generate_lifecycle as GL
+                got = set(GL.breaks_for_seed(seed))
+            elif a.komplekt:
                 # No workbook needs building to know which links a seed breaks: the
                 # choice is a function of the seed alone.
                 import generate_komplekt as GK
@@ -1709,7 +1913,10 @@ def main():
     # Refuse to spend money on a run the grader cannot score. Complete today; this
     # exists for the day a scenario is added without its KEYWORDS entry - the checklist
     # step easiest to forget, and the one whose absence used to score as a pass.
-    if a.komplekt:
+    if a.lifecycle:
+        import generate_lifecycle as GL
+        ungradable = sorted(set(GL.BREAKS) - set(LIFECYCLE_KEYWORDS))
+    elif a.komplekt:
         import generate_komplekt as GK
         ungradable = sorted(set(GK.BREAKS) - set(KOMPLEKT_KEYWORDS))
     elif a.pair:
@@ -1729,7 +1936,8 @@ def main():
         # asked about `seed-<n>` whatever the mode, so the first --komplekt batch was
         # refused for the wide seeds' transcripts - which it would never have touched.
         def _dir(s_):
-            return (komplekt_dir(s_) if a.komplekt
+            return (lifecycle_dir(s_) if a.lifecycle
+                    else komplekt_dir(s_) if a.komplekt
                     else seed_dir(s_, pair=a.pair, refusal=a.refusal))
         kept = [d for d in (_dir(s) for s in seeds) if has_paid_run(d)]
         if kept:
@@ -1744,13 +1952,13 @@ def main():
         print(f"About to run {len(seeds)} Claude sessions. That costs money and takes "
               f"minutes per seed. Each seed is saved in {RESULTS_DIR} as it finishes.")
 
-    scenarios = scenario_universe(pair=a.pair, komplekt=a.komplekt)
+    scenarios = scenario_universe(pair=a.pair, komplekt=a.komplekt, lifecycle=a.lifecycle)
     runs = []
     try:
         for s in seeds:
             try:
                 r = run_seed(s, a.model, a.dry, a.timeout, a.refusal, a.pair,
-                             a.overwrite, a.komplekt)
+                             a.overwrite, a.komplekt, a.lifecycle)
             except SessionUnavailable as exc:
                 print(f"\nstopping after {len(runs)} of {len(seeds)} seeds: the account "
                       f"cannot run sessions right now - {exc}. The remaining seeds would "
