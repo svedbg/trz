@@ -397,32 +397,74 @@ KOMPLEKT_KEYWORDS = {
                                    r"един и същ|съвпада|споделен"],
 }
 # Suite 6 (test/generate_lifecycle.py + lifecycle_test.py): I11, the timeline across
-# five months for the same five people. Never calibrated against a paid transcript, the
-# same limitation KOMPLEKT_KEYWORDS above states for itself - lifecycle_test.py's own
-# embedded eval-grading check proves each entry matches the sentence
-# lifecycle_test.py's reconcile() itself would write, nothing more.
+# five months for the same five people. Calibrated 2026-09-09 against the first three
+# paid --lifecycle transcripts (seeds 2, 3, 8 - Fable 5.1, USD 24.10): 18% identified,
+# 91% located at all - the model consistently found the right person/month and the
+# right underlying defect, but described it in ways these patterns, written before any
+# live run, did not anticipate. Each change below is traced to a real sentence that
+# should have counted and did not; see the seed-2/3/8 transcripts in
+# /tmp/trz-eval/results for the originals. LIFECYCLE_KEYWORDS is no longer wholly
+# uncalibrated, but a keyword written from three seeds is still thin evidence - triage
+# every miss on a future run before assuming the model is wrong rather than the pattern.
 LIFECYCLE_KEYWORDS = {
     "I11_salary_change_without_annex": [r"заплата|възнаграждение",
-                                        r"промен|повиш|увеличава се|различ",
+                                        # seed 3: "необяснено увеличение" (noun), not
+                                        # the verb phrase "увеличава се" this demanded.
+                                        r"промен|повиш|увелич|различ",
                                         r"без.*(споразумение|анекс)|няма.*(споразумение|анекс)"],
     "I11_pay_after_termination":       [r"прекратяван|уволнен|напуснал|заповед за "
                                         r"прекратяване",
                                         r"начислен|заплата|плащане|брутото|сума",
-                                        r"след.*(прекратяване|дата|напускане)"],
+                                        # seed 1/2 both name the termination order and
+                                        # its date directly ("заповед ... от 31.08.2026",
+                                        # "без ... документ, който да отменя заповедта")
+                                        # rather than writing the word "след" - "the
+                                        # order predates this month's pay" is the same
+                                        # claim as "paid after the order" without that
+                                        # literal word.
+                                        r"след.*(прекратяване|дата|напускане)|"
+                                        r"без основание|без.*документ|липсва.*документ|"
+                                        r"не е изпълнена"],
     "I11_severance_without_termination": [r"обезщетение.*(224|прекратяване)|чл\.? ?224",
                                           r"без.*(заповед|прекратяване)|няма.*(заповед|"
                                           r"прекратяване)"],
     "I11_sick_days_restart":           [r"болничен|болнични|неработоспособ",
-                                        r"продължав|поредн|втори месец|същия спел",
+                                        # All three real transcripts (seeds 2, 3, 8)
+                                        # diagnosed this the same way: not "the employer
+                                        # re-pays the first days", but its necessary
+                                        # consequence - the missing чл. 40 ЗЗО health
+                                        # contribution on the days that should already
+                                        # be NOI-financed by the second month of the
+                                        # same spell. Both are the same underlying
+                                        # defect; "продължав" (verb stem) also missed
+                                        # "продължение" (noun) in all three - "продълж"
+                                        # covers both. Merged from three groups to two:
+                                        # no real transcript carried a separate
+                                        # continuation-marker AND a separate repeat-
+                                        # marker word, only one or the other.
+                                        r"продълж|поредн|втори месец|същия спел|"
                                         r"отново|повторно|втори път за сметка на "
-                                        r"работодателя"],
+                                        r"работодателя|"
+                                        r"здравна?\s*вноска|ЗО (при|за)|чл\.? ?40.*"
+                                        r"(ал\.? ?1|т\.? ?5|ЗЗО)"],
     "I11_class_raised_early":          [r"клас",
-                                        r"преди|рано|не е навършил|няма право",
-                                        r"годин\w* стаж|навършва\w*|годишнина"],
+                                        # seed 8 shows the tenure-vs-date arithmetic
+                                        # directly (months short of the anniversary,
+                                        # the anniversary's own date) and names the
+                                        # result "надплатено" (overpaid) instead of
+                                        # using any of these adjectives.
+                                        r"преди|рано|не е навършил|няма право|надплат",
+                                        r"годин\w* стаж|навършва\w*|навършен\w*|"
+                                        r"годишнина|стаж"],
     "I11_class_not_raised":            [r"клас",
+                                        # seed 3 states the two percentages and the two
+                                        # amounts directly ("0.6% ... дължим 1.2% ...
+                                        # вместо") rather than saying the class was not
+                                        # raised in so many words.
                                         r"не е (?:вдигнат|повишен|променен|начислен)|"
-                                        r"остава|не се променя",
-                                        r"годин\w* стаж|навършва\w*|годишнина"],
+                                        r"остава|не се променя|дължим|вместо",
+                                        r"годин\w* стаж|навършва\w*|навършен\w*|"
+                                        r"годишнина|стаж"],
 }
 # Severities that assert a defect. A finding is a claim that something is wrong; a
 # `бележка` is an observation and, in a payroll whose year the reference file covers,
