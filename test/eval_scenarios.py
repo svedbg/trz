@@ -16,9 +16,12 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(ROOT, "skills", "trz-expert", "scripts"))
 
 import trz_model as M                                          # noqa: E402
+import finding as FIND                                          # noqa: E402
 
 # --- keywords for the mapping. Each entry is a list: all of them must match ---
 # --- the finding's description. Deliberately broad: the point is not to score ---
@@ -330,8 +333,19 @@ FORBIDDEN = re.compile(r"_manifest\.json|structural_test|checks_test|trz_model|"
 # the manifest's `"expected"` key, spelled as JSON spells it, and the scenario
 # identifiers, which occur nowhere the session may legitimately read - not in SKILL.md,
 # not in the reference files. Either one in a tool result means the run saw the answers.
+#
+# Except: an id in scripts/finding.py's own BASIS table is not the answer key's
+# vocabulary at all - it is scripts/audit.py's or scripts/k_checker.py's OWN output
+# vocabulary, and a session following SKILL.md's own guidance to run those scripts will
+# legitimately produce it in a Bash/Read result. Found 2026-09-09: seed 1 of the first
+# --lifecycle paid run was flagged RUN TAINTED on 'K5_total_not_sum', 'I1_vertical' and
+# 'F10_in_kind_asymmetry' appearing in scripts/k_checker.py's and scripts/finding.py's
+# own file content and script output - none of it the manifest's answer key, all of it
+# the skill doing exactly what it is told to do. _skill_files() already exempts the
+# reference files from this same vocabulary; BASIS's ids get the same exemption here.
 LEAKED = re.compile(r'"expected"|' + "|".join(
-    re.escape(i) for i in list(M.SCENARIOS) + list(M.PAIR_SCENARIOS)))
+    re.escape(i) for i in list(M.SCENARIOS) + list(M.PAIR_SCENARIOS)
+    if i not in FIND.BASIS))
 # The комплект fixture: the chain below the payroll. These patterns are a FIRST CUT -
 # unlike KEYWORDS and PAIR_KEYWORDS, no transcript has been graded against them yet, so
 # a miss here is at least as likely to be a keyword gap as a model failure. Triage every

@@ -92,6 +92,7 @@ from eval_scenarios import (                                   # noqa: E402
     RATE_DEPENDENT, SAYS_MISSING, SAYS_PERIOD, FORBIDDEN, LEAKED,
     KOMPLEKT_KEYWORDS, LIFECYCLE_KEYWORDS, ASSERTING, DENIES, _COMPARISON,
     UNRESOLVED_IS_RIGHT, NOTE_IS_RIGHT_FOR_GROUP, SAMPLE_TEXT, OBSERVED, MISREAD,
+    FIND,
 )
 
 VENV = "/tmp/trz-eval-venv"          # venv with openpyxl, outside the repository
@@ -1109,10 +1110,14 @@ def check_isolation():
 
     A synthetic stream, no session: one clean read; one Read whose input names the
     manifest; one Bash whose output carries the manifest's `"expected"` key; one whose
-    output carries a scenario identifier. The first must pass and each of the other
-    three must taint. Then the other direction: the files the session legitimately
-    reads - SKILL.md and the references - must not carry the answer key's vocabulary,
-    or every honest run would be thrown away as tainted.
+    output carries a scenario identifier the session has no legitimate way to produce
+    itself. The first must pass and each of the other three must taint. A fifth call -
+    Bash output carrying a scripts/finding.py BASIS id, exactly what scripts/audit.py or
+    scripts/k_checker.py legitimately prints when the session runs them as SKILL.md
+    instructs - must NOT taint (found 2026-09-09: the first paid --lifecycle run did
+    exactly this and was wrongly discarded). Then the other direction: the files the
+    session legitimately reads - SKILL.md and the references - must not carry the
+    answer key's vocabulary, or every honest run would be thrown away as tainted.
     """
     import tempfile
     problems = []
@@ -1125,6 +1130,7 @@ def check_isolation():
         return dict(type="user",
                     message=dict(content=[dict(type="tool_result", content=content)]))
 
+    assert "K5_total_not_sum" in FIND.BASIS and "K1_sum_omits_column" not in FIND.BASIS
     events = [
         tool_use("Read", dict(file_path="/tmp/trz-eval/seed-1/vedomost.xlsx")),
         tool_result("sheet 07-2026: 12 rows"),
@@ -1132,8 +1138,10 @@ def check_isolation():
         tool_result([dict(type="text",
                           text='{"seed": 1, "expected": [["row", 3, "K4_control_column_blind"]]}')]),
         tool_use("Bash", dict(command=f"{VENV}/bin/python -c 'print(1)'")),
-        tool_result("F5_tzpb_below_due"),
-        dict(type="result", num_turns=3, total_cost_usd=0.0, is_error=False, result="ok"),
+        tool_result("K1_sum_omits_column"),
+        tool_use("Bash", dict(command=f"{VENV}/bin/python scripts/k_checker.py f.xlsx")),
+        tool_result("K5_total_not_sum: 5"),
+        dict(type="result", num_turns=4, total_cost_usd=0.0, is_error=False, result="ok"),
     ]
     d = tempfile.mkdtemp(prefix="trz-eval-selftest-")
     try:
@@ -1144,13 +1152,14 @@ def check_isolation():
         trace = scan_stream(path, dict(tool_calls=0, touched=[]))
     finally:
         shutil.rmtree(d, ignore_errors=True)
-    if trace["tool_calls"] != 3:
-        problems.append(f"isolation: 3 tool calls in the transcript, {trace['tool_calls']} counted")
+    if trace["tool_calls"] != 4:
+        problems.append(f"isolation: 4 tool calls in the transcript, {trace['tool_calls']} counted")
     if len(trace["touched"]) != 3:
         problems.append(f"isolation: a manifest path, an \"expected\" key and a scenario "
-                        f"id should each taint - {len(trace['touched'])} did: "
+                        f"id should each taint, and a BASIS id from the skill's own "
+                        f"checker scripts should not - {len(trace['touched'])} did: "
                         f"{trace['touched']}")
-    if trace.get("turns") != 3:
+    if trace.get("turns") != 4:
         problems.append("isolation: the result event was not read")
 
     for rel in _skill_files(REPO_SKILL):
@@ -1349,12 +1358,40 @@ def results_path(mode, seed, model=None):
     return os.path.join(RESULTS_DIR, f"{mode}-{seed}-{_model_slug(model)}.json")
 
 
+def _pack_amounts(man):
+    """man["expected_amounts"] is keyed by a (where, ident) tuple for convenient lookup
+    during grading, but a JSON object's keys must be strings - dumped as-is this raised
+    TypeError inside persist() the first time a paid run actually reached a seed with a
+    ground-truth amount attached (2.23.0's first --lifecycle run, seed 1: paid, then
+    lost - persist() never wrote the record). Packed here as a flat list of
+    [where, ident, stated, due] for storage; _unpack_amounts() reverses it for regrade().
+    """
+    amounts = man.get("expected_amounts")
+    if not amounts or not isinstance(amounts, dict):
+        return man
+    packed = dict(man)
+    packed["expected_amounts"] = [[where, ident, stated, due]
+                                  for (where, ident), (stated, due) in amounts.items()]
+    return packed
+
+
+def _unpack_amounts(man):
+    amounts = man.get("expected_amounts")
+    if not amounts or isinstance(amounts, dict):
+        return man
+    unpacked = dict(man)
+    unpacked["expected_amounts"] = {(where, ident): (stated, due)
+                                    for where, ident, stated, due in amounts}
+    return unpacked
+
+
 def persist(rec):
     os.makedirs(RESULTS_DIR, exist_ok=True)
     path = results_path(rec["mode"], rec["seed"],
                         rec.get("model") or rec.get("model_used"))
+    to_write = dict(rec, manifest=_pack_amounts(rec["manifest"]))
     with open(path, "w", encoding="utf8") as f:
-        json.dump(rec, f, ensure_ascii=False, indent=1)
+        json.dump(to_write, f, ensure_ascii=False, indent=1)
     print(f"saved: {path}")
 
 
@@ -1613,7 +1650,7 @@ def regrade(threshold=None):
                    session_error=rec.get("session_error"), result=[], unattributed=[],
                    amount_mismatches=[], refusal=None)
         if rec.get("gradable") and rec.get("findings") is not None:
-            man = dict(rec["manifest"])
+            man = _unpack_amounts(dict(rec["manifest"]))
             universe = (LIFECYCLE_KEYWORDS if mode == "lifecycle" else
                         KOMPLEKT_KEYWORDS if mode == "komplekt" else
                         PAIR_KEYWORDS if mode == "pair" else KEYWORDS)
