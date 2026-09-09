@@ -764,8 +764,17 @@ def grade(man, findings):
 
 
 _LIFECYCLE_IDENT = re.compile(r"СЛ-\d{3}")
-_LIFECYCLE_MONTH = re.compile(r"месец\s*0?(\d{1,2})|\b0?([1-9]|1[0-2])[./]202\d\b|"
-                              r"\b0?([1-9]|1[0-2])\b")
+# Anchored the same way location()'s row parsing is: a bare 1-2 digit fallback with no
+# "месец" or date anchor used to match any nearby number - a row reference ("ред 8"), a
+# statute article - as if it were the month, silently mislocating the finding instead of
+# failing closed. Only "месец NN" (what the prompt asks for) or an explicit MM.YYYY/
+# MM/YYYY date count as naming a month.
+_LIFECYCLE_MONTH = re.compile(r"месец\s*0?(\d{1,2})|\b0?([1-9]|1[0-2])[./]202\d\b")
+# A bare number with no "месец"/date anchor is only trusted immediately after the
+# identifier (as reconcile()'s own "ИДЕНТ ММ" ground-truth string, and prepare_lifecycle
+# built expected_amounts on, has it) - never found by scanning the rest of the sentence,
+# where it could just as easily be a row ("ред 8") or a statute article.
+_LIFECYCLE_MONTH_NEAR = re.compile(r"^[,:\-\s]*0?([1-9]|1[0-2])\b")
 
 
 def location_lifecycle(finding):
@@ -781,11 +790,15 @@ def location_lifecycle(finding):
     m_ident = _LIFECYCLE_IDENT.search(where)
     if not m_ident:
         return None
-    m_month = _LIFECYCLE_MONTH.search(where[m_ident.end():]) \
-        or _LIFECYCLE_MONTH.search(where)
-    if not m_month:
-        return None
-    month = next(g for g in m_month.groups() if g is not None)
+    tail = where[m_ident.end():]
+    m_month = _LIFECYCLE_MONTH.search(tail) or _LIFECYCLE_MONTH.search(where)
+    if m_month:
+        month = next(g for g in m_month.groups() if g is not None)
+    else:
+        m_near = _LIFECYCLE_MONTH_NEAR.match(tail)
+        if not m_near:
+            return None
+        month = m_near.group(1)
     return f"{m_ident.group()} {int(month):02d}"
 
 
@@ -1376,7 +1389,7 @@ def print_graded(graded, unattributed, amount_mismatches=()):
               f"structural_test.py's ground truth; reported, not counted against the "
               f"score:")
         for where, ident, exp_stated, exp_due, got_stated, got_due in amount_mismatches:
-            loc = "file" if where == "file" else f"row {where}"
+            loc = f"row {where}" if isinstance(where, int) else str(where)
             print(f"      [{loc}] {ident}: expected {exp_stated}→{exp_due}, "
                   f"model said {got_stated}→{got_due}")
 
