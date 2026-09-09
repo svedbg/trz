@@ -77,7 +77,11 @@ scenarios you want measured. `--komplekt` sends a whole month's document set —
 the cross-document half of A9; its keyword universe has never been calibrated against a
 paid transcript, so triage every miss before believing it.
 `--pair` runs the two-month fixture (the чл. 177/чл. 18
-material no single sheet can hold); `--seeds-list "6,7,32"` runs exactly those seeds.
+material no single sheet can hold); `--lifecycle` runs the five-month timeline fixture
+(I11 - a raise with no annex, pay after termination, and the rest), graded by person
+and month rather than by row (see CLAUDE.md's "Suite 6 is wired into the live-model
+eval" note), and its keyword universe is equally uncalibrated against a paid
+transcript; `--seeds-list "6,7,32"` runs exactly those seeds.
 More than 10 seeds in one run is refused without `--allow-expensive`. Every graded seed
 is saved to `/tmp/trz-eval/results/`; `--regrade` re-scores those files against the
 current keywords for free, and a seed directory that holds a paid transcript is not
@@ -241,12 +245,40 @@ A false positive fails exactly like a miss.
   prose - counts, never a percentage, same reasoning as "Без процент на покритие"
   already gave the coverage table above it. Four call sites needed the tuple
   (`audit.py`'s own `main()`, three in `audit_test.py`); nothing else calls `check()`.
+- **A real audit also writes `findings.json`, not only prose - `otchet.md`'s
+  "Машинночетим отчет" section.** The same seven-plus-confidence fields the prose
+  report already carries, one JSON object per finding, so the result can be read by a
+  dashboard or compared month to month without re-parsing Bulgarian text. `id` is the
+  check's catalogue number from `proverki.md` (`B1`, `C2`, `I1`…) for a finding the
+  model wrote itself; a finding carried over from `scripts/audit.py`/`k_checker.py`
+  keeps that script's own longer id unchanged, since it is already machine-readable.
+  This is distinct from the `findings.json` `eval_skill.py`'s paid-eval prompts ask
+  for - that one exists purely to grade a session against a synthetic fixture's
+  manifest and is never seen by a real user; this one is a real audit's own
+  deliverable, specified once in `otchet.md` rather than reinventing the shape.
 - **Suite 6 may only compare a month with another month.** Every sheet in
   `test/generate_lifecycle.py` is internally correct on purpose — the arithmetic
   reconciles, the bases are right, each month would pass suites 1–4 alone. The only thing
   that disagrees is the sequence. A check in `lifecycle_test.py` that could be written
   inside one sheet belongs in another suite, and a break that stops corresponding to a
   bullet of I11 in `proverki/i.md` should be deleted rather than kept.
+- **Suite 6 is wired into the live-model eval as `--lifecycle`, with its own grading
+  pair.** A lifecycle finding is about a PERSON ACROSS MONTHS, not a spreadsheet row -
+  the same row number is a different person in each of the five monthly sheets - so
+  `grade()`'s row-number `location()` does not apply here. `location_lifecycle()`
+  parses a person identifier (`СЛ-\d{3}`) and a month out of the model's own "kade"
+  text instead, and `grade_lifecycle()` is `grade()`'s counterpart keyed by that
+  instead of by row. Ground truth is `lifecycle_test.py`'s own `reconcile()` - the
+  same "reuse the existing checker as the oracle" pattern the wide fixture's amount
+  grading already established, not a second copy of where a break lands.
+  `I11_salary_change_without_annex` is the one exception: `reconcile()`'s own `where`
+  for it is a two-month transition (`"ИДЕНТ ПП->ММ"`), because that check compares a
+  month against the one before it - `prepare_lifecycle()` rewrites it to the later
+  month alone before grading, since a live model has no reason to report a range.
+  `LIFECYCLE_KEYWORDS` (`test/eval_scenarios.py`) has never been calibrated against a
+  paid transcript, the same limitation `KOMPLEKT_KEYWORDS` already states for itself -
+  `lifecycle_test.py`'s own embedded check proves only that each entry matches the
+  sentence `reconcile()` itself would write.
 - **The комплект chain is built forward, and that is what makes it testable.** In
   `test/generate_komplekt.py` обр. 1 comes from the payroll, обр. 6 from обр. 1 and the
   payments from обр. 6 — so a break stops the copying at one link and the other three
