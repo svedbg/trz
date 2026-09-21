@@ -22,7 +22,12 @@ What is covered, and why the rest of each group is not:
   the month's working-day norm") needs a public-holiday calendar this script does not
   have, so it is not attempted here.
 * **B1 / B5 (minimum wage)** - основна and осигурителен доход each have a floor,
-  read from `references/stavki/mrz-mod.md` for the row's own period.
+  read from `references/stavki/mrz-mod.md` for the row's own period. Only for a row
+  that worked full time for the whole month: чл. 1, ал. 2 НСОРЗ prorates the floor
+  for anything less, and this script has neither the contract nor a public-holiday
+  calendar. Both halves of "full" are read off the sheet - the highest hours-per-day
+  declared on it, and the month's working-day norm as the largest отработени + отпуск
+  + болничен + майчинство any row declares (see the comment at the computation).
 * **B4 (maximum insurable income)** - a ceiling from the same file.
 * **F5 (ТЗПБ)** - the accident-and-disease rate is rarely stated directly; it is
   extracted algebraically from the employer's total contributions the same way
@@ -35,7 +40,7 @@ What is covered, and why the rest of each group is not:
   leave, sick leave, maternity leave) means an amount was typed where a day count
   belongs. Not the proverki.md text's second clause ("or above the norm"): the norm
   varies by contract and this script has no calendar for it, the same reason B1/B5
-  stand in the sheet's own maximum instead of computing one.
+  read theirs off the sheet instead of computing one.
 * **I8 (duplicated people)** - flagged when a name repeats AND
   бруто/осигурителен доход/нето all agree exactly with an earlier row under that
   name. Read as "probably" a copy-pasted row, not settled as one: preflight.py's
@@ -147,6 +152,15 @@ DAY_CONCEPTS = ("отработени дни", "дни отпуск", "дни б
 # wording rather than trusting the concept name alone.
 K2_HEADER_EXCLUDE = re.compile(r"остатък|полагаем|неизползван|среден|средно|баланс",
                                re.I)
+
+# How far from a whole number a day count may sit and still be read as one. 0.005, not
+# the money TOL (0.02): a typed amount always ends in exactly two decimals, so its
+# fractional part can be as little as .01 or .99 away from the nearest whole number -
+# a threshold of 0.01 or looser missed those at the boundary (172.01 read as "close
+# enough" to 172). Two places apply the same rule and must keep applying the same one:
+# K2 itself, and the month's working-day norm B1/B5 gate on, which reads a value that
+# fails this test as the amount K2 says it is rather than as days.
+DAY_TOL = 0.005
 
 DEDUCTION_CONCEPTS = ("удръжка доброволно осиг.", "удръжка живот", "удръжка карта")
 
@@ -276,13 +290,40 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
             if hours_values:
                 full_time_hours = max(hours_values)
 
+        # The worked-day half of the same gate needs the month's working-day norm, and
+        # the sheet does carry it - just not in any one column. Someone employed the
+        # whole month has отработени + отпуск + болничен + майчинство = the norm,
+        # whatever mix of the four they had, so the largest such SUM on the sheet is
+        # the norm as soon as ONE row was employed all month. The highest "отработени
+        # дни" alone - the proxy this replaces - needed a far stronger condition, one
+        # row with no leave and no sick day AT ALL, and across test/generate_wide.py's
+        # 3000 seeds eleven sheets had nobody like that: the sheet's own maximum was
+        # itself short of the norm, and a row sitting exactly on it was compared
+        # against the full МРЗ with its own pay legitimately prorated below it. Eleven
+        # false positives (ten B1, one B5), and the reason the nightly deep run had
+        # been red since 2026-09-07. Seed 339, July: 21 worked days + 2 sick out of
+        # a 23-day norm, with основна prorated to 584.42 - under that month's МРЗ.
+        # A sum is never below its own first term, so this estimate is never below the
+        # one it replaces: it can only silence a comparison, never open a new one.
+        #
+        # A fractional value in a day column is an amount typed where a day count
+        # belongs (K2 below reports it), not a day count, so it contributes nothing to
+        # the sum it appears in - counting seed 339's 161.02 sick "days" would read
+        # that month as a 181-day one and gate the whole sheet off instead.
         days_meta = known.get("отработени дни")
+        norm_metas = [m for m in (known.get(c) for c in DAY_CONCEPTS)
+                      if m is not None and not K2_HEADER_EXCLUDE.search(m["header"])]
         full_month_days = None
-        if days_meta is not None:
-            day_values = [_num(ws, days_meta, r) for r in range(s["first_row"], last + 1)]
-            day_values = [d for d in day_values if d is not None]
-            if day_values:
-                full_month_days = max(day_values)
+        if norm_metas:
+            row_totals = []
+            for r in range(s["first_row"], last + 1):
+                values = [_num(ws, m, r) for m in norm_metas]
+                values = [v for v in values
+                          if v is not None and abs(v - round(v)) <= DAY_TOL]
+                if values:
+                    row_totals.append(sum(values))
+            if row_totals:
+                full_month_days = max(row_totals)
 
         for r in range(s["first_row"], last + 1):
             osnovna = _num(ws, known.get("основна"), r)
@@ -299,10 +340,8 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
             ref = f"{s['name']}!{r}"
 
             # --- K2: an amount typed into a column meant for days -------------
-            # 0.005, not the money TOL (0.02): a typed amount always ends in exactly
-            # two decimals, so its fractional part can be as small as .01 or .99 away
-            # from the nearest whole number - a threshold of 0.01 or looser missed
-            # those at the boundary (172.01 read as "close enough" to 172).
+            # DAY_TOL rather than the money TOL, for the reason given at its
+            # definition; the norm estimate above reads the same rule the same way.
             #
             # preflight.classify()'s substring pass reads "дни отпуск" out of
             # "Остатък дни отпуск" or "Полагаеми дни отпуск" (a leave BALANCE or
@@ -317,7 +356,7 @@ def check(path, mapping=None, kid=None, group=None, tzpb=None):
                 if meta is None or K2_HEADER_EXCLUDE.search(meta["header"]):
                     continue
                 v = _num(ws, meta, r)
-                if v is not None and abs(v - round(v)) > 0.005:
+                if v is not None and abs(v - round(v)) > DAY_TOL:
                     findings.append(FN.make_finding(
                         K2_AMOUNT_IN_DAY_COLUMN, sheet=s["name"], row=r,
                         text=f"{ref}: „{meta['header']}“ ({concept}) е {v:.2f} — "

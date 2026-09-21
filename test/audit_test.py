@@ -14,10 +14,14 @@ this exact row is what caught it before anyone else did.
 
 Part 3 is a hand-built fixture for I5 (narrow) and B5, neither of which
 test/generate_wide.py injects on its own, plus the partial-month gate B1/B5 both lean
-on: a real office where nobody that month has a full, undiminished attendance would
-make the "highest declared day-count on the sheet" proxy for "the month's working-day
-norm" wrong too - so one row deliberately sits below the true norm here without being
-underpaid, pinning that the gate does not fire on it regardless.
+on - the one part of this script with a history of false positives, and the only
+reason the fixture carries day columns at all. s_b1_norm_only_visible_in_the_day_sum
+is the standing pin: a month where nobody worked every day, so the highest worked-day
+count on the sheet is itself short of the norm and the norm shows only in отработени
++ отпуск + болничен + майчинство. A row sitting on that highest count, correctly
+prorated below МРЗ, must stay silent. s_k2_amount_does_not_inflate_the_norm holds the
+other end - an amount typed into a day column must not be read as days by that sum
+and gate a real B5 off the sheet.
 
 Part 1 also covers the insurable-income composition (F1/F9/F10's insurable-side, see
 scripts/audit.py's docstring): F1_insurable_unexplained, F1_compensation_in_insurable
@@ -150,13 +154,32 @@ def run_wide(seeds):
                 mismatches.append(f"seed {seed} {i}: false positive at rows "
                                   f"{sorted(fp_rows)}")
 
-        # B1/B5 have no generate_wide.py scenario - any finding here at all, across
-        # a random fixture with random partial attendance, would be the false
+        # B1/B5 have no generate_wide.py scenario of their own, so almost any finding
+        # here, across a random fixture with random partial attendance, is the false
         # positive part 2 exists to catch directly against a hand-checked row.
-        for spurious_id in ("B1_below_minimum_wage", "B5_insurable_below_minimum_wage"):
-            if spurious_id in got_ids:
-                mismatches.append(f"seed {seed}: {spurious_id} fired with no "
-                                  f"scenario injected for it")
+        #
+        # The one exception is B5 on a row m_insurable_unexplained touched. That
+        # mutation restates осигурителен доход at 86-95% of the correct figure, and on
+        # a row already near the floor the restated figure lands BELOW МРЗ - a real
+        # second violation of the same understatement, not a false positive, and
+        # exactly the pairing the hand-built s_b5_insurable_below_min_wage shape
+        # already expects in the other direction (B5 and F1_insurable_unexplained
+        # together). At 3000 seeds this is every B5 raised here and there is no B1 at
+        # all, so the exception is written as narrowly as that: the same row must
+        # carry the injected F1 AND have the F1 finding actually reported on it.
+        f1_rows = {WIDE_HDR + 1 + idx for where, idx, x in man["expected"]
+                   if where == "row" and x == "F1_insurable_unexplained"}
+        f1_found = {f["row"] for f in findings
+                    if f["id"] == "F1_insurable_unexplained"}
+        for f in findings:
+            if f["id"] not in ("B1_below_minimum_wage",
+                               "B5_insurable_below_minimum_wage"):
+                continue
+            excused = (f["id"] == "B5_insurable_below_minimum_wage"
+                      and f["row"] in f1_rows and f["row"] in f1_found)
+            if not excused:
+                mismatches.append(f"seed {seed} row {f['row']}: {f['id']} fired with "
+                                  f"no scenario injected for it")
 
     for i in FILE_LEVEL_IDS:
         c = counts[i]
@@ -180,8 +203,8 @@ def run_wide(seeds):
     else:
         print(f"  -> OK: I1/B4/F5/F1/F9(insurable) match the manifest exactly, "
               f"F10(insurable side) has zero false positives, K2 has zero false "
-              f"positives (recall partial by design), B1/B5 silent, across {seeds} "
-              f"seeds")
+              f"positives (recall partial by design), B1 silent and B5 only on an "
+              f"injected F1_insurable_unexplained row, across {seeds} seeds")
 
 
 # --------------------------------------------------------- part 2: the static fixture
@@ -246,9 +269,16 @@ HEADERS = ["Име", "Отраб. дни", "Основна за отработе
            # (check_day_concepts() below catches the typo itself; these columns let
            # a shape exercise what the typo would have broken).
            "Дни платен отпуск", "Дни майчинство"]
-# Everyone this month took at least a little leave or sick time - nobody has the true
-# 22-day calendar norm, so the highest count on the sheet (20) is itself partial. Row
-# 3 sits at 20 with основна scaled down for it, correctly, and must not be flagged.
+# The base rows declare no leave, sick or maternity days at all, so отработени дни is
+# the whole of each row's day sum and Лице 3's 20 is the month's norm as far as this
+# sheet says - which is what s_b5_insurable_below_min_wage needs, a row at full
+# attendance for B1/B5 to compare at all. The sheet where the norm is NOT the highest
+# worked-day count, the case that produced real false positives, is
+# s_b1_norm_only_visible_in_the_day_sum below; it has to move the day columns to build
+# it, which is why it is a shape and not the base fixture. (This comment once claimed
+# the base rows were that case too - they never were: with no leave or sick day
+# declared anywhere there is no evidence of a longer norm, and Лице 3's основна is
+# above МРЗ in any event, so nothing was being pinned.)
 # Five of the six composition columns are zero for everyone; Лице 2 carries a real,
 # non-zero Клас сума (50.00, an always-in element, never one of CONTESTED) so the
 # composition pass is proven to add a genuine element correctly, not only to match
@@ -357,12 +387,68 @@ def s_k2_other_day_concepts(ws):
     """The other two DAY_CONCEPTS ("дни отпуск", "дни майчинство") fire too, not
     only "дни болничен" - the one concept generate_wide.py's own scenario ever
     injects into. "отработени дни" is left alone here: mutating it would also move
-    full_time_hours/full_month_days (B1/B5's own inputs, computed from this same
-    column), which is a different, unrelated interaction to test.
+    the row's own attendance, B1/B5's other input, which is a different and unrelated
+    interaction to test. The fractional values do reach the norm estimate's sum now,
+    but DAY_TOL drops them there - pinned by s_k2_amount_does_not_inflate_the_norm,
+    not by this shape, whose B1/B5 are silent either way.
     """
     row = HEADER_ROW + 3        # Лице 3
     ws.cell(row, HEADERS.index("Дни платен отпуск") + 1, 3.50)
     ws.cell(row, HEADERS.index("Дни майчинство") + 1, 7.25)
+
+
+def s_b1_norm_only_visible_in_the_day_sum(ws):
+    """Nobody worked the full month, and the month's norm shows only in the day SUM.
+
+    The regression pin for the false positive that made the nightly deep run red.
+    Every row here is given sick days (НОИ-paid, so no Болнични (работодател) moves
+    and none of the money columns need to follow) bringing отработени + болничен to
+    22 for all three: 18+4, 19+3, 20+2. The highest worked-day count on the sheet is
+    therefore 20, two days short of the norm - and Лице 3, sitting exactly on it, is
+    rewritten as a 660.00 salary prorated to 20/22 = 600.00, correctly, with the
+    whole chain following (осиг. доход 600.00, лични 60.00, данъчна основа 540.00,
+    ДДФЛ 54.00, нето 486.00). Both основна and осиг. доход end up below the МРЗ for
+    the period, legitimately. (The МРЗ itself is deliberately not written down here
+    or anywhere else in this file - scripts/rates.py reads it from the reference at
+    call time, and test/rates_test.py is the one place that pins it.)
+
+    Against the old "highest отработени дни on the sheet" proxy for the norm this
+    raises B1 AND B5 on that row; against the day-sum estimate it must raise nothing.
+    That is precisely the shape test/generate_wide.py hit on eleven of 3000 seeds -
+    ten B1 and one B5 - e.g. seed 339, July: 21 worked days + 2 sick of a 23-day
+    norm, with основна prorated to 584.42. It is why a sheet-wide maximum is now read
+    across all four day concepts rather than the worked-day column alone.
+    """
+    for i, (worked, sick) in enumerate(((18, 4), (19, 3), (20, 2))):
+        row = HEADER_ROW + 1 + i
+        ws.cell(row, HEADERS.index("Отраб. дни") + 1, worked)
+        ws.cell(row, HEADERS.index("Дни болничен") + 1, sick)
+    row = HEADER_ROW + 3        # Лице 3, the highest worked-day count on the sheet
+    for concept, value in (("Основна за отработеното", 600.00), ("БРУТО", 600.00),
+                           ("Осигурителен доход", 600.00), ("Данъчна основа", 540.00),
+                           ("ДДФЛ", 54.00), ("Лични вноски общо", 60.00),
+                           ("НЕТО преди удръжки", 486.00),
+                           ("НЕТО за изплащане", 486.00)):
+        ws.cell(row, HEADERS.index(concept) + 1, value)
+
+
+def s_k2_amount_does_not_inflate_the_norm(ws):
+    """A K2 amount in a day column must not be counted as days by the norm estimate.
+
+    s_b5_insurable_below_min_wage's own edit (Лице 3's осиг. доход down to 500.00,
+    raising B5 and F1) plus the wide fixture's own K2 shape on a different row: the
+    161.02 an amount-typed-into-Дни болничен actually looks like there. Counting it
+    would read Лице 1's month as 18 + 161.02 = 179.02 days, put the sheet's norm far
+    above anybody's attendance, and gate B5 off the sheet entirely - a fix for one
+    false positive quietly turning into a miss. DAY_TOL excludes it from the sum for
+    the same reason K2 reports it, so all three findings must still stand.
+
+    Nothing else here pins that exclusion: s_k2_other_day_concepts' fractional values
+    land on the row whose B1/B5 are silent anyway, so dropping the exclusion leaves
+    it green.
+    """
+    s_b5_insurable_below_min_wage(ws)
+    ws.cell(HEADER_ROW + 1, HEADERS.index("Дни болничен") + 1, 161.02)
 
 
 def s_i8_duplicated_person(ws):
@@ -412,6 +498,10 @@ SHAPES = {
     "s_k2_other_day_concepts": {A.K2_AMOUNT_IN_DAY_COLUMN: 2},
     "s_i8_duplicated_person": {A.I8_DUPLICATED_PEOPLE: 1},
     "s_i8_same_name_different_pay": {},
+    "s_b1_norm_only_visible_in_the_day_sum": {},
+    "s_k2_amount_does_not_inflate_the_norm": {
+        A.B5_INSURABLE_BELOW_MIN_WAGE: 1, A.F1_INSURABLE_UNEXPLAINED: 1,
+        A.K2_AMOUNT_IN_DAY_COLUMN: 1},
 }
 
 # Which figures must appear (as "%.2f") in the text of a given id's finding, for a
@@ -436,6 +526,14 @@ EXPECTED_TEXT = {
         A.K2_AMOUNT_IN_DAY_COLUMN: [8.01]},
     "s_k2_other_day_concepts": {
         A.K2_AMOUNT_IN_DAY_COLUMN: [3.50, 7.25]},
+    # Only the figures the fixture itself states. The МРЗ the B5 text also names is
+    # read from references/stavki/ by scripts/rates.py at call time, and typing it in
+    # here would be exactly the second, driftable copy of a rate CLAUDE.md forbids -
+    # test/rates_test.py is the one place that pins it, against the reference file.
+    "s_k2_amount_does_not_inflate_the_norm": {
+        A.K2_AMOUNT_IN_DAY_COLUMN: [161.02],
+        A.B5_INSURABLE_BELOW_MIN_WAGE: [500.00],
+        A.F1_INSURABLE_UNEXPLAINED: [500.00, 1127.45]},
 }
 
 
