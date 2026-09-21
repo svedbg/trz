@@ -191,16 +191,30 @@ A false positive fails exactly like a miss.
   "НЕТО преди удръжки"/"НЕТО за изплащане" and "Вноски работодател ДОО+ТЗПБ"/"Вноски
   работодател общо" both collapsed into one concept each, raising the blocking
   `DUPLICATE_CONCEPT` signal on every realistic fixture and stopping every check cold -
-  split now, the same way "Клас %"/"Клас сума" already were. B1/B5 also went through
-  two rounds of false positives from partial attendance (part-time hours, then a
-  partial month from leave/sick days) before landing on "the highest count declared
-  on the sheet" as the least-wrong stand-in for the full-time/full-month norm this
-  script has no public-holiday calendar to compute directly - the suite-1 fixture's
-  own part-time row (Стефка Ангелова) caught the first one. The insurable-composition
-  pass (ported from `test/structural_test.py`'s "solve the composition" method) is
-  gated on the sheet having zero unrecognised columns - a real company's mapping.yaml
-  has to declare every administrative/breakdown column as `ignore` for it to run at
-  all, same reasoning, and `F10_in_kind_asymmetry`/`F10_excess_asymmetry` are only
+  split now, the same way "Клас %"/"Клас сума" already were. B1/B5 have now gone
+  through three rounds of false positives from partial attendance, all the same root
+  cause - this script has no public-holiday calendar, so "full time for the whole
+  month" has to be read off the sheet itself. Part-time hours came first (the suite-1
+  fixture's own Стефка Ангелова caught it), then a partial month from leave/sick days.
+  The third round is the one worth remembering: "the highest **отработени дни** on the
+  sheet" is only the month's norm if somebody had no leave and no sick day at all, and
+  on eleven of `generate_wide.py`'s 3000 seeds nobody did - the sheet's own maximum was
+  itself short of the norm and every row sitting on it was compared against the full
+  МРЗ with its pay legitimately prorated below it. The norm is now the largest
+  **отработени + отпуск + болничен + майчинство** any row declares, which is right as
+  soon as ONE row was employed all month, and a fractional value (K2's own signal that
+  an amount was typed into a day column) adds nothing to that sum. A sum is never below
+  its own first term, so the estimate can only silence a comparison, never open one.
+  Both halves are pinned by a shape in `audit_test.py` part 3
+  (`s_b1_norm_only_visible_in_the_day_sum`, `s_k2_amount_does_not_inflate_the_norm`);
+  the day columns in that hand-built fixture exist for no other reason. Note that this
+  class of bug is invisible to the 300-seed CI push job and only ever showed up in the
+  Monday `deep-suites` run, which had been red since 2026-09-07 before anyone looked.
+  The insurable-composition pass (ported from `test/structural_test.py`'s "solve the
+  composition" method) is gated on the sheet having zero unrecognised columns - a real
+  company's mapping.yaml has to declare every administrative/breakdown column as
+  `ignore` for it to run at all, same reasoning, and
+  `F10_in_kind_asymmetry`/`F10_excess_asymmetry` are only
   half-covered (the taxable-base side of the same two ids is the deferred piece) -
   verified directly against `test/structural_test.py`'s own reference implementation,
   not only the manifest, because the two share ids with a check this file doesn't do.
